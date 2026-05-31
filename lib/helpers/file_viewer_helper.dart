@@ -109,15 +109,21 @@ class FileViewerHelper {
     if (isOffice(ext) || ext == 'raw') {
       final name = extractName(rawUrl);
       if (name.contains('.')) {
-        // Usamos fl_attachment para que Cloudinary sirva el archivo con el
-        // Content-Type correcto. Google Docs Viewer detecta el tipo por
-        // el header Content-Type y puede previsualizar el documento.
-        final urlFl  = _flAttachment(realUrl, name);
-        final encoded = Uri.encodeComponent(urlFl);
-        final viewer  = 'https://docs.google.com/viewer?url=$encoded&embedded=false';
+        // Usar Microsoft Office Online Viewer en lugar de Google Docs Viewer.
+        // Razones del cambio:
+        // 1. Google Docs Viewer tiene restricciones conocidas para acceder a
+        //    URLs Cloudinary Raw y devuelve "No hay vista previa disponible".
+        // 2. fl_attachment fuerza Content-Disposition: attachment (descarga),
+        //    lo que impide que cualquier viewer previsualice el archivo.
+        // Se pasa la URL directa de Cloudinary SIN fl_attachment para que
+        // Office Online pueda leer el archivo con el Content-Type correcto
+        // (determinado por la extensión en el public_id de Cloudinary).
+        final encoded = Uri.encodeComponent(realUrl);
+        final viewer  = 'https://view.officeapps.live.com/op/view.aspx?src=$encoded';
         PlatformUtils.openUrl(viewer);
       } else {
-        // Sin nombre/extensión → abrir directo; el navegador descargará el archivo.
+        // Sin nombre ni extensión (datos subidos antes del fix del backend):
+        // abrir directo; el navegador descargará el archivo.
         PlatformUtils.openUrl(realUrl);
       }
       return;
