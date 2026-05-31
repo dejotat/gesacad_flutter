@@ -1,0 +1,58 @@
+name: gesacad
+description: >
+  GESACAD - Sistema de Gestión Académica Universitaria
+  Corporación Universitaria Unicomfacauca
+  Implementa CU-01 a CU-07 del IEEE 830.
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+
+  # HTTP para llamadas REST al backend Node.js (RF01–RF15)
+  http: ^1.2.0
+
+  # Persistencia de sesión local (RF01–RF02 — redirección por rol)
+  shared_preferences: ^2.3.2
+
+  # Selección de archivos para entrega de tareas (CU-05)
+  file_picker: ^8.0.0
+
+  # Gráficas del dashboard de estadísticas (CU-06/RF05)
+  fl_chart: ^0.68.0
+
+  # Formateo de fechas para actividades (RF06, RF07)
+  intl: ^0.19.0
+
+  # Tipografía institucional (Poppins, Nunito)
+  google_fonts: ^6.2.1
+
+  # Calendario académico interactivo (CU-09: calendario)
+  table_calendar: ^3.1.0
+
+  # Inicio de sesión con Google (CU-10: Google SSO)
+  google_sign_in: ^6.2.2
+  url_launcher: ^6.3.2
+  flutter_tts: ^4.2.5
+  image_picker: ^1.2.2
+
+  # TalkBack usa la Web Speech API nativa del navegador (sin paquete externo)
+
+dev_dependencies:
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+
+dependency_overrides:
+  objective_c: ^9.3.0
+  path_provider_foundation: ^2.3.2
