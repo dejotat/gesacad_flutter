@@ -2,6 +2,7 @@ import 'dart:async';
 // ignore: avoid_web_libraries_in_flutter
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../models/activity_model.dart';
 import '../../services/api_service.dart';
 import '../../services/settings_service.dart';
 
@@ -562,7 +563,7 @@ class _NotificationBellState extends State<NotificationBell> {
       if (widget.userRol == 'Teacher') {
         // Docente: pedir todas las actividades en paralelo y luego resoluciones
         final listaActividades = await Future.wait(
-          cursos.map((c) => ApiService().getActivities(c.id).catchError((_) => <dynamic>[])),
+          cursos.map((c) => ApiService().getActivities(c.id).catchError((_) => <ActivityModel>[])),
         );
         final todasActs = listaActividades.expand((l) => l).toList();
 
@@ -585,7 +586,7 @@ class _NotificationBellState extends State<NotificationBell> {
       } else {
         // Estudiante/Admin: pedir actividades en paralelo
         final listaActividades = await Future.wait(
-          cursos.map((c) => ApiService().getActivities(c.id).catchError((_) => <dynamic>[])),
+          cursos.map((c) => ApiService().getActivities(c.id).catchError((_) => <ActivityModel>[])),
         );
         int conteo = 0;
         for (final actividades in listaActividades) {
