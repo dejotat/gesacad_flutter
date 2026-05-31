@@ -115,42 +115,43 @@ class _NotificationsPanelState extends State<NotificationsPanel>
       final notifs = <AppNotification>[];
 
       if (widget.userId > 0) {
-        // 1. Obtener cursos del usuario
-        final cursos = await ApiService().getMyCourses(widget.userId);
+        // El Admin obtiene todos los cursos del sistema para tener una
+        // vista global. Student y Teacher solo ven sus propios cursos.
+        final cursos = widget.userRol == 'Admin'
+            ? await ApiService().getAllCourses()
+            : await ApiService().getMyCourses(widget.userId);
 
         for (final curso in cursos) {
-          // 2. Obtener actividades de cada curso
           try {
             final actividades = await ApiService().getActivities(curso.id);
             final ahora = DateTime.now();
 
-            for (final act in actividades) {
-              // Construir notificación de nueva actividad si fue creada en los últimos 14 días
-              DateTime? startDate;
-              try { startDate = DateTime.parse(act.startDate); } catch (_) {}
-
-              if (startDate != null) {
-                final diff = ahora.difference(startDate);
-                if (diff.inDays >= -1 && diff.inDays <= 14) {
-                  notifs.add(AppNotification(
-                    id: 'act_${act.id}',
-                    title: 'Nueva actividad disponible',
-                    body: '${_tipoLabel(act.type)} "${act.tittle}" en ${curso.name}. '
-                        'Fecha límite: ${act.closingDate.split("T")[0]}',
-                    type: NotifType.activity,
-                    time: DateTime.now(),
-                  ));
+            // ── Estudiante: actividades recientes + calificaciones ─────────
+            if (widget.userRol == 'Student') {
+              for (final act in actividades) {
+                // Notificar actividades publicadas en los últimos 14 días
+                DateTime? startDate;
+                try { startDate = DateTime.parse(act.startDate); } catch (_) {}
+                if (startDate != null) {
+                  final diff = ahora.difference(startDate);
+                  if (diff.inDays >= -1 && diff.inDays <= 14) {
+                    notifs.add(AppNotification(
+                      id: 'act_${act.id}',
+                      title: 'Nueva actividad disponible',
+                      body: '${_tipoLabel(act.type)} "${act.tittle}" en ${curso.name}. '
+                          'Fecha límite: ${act.closingDate.split("T")[0]}',
+                      type: NotifType.activity,
+                      time: DateTime.now(),
+                    ));
+                  }
                 }
               }
-            }
-
-            // 3. Para estudiantes: buscar calificaciones recibidas en este curso
-            if (widget.userRol == 'Student') {
+              // Calificaciones recibidas por el estudiante en este curso
               try {
                 final notas = await ApiService().getGrades(curso.id, widget.userId);
                 for (int i = 0; i < notas.length; i++) {
                   final nota = notas[i];
-                  final gpa = nota['GPA'];
+                  final gpa  = nota['GPA'];
                   if (gpa != null) {
                     final gpaParsed = double.tryParse(gpa.toString()) ?? 0.0;
                     notifs.add(AppNotification(
@@ -168,22 +169,48 @@ class _NotificationsPanelState extends State<NotificationsPanel>
               } catch (_) {}
             }
 
-            // 4. Para profesores: contar entregas pendientes de calificar
+            // ── Profesor: entregas pendientes de calificar ────────────────
             if (widget.userRol == 'Teacher') {
               for (final act in actividades) {
                 try {
                   final entregas = await ApiService().getResolutions(act.id);
                   final sinCalificar = entregas.where((e) =>
-                    e['resolution'] != null &&
-                    (e['resolution'] as String).isNotEmpty &&
-                    e['GPA'] == null
-                  ).length;
+                      e['resolution'] != null &&
+                      (e['resolution'] as String).isNotEmpty &&
+                      e['GPA'] == null).length;
                   if (sinCalificar > 0) {
                     notifs.add(AppNotification(
                       id: 'pending_${act.id}',
                       title: 'Entregas pendientes de calificar',
-                      body: '$sinCalificar ${sinCalificar == 1 ? "estudiante entregó" : "estudiantes entregaron"} '
+                      body: '$sinCalificar '
+                          '${sinCalificar == 1 ? "estudiante entregó" : "estudiantes entregaron"} '
                           '"${act.tittle}" en ${curso.name}.',
+                      type: NotifType.activity,
+                      time: DateTime.now(),
+                    ));
+                  }
+                } catch (_) {}
+              }
+            }
+
+            // ── Admin: vista global de entregas sin calificar en todo el sistema
+            // El Admin actúa como super-supervisor: ve todos los cursos y puede
+            // detectar actividades con entregas que ningún profesor ha calificado.
+            if (widget.userRol == 'Admin') {
+              for (final act in actividades) {
+                try {
+                  final entregas = await ApiService().getResolutions(act.id);
+                  final sinCalificar = entregas.where((e) =>
+                      e['resolution'] != null &&
+                      (e['resolution'] as String).isNotEmpty &&
+                      e['GPA'] == null).length;
+                  if (sinCalificar > 0) {
+                    notifs.add(AppNotification(
+                      id: 'admin_pending_${act.id}',
+                      title: 'Entregas sin calificar',
+                      body: '$sinCalificar '
+                          '${sinCalificar == 1 ? "entrega pendiente" : "entregas pendientes"} '
+                          'en "${act.tittle}" — ${curso.name}.',
                       type: NotifType.activity,
                       time: DateTime.now(),
                     ));
@@ -194,7 +221,7 @@ class _NotificationsPanelState extends State<NotificationsPanel>
           } catch (_) {}
         }
 
-        // Ordenar: más recientes primero
+        // Ordenar de más reciente a más antiguo
         notifs.sort((a, b) => b.time.compareTo(a.time));
       }
 
@@ -551,13 +578,16 @@ class _NotificationBellState extends State<NotificationBell> {
     super.dispose();
   }
 
-  /// Calcula el badge de notificaciones en paralelo para mayor velocidad.
+  /// Calcula el número de notificaciones para el badge del ícono de campana.
   ///
-  /// - **Docente**: cuenta entregas de estudiantes pendientes de calificar.
-  /// - **Estudiante**: cuenta calificaciones recibidas + actividades recientes.
-  /// - **Admin**: cuenta actividades de los últimos 7 días.
+  /// La lógica varía según el rol:
+  /// - **Docente**: entregas de estudiantes con archivo enviado pero sin nota.
+  /// - **Estudiante**: actividades recientes (últimos 7 días) + calificaciones recibidas.
+  /// - **Admin**: igual que Docente pero sobre todos los cursos del sistema,
+  ///   ya que el Admin supervisa el estado global de calificaciones.
   Future<void> _calcularConteo() async {
     try {
+      // Admin consulta todos los cursos; los demás roles solo sus propios cursos.
       final cursos = widget.userRol == 'Admin'
           ? await ApiService().getAllCourses()
           : await ApiService().getMyCourses(widget.userId);
@@ -566,37 +596,38 @@ class _NotificationBellState extends State<NotificationBell> {
         return;
       }
 
-      final ahora = DateTime.now();
-
-      if (widget.userRol == 'Teacher') {
-        // Docente: pedir todas las actividades en paralelo y luego resoluciones
+      // Profesor y Admin comparten la misma lógica de badge:
+      // contar entregas que tienen archivo pero no tienen nota asignada.
+      if (widget.userRol == 'Teacher' || widget.userRol == 'Admin') {
         final listaActividades = await Future.wait(
-          cursos.map((c) => ApiService().getActivities(c.id).catchError((_) => <ActivityModel>[])),
+          cursos.map((c) => ApiService().getActivities(c.id)
+              .catchError((_) => <ActivityModel>[])),
         );
         final todasActs = listaActividades.expand((l) => l).toList();
 
-        // Pedir resoluciones en paralelo (limitado a primeras 10 actividades para velocidad)
+        // Limitar a las primeras 10 actividades para no saturar el backend
         final actsAVerificar = todasActs.take(10).toList();
         final resoluciones = await Future.wait(
-          actsAVerificar.map((a) =>
-              ApiService().getResolutions(a.id).catchError((_) => <Map<String,dynamic>>[])),
+          actsAVerificar.map((a) => ApiService().getResolutions(a.id)
+              .catchError((_) => <Map<String, dynamic>>[])),
         );
         int conteo = 0;
         for (final entregasList in resoluciones) {
           conteo += entregasList.where((e) =>
-            e['resolution'] != null &&
-            (e['resolution'] as String).isNotEmpty &&
-            e['GPA'] == null,
-          ).length;
+              e['resolution'] != null &&
+              (e['resolution'] as String).isNotEmpty &&
+              e['GPA'] == null).length;
         }
         if (mounted) setState(() { _count = conteo; });
 
       } else {
-        // Estudiante/Admin: pedir actividades en paralelo
+        // Estudiante: actividades recientes + calificaciones recibidas
         final listaActividades = await Future.wait(
-          cursos.map((c) => ApiService().getActivities(c.id).catchError((_) => <ActivityModel>[])),
+          cursos.map((c) => ApiService().getActivities(c.id)
+              .catchError((_) => <ActivityModel>[])),
         );
         int conteo = 0;
+        final ahora = DateTime.now();
         for (final actividades in listaActividades) {
           for (final act in actividades) {
             try {
@@ -606,15 +637,13 @@ class _NotificationBellState extends State<NotificationBell> {
             } catch (_) {}
           }
         }
-        // Estudiante: sumar calificaciones recibidas (en paralelo)
-        if (widget.userRol == 'Student') {
-          final notas = await Future.wait(
-            cursos.map((c) =>
-                ApiService().getGrades(c.id, widget.userId).catchError((_) => <Map<String,dynamic>>[])),
-          );
-          for (final lista in notas) {
-            conteo += lista.where((n) => n['GPA'] != null).length;
-          }
+        // Sumar calificaciones que el estudiante ya recibió
+        final notas = await Future.wait(
+          cursos.map((c) => ApiService().getGrades(c.id, widget.userId)
+              .catchError((_) => <Map<String, dynamic>>[])),
+        );
+        for (final lista in notas) {
+          conteo += lista.where((n) => n['GPA'] != null).length;
         }
         if (mounted) setState(() { _count = conteo; });
       }

@@ -183,9 +183,26 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
         archivos: _archivos,
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        // Capturar messenger antes de salir de la pantalla para evitar
+        // usar BuildContext a través de gaps asíncronos.
+        final messenger = ScaffoldMessenger.of(context);
+
+        messenger.showSnackBar(const SnackBar(
             content: Text('Actividad creada exitosamente'),
             backgroundColor: Colors.green));
+
+        // Informar al profesor que los archivos adjuntos no se subieron aún.
+        // El endpoint del backend no acepta archivos; se subirán en versión futura.
+        if (_archivos.isNotEmpty) {
+          messenger.showSnackBar(const SnackBar(
+            content: Text(
+                '📎 Actividad creada. La subida de archivos adjuntos '
+                'estará disponible próximamente desde el detalle de la actividad.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 4),
+          ));
+        }
+
         Navigator.pop(context);
       }
     } catch (e) {

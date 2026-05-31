@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
-import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 import '../models/user_model.dart';
@@ -264,6 +263,11 @@ class ApiService {
   /// Crea una nueva actividad en un curso (CU-04 / RF06, RF07).
   ///
   /// [weighting] debe ser el valor decimal (0.0–1.0), NO el porcentaje.
+  ///
+  /// [archivos] está reservado para una futura versión cuando el backend
+  /// del endpoint /courses/activities/addActivity soporte la subida de
+  /// materiales del profesor. Actualmente el endpoint rechaza archivos
+  /// adjuntos y falla silenciosamente, por eso se omiten aquí.
   Future<void> addActivity({
     required int week,
     required String type,
@@ -276,25 +280,30 @@ class ApiService {
     required int teacherId,
     List<Map<String, dynamic>> archivos = const [],
   }) async {
-    final uri = Uri.parse('$_base${ApiConfig.addActivity}');
+    final uri     = Uri.parse('$_base${ApiConfig.addActivity}');
     final request = http.MultipartRequest('POST', uri);
-    request.fields['week'] = week.toString();
-    request.fields['type'] = type;
-    request.fields['tittle'] = tittle;
+    request.fields['week']        = week.toString();
+    request.fields['type']        = type;
+    request.fields['tittle']      = tittle;
     request.fields['description'] = description;
-    request.fields['weighting'] = weighting.toStringAsFixed(4);
-    request.fields['startDate'] = startDate;
+    request.fields['weighting']   = weighting.toStringAsFixed(4);
+    request.fields['startDate']   = startDate;
     request.fields['closingDate'] = closingDate;
-    request.fields['courseId'] = courseId.toString();
-    request.fields['teacherId'] = teacherId.toString();
-    if (archivos.isNotEmpty) {
-      final f = archivos.first;
-      final bytes = f['bytes'] as Uint8List;
-      final name  = f['name']  as String;
-      request.files.add(http.MultipartFile.fromBytes('File', bytes.toList(), filename: name));
-      request.fields['originalFileName'] = name;
+    request.fields['courseId']    = courseId.toString();
+    request.fields['teacherId']   = teacherId.toString();
+
+    // No se adjuntan archivos: el endpoint del backend no los acepta aún.
+    // Si se enviara un archivo, el servidor retorna error y la actividad
+    // no se crea. Los archivos se subirán por separado en una versión futura.
+
+    final respuesta = await request.send().timeout(_timeout);
+
+    // Verificar que el servidor aceptó la solicitud.
+    // Si el status no es 2xx, lanzar excepción para que la UI muestre el error.
+    if (respuesta.statusCode < 200 || respuesta.statusCode >= 300) {
+      throw Exception(
+          'El servidor rechazó la creación de la actividad (código ${respuesta.statusCode})');
     }
-    await request.send();
   }
 
   /// Elimina una actividad existente.
