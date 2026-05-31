@@ -1,8 +1,6 @@
-import 'package:gesacad/utils/platform_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../config/api_config.dart';
 import '../../helpers/file_viewer_helper.dart';
 import '../../services/api_service.dart';
 
@@ -78,33 +76,6 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
     } catch (_) {}
     if (mounted) setState(() => _loading = false);
   }
-
-  /// Abre el archivo entregado en una nueva pestaña.
-  ///
-  /// Reglas de apertura:
-  /// - PDFs de Cloudinary (subidos como `image/upload` o `raw/upload`) →
-  ///   Google Docs Viewer. Cloudinary no sirve PDFs directamente desde
-  ///   `res.cloudinary.com` cuando la ruta es `/image/upload/`.
-  /// - Documentos Office (.doc, .docx, .pptx, .xlsx) → Google Docs Viewer.
-  /// - Imágenes y otros formatos → apertura directa.
-
-  /// Construye una URL de proxy a través del servidor Railway para un archivo
-  /// de Cloudinary, eliminando errores CORS/401 del navegador.
-  String _cloudinaryProxy(String url, {bool download = false}) {
-    if (!url.toLowerCase().contains('cloudinary.com')) return url;
-    final encoded = Uri.encodeComponent(url);
-    return '${ApiConfig.baseUrl}${ApiConfig.proxyFile}?url=$encoded'
-        '${download ? '&dl=1' : ''}';
-  }
-
-  /// Abre el archivo del estudiante en una nueva pestaña.
-  /// PDFs e imágenes van por el proxy Railway; Office por Google Docs Viewer.
-  /// Abre el archivo con visor correcto según el tipo.
-  void _abrirArchivo(String url) => FileViewerHelper.abrirArchivo(url);
-
-  /// Fuerza la descarga del archivo del estudiante usando el proxy Railway.
-  /// Descarga el archivo.
-  void _descargarArchivo(String url) => FileViewerHelper.descargarArchivo(url);
 
   /// Separa una cadena de URLs múltiples (separadas por `|||`) en lista.
   List<String> _parsearUrls(String raw) {

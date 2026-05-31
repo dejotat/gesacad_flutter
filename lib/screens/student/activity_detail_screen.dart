@@ -1,13 +1,10 @@
-import 'package:gesacad/utils/platform_utils.dart';
 import 'dart:developer' as developer;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:file_picker/file_picker.dart';
-import '../../config/api_config.dart';
 import '../../models/activity_model.dart';
 import '../../services/api_service.dart';
-import '../../widgets/animated_logo.dart';
 import '../../helpers/file_viewer_helper.dart';
 
 /// Pantalla de detalle de actividad para el estudiante — estilo Google Classroom.
@@ -89,23 +86,6 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
     } catch (_) {}
     if (mounted) setState(() => _refreshing = false);
   }
-
-  // ── Proxy de archivos Cloudinary ──────────────────────────────────────────
-
-  /// Proxy delegado al FileViewerHelper centralizado.
-  String _cloudinaryProxy(String url, {bool download = false}) =>
-      FileViewerHelper.proxyUrl(url, download: download);
-
-  // ── Abrir / descargar archivos ─────────────────────────────────────────────
-
-  /// Abre el archivo en una nueva pestaña del navegador.
-  ///
-  /// - Cloudinary (PDF/imagen): enruta por el proxy Railway para evitar CORS.
-  /// - Office (.doc, .pptx, .xlsx): pasa el proxy por Google Docs Viewer.
-  /// - Otros: abre directamente.
-  void _abrirArchivo(String url) => FileViewerHelper.abrirArchivo(url);
-
-  void _descargarArchivo(String url) => FileViewerHelper.descargarArchivo(url);
 
   // ── Paso 1: Agregar archivo(s) ─────────────────────────────────────────────
 

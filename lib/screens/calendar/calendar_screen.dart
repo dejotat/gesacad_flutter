@@ -1,4 +1,3 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:table_calendar/table_calendar.dart';
@@ -181,7 +180,6 @@ class _CalendarScreenState extends State<CalendarScreen>
     final themeType  = AppSettings.currentTheme.value;
     final primary    = themeType.primaryColor;
     final eventos    = _eventsFor(_selected);
-    final totalHoy   = eventos.length;
 
     return Scaffold(
       backgroundColor: themeType.backgroundColor,

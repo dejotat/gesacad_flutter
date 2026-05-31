@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
-import '../../widgets/animated_logo.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -34,9 +33,6 @@ class _StudentHomeState extends State<StudentHome> with TickerProviderStateMixin
   late AnimationController _entryCtrl;
   late Animation<double> _entryFade;
   late AnimationController _cardAnim;
-
-  // Gradiente estudiante: azul vibrante
-  static const List<Color> _gradient = [Color(0xFF1E3A8A), Color(0xFF2563EB), Color(0xFF60A5FA)];
 
   @override
   void initState() {

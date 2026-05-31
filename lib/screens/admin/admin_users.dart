@@ -11,26 +11,22 @@ class AdminUsers extends StatefulWidget {
   State<AdminUsers> createState() => _AdminUsersState();
 }
 
-class _AdminUsersState extends State<AdminUsers> with TickerProviderStateMixin {
+class _AdminUsersState extends State<AdminUsers> {
   List<UserModel> _users = [];
   List<UserModel> _filtered = [];
   bool _loading = true;
   final _searchCtrl = TextEditingController();
   String _rolFilter = 'Todos';
-  late AnimationController _fabCtrl;
 
   @override
   void initState() {
     super.initState();
-    _fabCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 300));
     _loadUsers();
   }
 
   @override
   void dispose() {
     _searchCtrl.dispose();
-    _fabCtrl.dispose();
     super.dispose();
   }
 
@@ -60,17 +56,6 @@ class _AdminUsersState extends State<AdminUsers> with TickerProviderStateMixin {
   }
 
   // ── Colores y datos por rol ───────────────────────────────────────────────
-  Color _rolColor(String rol) {
-    switch (rol) {
-      case 'Admin':
-        return const Color(0xFF7C3AED);
-      case 'Teacher':
-        return const Color(0xFF059669);
-      default:
-        return const Color(0xFF2563EB);
-    }
-  }
-
   List<Color> _rolGradient(String rol) {
     switch (rol) {
       case 'Admin':

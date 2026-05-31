@@ -524,7 +524,6 @@ class NotificationBell extends StatefulWidget {
 class _NotificationBellState extends State<NotificationBell> {
   /// Número de notificaciones no leídas (se actualiza al volver del panel).
   int _count = 0;
-  bool _loaded = false;
 
   @override
   void initState() {
@@ -554,7 +553,7 @@ class _NotificationBellState extends State<NotificationBell> {
     try {
       final cursos = await ApiService().getMyCourses(widget.userId);
       if (cursos.isEmpty) {
-        if (mounted) setState(() { _count = 0; _loaded = true; });
+        if (mounted) setState(() { _count = 0; });
         return;
       }
 
@@ -581,7 +580,7 @@ class _NotificationBellState extends State<NotificationBell> {
             e['GPA'] == null,
           ).length;
         }
-        if (mounted) setState(() { _count = conteo; _loaded = true; });
+        if (mounted) setState(() { _count = conteo; });
 
       } else {
         // Estudiante/Admin: pedir actividades en paralelo
@@ -608,11 +607,9 @@ class _NotificationBellState extends State<NotificationBell> {
             conteo += lista.where((n) => n['GPA'] != null).length;
           }
         }
-        if (mounted) setState(() { _count = conteo; _loaded = true; });
+        if (mounted) setState(() { _count = conteo; });
       }
-    } catch (_) {
-      if (mounted) setState(() { _loaded = true; });
-    }
+    } catch (_) {}
   }
 
   @override

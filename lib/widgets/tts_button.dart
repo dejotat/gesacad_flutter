@@ -39,7 +39,6 @@ class _TtsButtonState extends State<TtsButton>
   }
 
   Future<void> _toggle(BuildContext ctx) async {
-    final themeType = AppSettings.currentTheme.value;
     if (_leyendo) {
       await TtsService.instance.stop();
       if (!mounted) return;

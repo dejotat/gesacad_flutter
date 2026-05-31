@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/settings_service.dart';
-import '../widgets/talk_widget.dart';
 
 /// Pantalla de ajustes y "Acerca de" GESACAD.
 ///

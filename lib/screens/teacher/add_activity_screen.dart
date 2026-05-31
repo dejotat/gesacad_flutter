@@ -1,8 +1,4 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import '../../utils/platform_utils.dart';
-import '../../helpers/file_viewer_helper.dart';
 import '../../services/api_service.dart';
 
 /// Pantalla para crear una nueva actividad evaluable en un curso (CU-04 / RF06, RF07).
@@ -47,10 +43,6 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
   DateTime _closeDate = DateTime.now().add(const Duration(days: 7));
   bool _loading = false;
 
-  /// Archivos adjuntos del profesor (material de la actividad: parciales, talleres, etc.)
-  final List<Map<String, dynamic>> _adjuntos = [];
-  // Cada Map tiene: {'name': String, 'bytes': Uint8List}
-
   /// Porcentaje de ponderado ya usado en el curso (obtenido del backend).
   double _usedWeighting = 0;
 
@@ -82,19 +74,6 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
     } catch (_) {
       // Si falla, se asume 0% usado (no bloquear al usuario por error de red).
     }
-  }
-
-  /// Actualiza [_inputWeight] cuando el usuario cambia el campo de ponderado.
-  /// Permite al docente adjuntar archivos a la actividad (material para estudiantes).
-  Future<void> _pickFiles() async {
-    final bytes = await PlatformUtils.pickImage();
-    if (bytes == null) return;
-    setState(() {
-      _adjuntos.add({
-        'name': 'Material_${_adjuntos.length + 1}',
-        'bytes': Uint8List.fromList(bytes),
-      });
-    });
   }
 
   void _onWeightChanged() {
