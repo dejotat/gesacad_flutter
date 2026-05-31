@@ -22,9 +22,17 @@ class FileViewerHelper {
   }
 
   static String extractName(String rawUrl, {int index = 1}) {
+    // Formato estándar actual: url::name::nombre_original.ext
     if (rawUrl.contains('::name::')) {
       return rawUrl.split('::name::').last.trim();
     }
+    // Compatibilidad con el formato antiguo del backend (antes de la corrección):
+    // url nameFile:nombre_original.ext
+    if (rawUrl.contains('nameFile:')) {
+      return rawUrl.split('nameFile:').last.trim();
+    }
+    // Si la URL misma tiene extensión reconocida (ej. imágenes subidas por Cloudinary
+    // con use_filename:true), extraerla del segmento final de la ruta.
     final url = rawUrl.trim();
     final segment = url.split('/').last.split('?').first;
     final decoded = Uri.decodeComponent(segment);
