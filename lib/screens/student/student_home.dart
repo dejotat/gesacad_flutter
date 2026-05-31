@@ -17,6 +17,7 @@ import '../notifications/notifications_panel.dart';
 import '../profile/profile_screen.dart';
 import '../calendar/calendar_screen.dart';
 import 'student_course_content.dart';
+import 'grades_screen.dart';
 
 class StudentHome extends StatefulWidget {
   const StudentHome({super.key});
@@ -280,18 +281,8 @@ class _StudentHomeState extends State<StudentHome> with TickerProviderStateMixin
   Widget _buildQuickAccess(Color primary) {
     final items = [
       _QuickItem('📊', 'Mis Notas', const Color(0xFF1D4ED8),
-          () => ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Row(children: [
-              const Text('📖', style: TextStyle(fontSize: 18)),
-              const SizedBox(width: 10),
-              Text('Ingresa a un curso para ver tus calificaciones',
-                  style: GoogleFonts.poppins(color: Colors.white, fontSize: 13)),
-            ]),
-            backgroundColor: const Color(0xFF1D4ED8),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-            duration: const Duration(seconds: 3),
+          () => Navigator.push(context, MaterialPageRoute(
+            builder: (_) => _AllGradesScreen(userId: _myId, courses: _courses),
           ))),
       _QuickItem('📅', 'Calendario', const Color(0xFF7C3AED),
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CalendarScreen()))),
@@ -443,4 +434,228 @@ class _QuickItem {
   final Color color;
   final VoidCallback onTap;
   const _QuickItem(this.emoji, this.label, this.color, this.onTap);
+}
+
+// ── Pantalla resumen de todas las notas del estudiante ────────────────────────
+
+class _AllGradesScreen extends StatefulWidget {
+  final int userId;
+  final List<CourseModel> courses;
+  const _AllGradesScreen({required this.userId, required this.courses});
+
+  @override
+  State<_AllGradesScreen> createState() => _AllGradesScreenState();
+}
+
+class _AllGradesScreenState extends State<_AllGradesScreen> {
+  // Mapa courseId → {promedio, totalActiv, calificadas}
+  final Map<int, Map<String, dynamic>> _stats = {};
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    for (final c in widget.courses) {
+      try {
+        final grades = await ApiService().getGrades(c.id, widget.userId);
+        double total = 0, totalW = 0;
+        int calificadas = 0;
+        for (final g in grades) {
+          final gpa = double.tryParse(g['GPA']?.toString() ?? '');
+          final w   = double.tryParse(g['weighting']?.toString() ?? '0') ?? 0;
+          if (gpa != null) { total += gpa * w; totalW += w; calificadas++; }
+        }
+        _stats[c.id] = {
+          'promedio':    totalW > 0 ? total / totalW : null,
+          'total':       grades.length,
+          'calificadas': calificadas,
+        };
+      } catch (_) {
+        _stats[c.id] = {'promedio': null, 'total': 0, 'calificadas': 0};
+      }
+    }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Color _promedioColor(double? p) {
+    if (p == null) return Colors.grey;
+    if (p >= 4.0) return const Color(0xFF2E7D32);
+    if (p >= 3.0) return const Color(0xFFE65100);
+    return const Color(0xFFC62828);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF0F4FF),
+      appBar: AppBar(
+        title: Text('Mis Notas',
+            style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w700)),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFF1D4ED8), Color(0xFF7C3AED)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
+        backgroundColor: Colors.transparent,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded, color: Colors.white),
+            onPressed: _load,
+          ),
+        ],
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : widget.courses.isEmpty
+              ? Center(
+                  child: Text('Sin cursos matriculados',
+                      style: GoogleFonts.poppins(color: Colors.grey)),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                  itemCount: widget.courses.length,
+                  itemBuilder: (_, i) {
+                    final c     = widget.courses[i];
+                    final stat  = _stats[c.id];
+                    final prom  = stat?['promedio'] as double?;
+                    final total = stat?['total'] as int? ?? 0;
+                    final calif = stat?['calificadas'] as int? ?? 0;
+                    final color = _promedioColor(prom);
+
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                      elevation: 3,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(18),
+                        onTap: () => Navigator.push(context, MaterialPageRoute(
+                          builder: (_) => Scaffold(
+                            appBar: AppBar(
+                              title: Text(c.name,
+                                  style: GoogleFonts.poppins(
+                                      color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
+                              leading: IconButton(
+                                icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                                onPressed: () => Navigator.pop(context),
+                              ),
+                              flexibleSpace: Container(
+                                decoration: const BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [Color(0xFF1D4ED8), Color(0xFF7C3AED)],
+                                  ),
+                                ),
+                              ),
+                              backgroundColor: Colors.transparent,
+                            ),
+                            body: GradesScreen(
+                              courseId:   c.id,
+                              userId:     widget.userId,
+                              courseName: c.name,
+                            ),
+                          ),
+                        )).then((_) => _load()),
+                        child: Padding(
+                          padding: const EdgeInsets.all(18),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Encabezado: nombre + promedio
+                              Row(children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(c.name,
+                                          style: GoogleFonts.poppins(
+                                              fontWeight: FontWeight.w700, fontSize: 15),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis),
+                                      Text(c.courseCode,
+                                          style: GoogleFonts.poppins(
+                                              fontSize: 11, color: Colors.grey.shade500)),
+                                    ],
+                                  ),
+                                ),
+                                // Promedio en círculo de color
+                                Container(
+                                  width: 58, height: 58,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: color.withOpacity(0.12),
+                                    border: Border.all(color: color.withOpacity(0.4), width: 2),
+                                  ),
+                                  child: Center(
+                                    child: prom != null
+                                        ? Text(prom.toStringAsFixed(1),
+                                            style: GoogleFonts.poppins(
+                                                fontSize: 18, fontWeight: FontWeight.w900, color: color))
+                                        : Text('—', style: GoogleFonts.poppins(
+                                            fontSize: 20, color: Colors.grey.shade400)),
+                                  ),
+                                ),
+                              ]),
+                              const SizedBox(height: 12),
+                              // Barra de progreso del promedio
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: LinearProgressIndicator(
+                                  value: prom != null ? (prom / 5.0).clamp(0.0, 1.0) : 0.0,
+                                  minHeight: 6,
+                                  backgroundColor: Colors.grey.shade100,
+                                  color: color,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              // Resumen actividades
+                              Row(children: [
+                                _miniInfo('$total', 'actividades', Colors.grey.shade600),
+                                const SizedBox(width: 16),
+                                _miniInfo('$calif', 'calificadas', Colors.indigo),
+                                const SizedBox(width: 16),
+                                _miniInfo('${total - calif}', 'pendientes', Colors.orange.shade700),
+                                const Spacer(),
+                                // Estado
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: color.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    prom == null ? 'Sin notas'
+                                        : prom >= 3.0 ? 'Aprobando ✓'
+                                        : 'En riesgo ✗',
+                                    style: GoogleFonts.poppins(
+                                        fontSize: 11, fontWeight: FontWeight.w700, color: color),
+                                  ),
+                                ),
+                              ]),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+    );
+  }
+
+  Widget _miniInfo(String val, String label, Color color) => Column(children: [
+    Text(val, style: GoogleFonts.poppins(
+        fontSize: 15, fontWeight: FontWeight.w800, color: color)),
+    Text(label, style: GoogleFonts.poppins(fontSize: 9, color: Colors.grey.shade500)),
+  ]);
 }

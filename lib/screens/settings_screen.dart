@@ -11,10 +11,10 @@ import '../services/settings_service.dart';
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
-  static const String version = '1.0.0';
+  static const String version = '1.1.2';
   static const String developer = 'Jorge Tunubala';
   static const String institution = 'Corporación Universitaria Unicomfacauca';
-  static const String year = '2025';
+  static const String year = '2026';
 
   @override
   Widget build(BuildContext context) {

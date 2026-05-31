@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 import '../models/user_model.dart';
@@ -273,6 +274,7 @@ class ApiService {
     required String closingDate,
     required int courseId,
     required int teacherId,
+    List<Map<String, dynamic>> archivos = const [],
   }) async {
     final uri = Uri.parse('$_base${ApiConfig.addActivity}');
     final request = http.MultipartRequest('POST', uri);
@@ -285,6 +287,13 @@ class ApiService {
     request.fields['closingDate'] = closingDate;
     request.fields['courseId'] = courseId.toString();
     request.fields['teacherId'] = teacherId.toString();
+    if (archivos.isNotEmpty) {
+      final f = archivos.first;
+      final bytes = f['bytes'] as Uint8List;
+      final name  = f['name']  as String;
+      request.files.add(http.MultipartFile.fromBytes('File', bytes.toList(), filename: name));
+      request.fields['originalFileName'] = name;
+    }
     await request.send();
   }
 

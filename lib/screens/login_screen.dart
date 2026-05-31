@@ -210,7 +210,7 @@ class _LoginScreenState extends State<LoginScreen>
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  'Unicomfacauca · v1.0.0',
+                                  'Unicomfacauca · v1.1.2',
                                   style: GoogleFonts.poppins(
                                       color: Colors.white38,
                                       fontSize: esMobil ? 9 : 11),
@@ -394,7 +394,7 @@ class _LoginScreenState extends State<LoginScreen>
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              '© 2025 GESACAD · Todos los derechos reservados',
+                              '© 2026 GESACAD · Todos los derechos reservados',
                               style: GoogleFonts.poppins(
                                   color: Colors.white38,
                                   fontSize: esMobil ? 8 : 10),

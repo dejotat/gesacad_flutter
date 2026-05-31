@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
 
@@ -42,6 +44,7 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
   DateTime _startDate = DateTime.now();
   DateTime _closeDate = DateTime.now().add(const Duration(days: 7));
   bool _loading = false;
+  List<Map<String, dynamic>> _archivos = [];
 
   /// Porcentaje de ponderado ya usado en el curso (obtenido del backend).
   double _usedWeighting = 0;
@@ -80,6 +83,23 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
     final v = double.tryParse(_weightCtrl.text) ?? 0;
     if (v != _inputWeight) {
       setState(() => _inputWeight = v);
+    }
+  }
+
+  /// Abre el selector de archivos y agrega los seleccionados a [_archivos].
+  Future<void> _pickFiles() async {
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      withData: true,
+      type: FileType.any,
+    );
+    if (result == null) return;
+    final nuevos = result.files
+        .where((f) => f.bytes != null && f.name.isNotEmpty)
+        .map((f) => {'name': f.name, 'bytes': f.bytes as Uint8List})
+        .toList();
+    if (nuevos.isNotEmpty) {
+      setState(() => _archivos.addAll(nuevos));
     }
   }
 
@@ -160,6 +180,7 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
         closingDate: _formatDate(_closeDate),
         courseId: widget.courseId,
         teacherId: widget.teacherId,
+        archivos: _archivos,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -409,6 +430,34 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
                 ],
               ),
             ),
+
+            const SizedBox(height: 20),
+
+            // Sección adjuntar archivos.
+            OutlinedButton.icon(
+              onPressed: _pickFiles,
+              icon: const Icon(Icons.attach_file),
+              label: const Text('Agregar archivo'),
+            ),
+            if (_archivos.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: _archivos.asMap().entries.map((entry) {
+                  final i = entry.key;
+                  final f = entry.value;
+                  return Chip(
+                    label: Text(
+                      f['name'] as String,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    deleteIcon: const Icon(Icons.close, size: 16),
+                    onDeleted: () => setState(() => _archivos.removeAt(i)),
+                  );
+                }).toList(),
+              ),
+            ],
 
             const SizedBox(height: 28),
 

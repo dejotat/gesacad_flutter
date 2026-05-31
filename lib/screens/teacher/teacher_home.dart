@@ -30,6 +30,8 @@ class _TeacherHomeState extends State<TeacherHome> with TickerProviderStateMixin
   String _name = '';
   Uint8List? _photoBytes;
   int _myId = 0;
+  int _actsPendientes  = 0;
+  int _entregasSinCalif = 0;
   late AnimationController _entryCtrl;
   late Animation<double> _entryFade;
   late AnimationController _cardAnim;
@@ -60,7 +62,42 @@ class _TeacherHomeState extends State<TeacherHome> with TickerProviderStateMixin
       try { _photoBytes = base64Decode(photoB64); } catch (_) {}
     }
     try { _courses = await ApiService().getMyCourses(_myId); } catch (_) {}
+
+    // Calcular estadísticas reales en segundo plano
+    _calcularEstadisticas();
+
     if (mounted) { setState(() => _loading = false); _entryCtrl.forward(from: 0); }
+  }
+
+  Future<void> _calcularEstadisticas() async {
+    try {
+      int pendientes = 0;
+      int sinCalif   = 0;
+      final ahora = DateTime.now();
+      for (final c in _courses) {
+        List acts = [];
+        try { acts = await ApiService().getActivities(c.id); } catch (_) {}
+        for (final a in acts) {
+          try {
+            if (ahora.isBefore(DateTime.parse(a.closingDate))) pendientes++;
+          } catch (_) {}
+        }
+        // Solo primeras 5 actividades por curso para no saturar el backend
+        for (final a in acts.take(5)) {
+          try {
+            final resols = await ApiService().getResolutions(a.id);
+            sinCalif += resols.where((r) =>
+                r['resolution'] != null &&
+                r['resolution'].toString().isNotEmpty &&
+                r['GPA'] == null).length;
+          } catch (_) {}
+        }
+      }
+      if (mounted) setState(() {
+        _actsPendientes   = pendientes;
+        _entregasSinCalif = sinCalif;
+      });
+    } catch (_) {}
   }
 
   Future<void> _logout() async {
@@ -276,9 +313,9 @@ class _TeacherHomeState extends State<TeacherHome> with TickerProviderStateMixin
       child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
         _statItem('${_courses.length}', 'Cursos\nasignados', Icons.library_books_rounded, primary),
         _vDivider(),
-        _statItem('—', 'Actividades\npendientes', Icons.assignment_rounded, Colors.orange.shade600),
+        _statItem('$_actsPendientes', 'Actividades\npendientes', Icons.assignment_rounded, Colors.orange.shade600),
         _vDivider(),
-        _statItem('—', 'Entregas\nsin calificar', Icons.grading_rounded, Colors.red.shade600),
+        _statItem('$_entregasSinCalif', 'Entregas\nsin calificar', Icons.grading_rounded, Colors.red.shade600),
       ]),
     );
   }
