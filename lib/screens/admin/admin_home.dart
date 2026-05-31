@@ -26,6 +26,7 @@ class AdminHome extends StatefulWidget {
 class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
   // ── Datos del usuario ─────────────────────────────────────────────────────
   String    _name      = 'Admin';
+  int       _myId      = 0;
   Uint8List? _photoBytes;
 
   // ── Estadísticas ──────────────────────────────────────────────────────────
@@ -78,7 +79,8 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
   Future<void> _loadData() async {
     setState(() => _loading = true);
     final prefs = await SharedPreferences.getInstance();
-    _name = prefs.getString('userName') ?? 'Admin';
+    _name  = prefs.getString('userName') ?? 'Admin';
+    _myId  = prefs.getInt('userId') ?? 0;
 
     final photoB64 = prefs.getString('profile_photo');
     if (photoB64 != null && photoB64.isNotEmpty) {
@@ -210,7 +212,7 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
               color: Colors.white, fontWeight: FontWeight.w700, fontSize: 18)),
       centerTitle: true,
       actions: [
-        const NotificationBell(),
+        NotificationBell(userId: _myId, userRol: 'Admin'),
         IconButton(
           tooltip: 'Calendario',
           icon: const Icon(Icons.calendar_month_rounded, color: Colors.white),

@@ -130,15 +130,15 @@ class _NotificationsPanelState extends State<NotificationsPanel>
               try { startDate = DateTime.parse(act.startDate); } catch (_) {}
 
               if (startDate != null) {
-                final diasTranscurridos = ahora.difference(startDate).inDays;
-                if (diasTranscurridos >= 0 && diasTranscurridos <= 14) {
+                final diff = ahora.difference(startDate);
+                if (diff.inDays >= -1 && diff.inDays <= 14) {
                   notifs.add(AppNotification(
                     id: 'act_${act.id}',
                     title: 'Nueva actividad disponible',
                     body: '${_tipoLabel(act.type)} "${act.tittle}" en ${curso.name}. '
                         'Fecha límite: ${act.closingDate.split("T")[0]}',
                     type: NotifType.activity,
-                    time: startDate,
+                    time: DateTime.now(),
                   ));
                 }
               }
@@ -161,7 +161,7 @@ class _NotificationsPanelState extends State<NotificationsPanel>
                           '${gpaParsed.toStringAsFixed(2)} / 5.0 — '
                           '${gpaParsed >= 3.0 ? "Aprobado ✓" : "Reprobado"}',
                       type: NotifType.grade,
-                      time: DateTime.now().subtract(const Duration(hours: 1)),
+                      time: DateTime.now(),
                     ));
                   }
                 }
@@ -185,7 +185,7 @@ class _NotificationsPanelState extends State<NotificationsPanel>
                       body: '$sinCalificar ${sinCalificar == 1 ? "estudiante entregó" : "estudiantes entregaron"} '
                           '"${act.tittle}" en ${curso.name}.',
                       type: NotifType.activity,
-                      time: DateTime.now().subtract(const Duration(minutes: 30)),
+                      time: DateTime.now(),
                     ));
                   }
                 } catch (_) {}
@@ -529,12 +529,18 @@ class _NotificationBellState extends State<NotificationBell> {
   @override
   void initState() {
     super.initState();
-    // Cargar conteo inicial
     if (widget.userId > 0) _calcularConteo();
-    // Refrescar automáticamente cada 30 segundos
     _timer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (widget.userId > 0 && mounted) _calcularConteo();
     });
+  }
+
+  @override
+  void didUpdateWidget(NotificationBell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.userId != widget.userId && widget.userId > 0) {
+      _calcularConteo();
+    }
   }
 
   Timer? _timer;
@@ -552,7 +558,9 @@ class _NotificationBellState extends State<NotificationBell> {
   /// - **Admin**: cuenta actividades de los últimos 7 días.
   Future<void> _calcularConteo() async {
     try {
-      final cursos = await ApiService().getMyCourses(widget.userId);
+      final cursos = widget.userRol == 'Admin'
+          ? await ApiService().getAllCourses()
+          : await ApiService().getMyCourses(widget.userId);
       if (cursos.isEmpty) {
         if (mounted) setState(() { _count = 0; });
         return;

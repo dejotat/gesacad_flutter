@@ -81,34 +81,34 @@ class FileViewerHelper {
   // ── Abrir archivo ───────────────────────────────────────────────────────────
 
   static void abrirArchivo(String rawUrl) {
-    final ext = detectExtension(rawUrl);
+    final ext     = detectExtension(rawUrl);
+    final realUrl = extractUrl(rawUrl);
 
     if (isZip(ext)) {
-      // ZIP/RAR: solo descarga
       descargarArchivo(rawUrl);
       return;
     }
 
     if (isPdf(ext) || isImage(ext)) {
-      // PDF e imágenes: el proxy sirve con Content-Type correcto,
-      // el navegador los renderiza directamente
-      final proxy = proxyUrl(rawUrl);
-      PlatformUtils.openUrl(proxy);
+      // Abrir la URL de Cloudinary directamente — las URLs públicas de
+      // Cloudinary no requieren autenticación y el navegador las renderiza.
+      // Evitamos el proxy de Railway que puede devolver 401 si Cloudinary
+      // tiene restricciones de acceso server-to-server.
+      PlatformUtils.openUrl(realUrl);
       return;
     }
 
     if (isOffice(ext) || ext == 'raw') {
-      // Office y raw de Cloudinary → Google Docs Viewer con URL del proxy
-      // Google Docs Viewer puede acceder al proxy de Railway (es un servidor público)
-      final proxy = proxyUrl(rawUrl);
-      final encoded = Uri.encodeComponent(proxy);
-      final viewer = 'https://docs.google.com/viewer?url=$encoded&embedded=false';
+      // Google Docs Viewer accede directo a Cloudinary (server-to-server
+      // de Google, no pasa por nuestro proxy). La URL pública de Cloudinary
+      // es suficiente para que Google Docs pueda descargarla.
+      final encoded = Uri.encodeComponent(realUrl);
+      final viewer  = 'https://docs.google.com/viewer?url=$encoded&embedded=false';
       PlatformUtils.openUrl(viewer);
       return;
     }
 
-    // Cualquier otro tipo: abrir vía proxy
-    PlatformUtils.openUrl(proxyUrl(rawUrl));
+    PlatformUtils.openUrl(realUrl);
   }
 
   // ── Descargar archivo ───────────────────────────────────────────────────────
