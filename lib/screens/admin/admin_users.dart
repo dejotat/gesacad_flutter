@@ -89,6 +89,28 @@ class _AdminUsersState extends State<AdminUsers> {
     }
   }
 
+  // ── Indicador visual de criterio de contraseña ───────────────────────────
+  Widget _adminPwCriterion(bool met, String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(children: [
+        Icon(
+          met ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+          size: 15,
+          color: met ? Colors.green : Colors.grey.shade400,
+        ),
+        const SizedBox(width: 6),
+        Text(
+          text,
+          style: GoogleFonts.poppins(
+            fontSize: 11,
+            color: met ? Colors.green.shade700 : Colors.grey.shade500,
+          ),
+        ),
+      ]),
+    );
+  }
+
   // ── Validación de contraseña segura ───────────────────────────────────────
   String? _validatePassword(String? v, {bool required = true}) {
     if (v == null || v.isEmpty) return required ? 'Requerido' : null;
@@ -227,42 +249,87 @@ class _AdminUsersState extends State<AdminUsers> {
                         ),
                         const SizedBox(height: 16),
                         // Campo contraseña
-                        TextFormField(
-                          controller: passCtrl,
-                          obscureText: !showPass,
-                          textInputAction: TextInputAction.next,
-                          style: GoogleFonts.poppins(fontSize: 14),
-                          decoration: InputDecoration(
-                            labelText: user == null
-                                ? 'Contraseña'
-                                : 'Nueva contraseña (vacío = no cambiar)',
-                            labelStyle: GoogleFonts.poppins(fontSize: 12),
-                            helperText:
-                                'Mín. 8 caracteres, mayúscula, minúscula, número y símbolo',
-                            helperMaxLines: 2,
-                            helperStyle:
-                                GoogleFonts.poppins(fontSize: 10),
-                            prefixIcon: const Icon(Icons.lock_outline_rounded,
-                                color: Color(0xFF7C3AED)),
-                            suffixIcon: IconButton(
-                              icon: Icon(showPass
-                                  ? Icons.visibility_off_rounded
-                                  : Icons.visibility_rounded,
-                                  color: Colors.grey),
-                              onPressed: () =>
-                                  setS(() => showPass = !showPass),
-                            ),
-                            border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(14)),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              borderSide: const BorderSide(
-                                  color: Color(0xFF7C3AED), width: 2),
-                            ),
-                          ),
-                          validator: (v) =>
-                              _validatePassword(v, required: user == null),
-                        ),
+                        Builder(builder: (_) {
+                          final pass = passCtrl.text;
+                          final uname = nameCtrl.text.trim().toLowerCase();
+                          final c1 = pass.length >= 8 && pass.length <= 64;
+                          final c2 = pass.contains(RegExp(r'\d'));
+                          final c3 = pass.contains(RegExp(r'[a-zA-Z]'));
+                          final c4 = uname.isEmpty ||
+                              !pass.toLowerCase().contains(uname);
+                          final passed = [c1, c2, c3, c4].where((x) => x).length;
+                          final barColor = passed <= 1
+                              ? Colors.red
+                              : passed == 2
+                                  ? Colors.orange
+                                  : passed == 3
+                                      ? Colors.yellow.shade700
+                                      : Colors.green;
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              TextFormField(
+                                controller: passCtrl,
+                                obscureText: !showPass,
+                                textInputAction: TextInputAction.next,
+                                style: GoogleFonts.poppins(fontSize: 14),
+                                onChanged: (_) => setS(() {}),
+                                decoration: InputDecoration(
+                                  labelText: user == null
+                                      ? 'Contraseña'
+                                      : 'Nueva contraseña (vacío = no cambiar)',
+                                  labelStyle: GoogleFonts.poppins(fontSize: 12),
+                                  prefixIcon: const Icon(
+                                      Icons.lock_outline_rounded,
+                                      color: Color(0xFF7C3AED)),
+                                  suffixIcon: IconButton(
+                                    icon: Icon(
+                                      showPass
+                                          ? Icons.visibility_off_rounded
+                                          : Icons.visibility_rounded,
+                                      color: Colors.grey,
+                                    ),
+                                    onPressed: () =>
+                                        setS(() => showPass = !showPass),
+                                  ),
+                                  border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(14)),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                    borderSide: const BorderSide(
+                                        color: Color(0xFF7C3AED), width: 2),
+                                  ),
+                                ),
+                                validator: (v) =>
+                                    _validatePassword(v, required: user == null),
+                              ),
+                              // Indicador de fortaleza — visible al escribir
+                              if (pass.isNotEmpty) ...[
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: List.generate(4, (i) => Expanded(
+                                    child: Container(
+                                      margin: const EdgeInsets.symmetric(horizontal: 2),
+                                      height: 4,
+                                      decoration: BoxDecoration(
+                                        color: i < passed
+                                            ? barColor
+                                            : Colors.grey.shade200,
+                                        borderRadius: BorderRadius.circular(2),
+                                      ),
+                                    ),
+                                  )),
+                                ),
+                                const SizedBox(height: 6),
+                                _adminPwCriterion(c1, '8-64 caracteres'),
+                                _adminPwCriterion(c2, 'Al menos un número'),
+                                _adminPwCriterion(c3, 'Al menos una letra'),
+                                _adminPwCriterion(c4, 'No incluir tu usuario'),
+                              ],
+                            ],
+                          );
+                        }),
                         const SizedBox(height: 16),
                         // Selector de rol
                         DropdownButtonFormField<String>(

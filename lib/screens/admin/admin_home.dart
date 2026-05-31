@@ -1038,7 +1038,8 @@ class _BarConHoverState extends State<_BarConHover>
   Widget build(BuildContext context) {
     final c1 = widget.colores[0];
     final c2 = widget.colores[1];
-    final alturaBase = math.max(widget.pct * 140, 6.0);
+    // Máximo 120px: con el 18% de hover + textos + base cabe en los 200px del SizedBox.
+    final alturaBase = math.max(widget.pct * 120, 6.0);
 
     return MouseRegion(
       onEnter: (_) { setState(() => _hover = true); _ctrl.forward(); },
