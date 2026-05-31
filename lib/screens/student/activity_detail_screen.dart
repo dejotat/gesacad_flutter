@@ -281,6 +281,19 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
                       ),
                       const SizedBox(height: 12),
 
+                      // ── Material del docente (campo content de la actividad) ─
+                      // Se muestra solo cuando el profesor adjuntó archivos al
+                      // crear la actividad. Los archivos están separados por '|||'.
+                      if (a.content != null && a.content!.isNotEmpty)
+                        _buildCard(
+                          title: 'Material del docente',
+                          icon: Icons.folder_open_rounded,
+                          iconColor: Colors.deepOrange.shade600,
+                          child: _buildTeacherFiles(a.content!, primary),
+                        ),
+                      if (a.content != null && a.content!.isNotEmpty)
+                        const SizedBox(height: 12),
+
                       // ── Tabla estado Moodle ────────────────────────────────
                       _buildCard(
                         title: 'Estado de la entrega',
@@ -717,6 +730,33 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
   }
 
   /// Muestra los archivos ya entregados con opciones de abrir y descargar.
+  /// Muestra los archivos adjuntos subidos por el docente al crear la actividad.
+  ///
+  /// El campo [content] puede contener una o varias URLs separadas por '|||'.
+  /// Se usa [FileViewerHelper.buildFileCard] para mostrar cada archivo con su
+  /// ícono, tipo y botones de apertura/descarga.
+  Widget _buildTeacherFiles(String content, Color primary) {
+    final urls = FileViewerHelper.parseUrls(content);
+    if (urls.isEmpty) return const SizedBox();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'El docente adjuntó ${urls.length == 1 ? "el siguiente archivo" : "${urls.length} archivos"}:',
+          style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey.shade600),
+        ),
+        const SizedBox(height: 8),
+        ...urls.asMap().entries.map((e) =>
+          FileViewerHelper.buildFileCard(
+            e.value,
+            index: e.key + 1,
+            primaryColor: Colors.deepOrange.shade600,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildDeliveredFiles(ActivityModel a, Color primary) {
     if (a.resolution == null || a.resolution!.isEmpty) return const SizedBox();
     final urls = FileViewerHelper.parseUrls(a.resolution!);
