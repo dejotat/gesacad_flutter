@@ -99,16 +99,28 @@ class FileViewerHelper {
     }
 
     if (isOffice(ext) || ext == 'raw') {
-      // Google Docs Viewer accede directo a Cloudinary (server-to-server
-      // de Google, no pasa por nuestro proxy). La URL pública de Cloudinary
-      // es suficiente para que Google Docs pueda descargarla.
-      final encoded = Uri.encodeComponent(realUrl);
-      final viewer  = 'https://docs.google.com/viewer?url=$encoded&embedded=false';
+      // Para URLs de Cloudinary sin extensión (raw/upload), añadir el nombre
+      // original al final de la URL. Cloudinary sirve el archivo con el
+      // Content-Type correcto cuando detecta la extensión en la ruta.
+      final name        = extractName(rawUrl);
+      final urlWithName = _withFilename(realUrl, name);
+      final encoded     = Uri.encodeComponent(urlWithName);
+      final viewer      = 'https://docs.google.com/viewer?url=$encoded&embedded=false';
       PlatformUtils.openUrl(viewer);
       return;
     }
 
     PlatformUtils.openUrl(realUrl);
+  }
+
+  /// Añade el nombre de archivo original al final de la URL de Cloudinary
+  /// para que éste sirva el recurso con el Content-Type correcto.
+  /// Ejemplo: .../tmy6nso8fw9w8s4d54mx → .../tmy6nso8fw9w8s4d54mx/archivo.xlsx
+  static String _withFilename(String cloudUrl, String filename) {
+    if (!cloudUrl.contains('cloudinary.com')) return cloudUrl;
+    if (!filename.contains('.')) return cloudUrl;
+    final safe = Uri.encodeComponent(filename);
+    return '$cloudUrl/$safe';
   }
 
   // ── Descargar archivo ───────────────────────────────────────────────────────

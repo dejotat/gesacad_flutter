@@ -39,7 +39,11 @@ class GradeStudentsScreen extends StatefulWidget {
 
 class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
   List<Map<String, dynamic>> _resolutions = [];
+  // Vista general: lista de actividades con sus estadísticas de entrega
+  List<Map<String, dynamic>> _activitiesStats = [];
   bool _loading = true;
+
+  bool get _esVistaGeneral => widget.activityId == null;
 
   @override
   void initState() {
@@ -47,31 +51,54 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
     _load();
   }
 
-  /// Carga las entregas de la actividad desde el backend.
-  ///
-  /// Aplica dos filtros defensivos:
-  /// 1. Elimina duplicados por userId (el backend puede retornar filas repetidas).
-  /// 2. Excluye usuarios con rol 'Admin' o 'Teacher' que aparezcan por error.
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      if (widget.activityId != null) {
+      if (!_esVistaGeneral) {
+        // ── Vista por actividad ──────────────────────────────────────────
         final raw = await ApiService().getResolutions(widget.activityId!);
-
-        // Deduplicar por userId — conservar solo la primera aparición.
-        final seen = <dynamic>{};
+        final seen   = <dynamic>{};
         final deduped = <Map<String, dynamic>>[];
         for (final r in raw) {
           final uid = r['id'] ?? r['userId'] ?? r['username'];
           if (seen.add(uid)) {
-            // Excluir admin y profesores si el backend incluye el campo 'rol'.
             final rol = r['rol']?.toString() ?? r['role']?.toString() ?? '';
-            if (rol.isEmpty || rol == 'Student') {
-              deduped.add(r);
-            }
+            if (rol.isEmpty || rol == 'Student') deduped.add(r);
           }
         }
         _resolutions = deduped;
+      } else {
+        // ── Vista general: carga todas las actividades del curso ─────────
+        final acts = await ApiService().getActivities(widget.courseId);
+        final stats = <Map<String, dynamic>>[];
+        for (final act in acts) {
+          try {
+            final resols = await ApiService().getResolutions(act.id);
+            final entregados = resols.where((r) =>
+                r['resolution'] != null &&
+                r['resolution'].toString().isNotEmpty).length;
+            final calificados =
+                resols.where((r) => r['GPA'] != null).length;
+            final gpas = resols
+                .where((r) => r['GPA'] != null)
+                .map((r) => double.tryParse(r['GPA'].toString()) ?? 0.0)
+                .toList();
+            final promedio = gpas.isEmpty
+                ? null
+                : gpas.reduce((a, b) => a + b) / gpas.length;
+            stats.add({
+              'activityId':  act.id,
+              'name':        act.tittle,
+              'type':        act.type,
+              'weighting':   act.weighting,
+              'total':       resols.length,
+              'entregados':  entregados,
+              'calificados': calificados,
+              'promedio':    promedio,
+            });
+          } catch (_) {}
+        }
+        _activitiesStats = stats;
       }
     } catch (_) {}
     if (mounted) setState(() => _loading = false);
@@ -472,14 +499,7 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Contadores de resumen
-    final total = _resolutions.length;
-    final entregados =
-        _resolutions.where((r) => r['resolution']?.toString().isNotEmpty == true).length;
-    final calificados =
-        _resolutions.where((r) => r['GPA'] != null).length;
-
-    final primary = const Color(0xFF1A237E);
+    const primary = Color(0xFF1A237E);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6FA),
@@ -498,50 +518,207 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              widget.activityName ?? 'Calificaciones',
+              _esVistaGeneral
+                  ? 'Calificaciones generales'
+                  : (widget.activityName ?? 'Calificaciones'),
               style: GoogleFonts.poppins(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15),
+                  color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15),
             ),
-            Text(
-              widget.courseName,
-              style: GoogleFonts.poppins(
-                  color: Colors.white70, fontSize: 11),
-            ),
+            Text(widget.courseName,
+                style: GoogleFonts.poppins(color: Colors.white70, fontSize: 11)),
           ],
         ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded, color: Colors.white),
-            tooltip: 'Actualizar entregas',
+            tooltip: 'Actualizar',
             onPressed: _load,
           ),
         ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _resolutions.isEmpty
-              ? _buildEmpty()
-              : Column(
-                  children: [
-                    // ── Barra de resumen ───────────────────────────────────
-                    _buildSummaryBar(total, entregados, calificados, primary),
-                    // ── Lista de estudiantes ───────────────────────────────
-                    Expanded(
-                      child: RefreshIndicator(
-                        onRefresh: _load,
-                        child: ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                          itemCount: _resolutions.length,
-                          itemBuilder: (_, i) =>
-                              _buildStudentCard(_resolutions[i]),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+          : _esVistaGeneral
+              ? _buildGeneralView(primary)
+              : _buildActivityView(primary),
     );
+  }
+
+  // ── Vista por actividad específica ───────────────────────────────────────
+
+  Widget _buildActivityView(Color primary) {
+    final total      = _resolutions.length;
+    final entregados = _resolutions.where((r) => r['resolution']?.toString().isNotEmpty == true).length;
+    final calificados = _resolutions.where((r) => r['GPA'] != null).length;
+
+    if (_resolutions.isEmpty) return _buildEmpty();
+    return Column(children: [
+      _buildSummaryBar(total, entregados, calificados, primary),
+      Expanded(
+        child: RefreshIndicator(
+          onRefresh: _load,
+          child: ListView.builder(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+            itemCount: _resolutions.length,
+            itemBuilder: (_, i) => _buildStudentCard(_resolutions[i]),
+          ),
+        ),
+      ),
+    ]);
+  }
+
+  // ── Vista general: todas las actividades del curso ────────────────────────
+
+  Widget _buildGeneralView(Color primary) {
+    if (_activitiesStats.isEmpty) {
+      return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Icon(Icons.bar_chart_rounded, size: 64, color: Colors.grey.shade300),
+        const SizedBox(height: 14),
+        Text('Sin actividades en este curso',
+            style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600,
+                color: Colors.grey.shade500)),
+        const SizedBox(height: 8),
+        Text('Crea actividades para ver las calificaciones aquí.',
+            style: GoogleFonts.poppins(fontSize: 13, color: Colors.grey.shade400),
+            textAlign: TextAlign.center),
+      ]));
+    }
+
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        itemCount: _activitiesStats.length,
+        itemBuilder: (_, i) => _buildActivityStatCard(_activitiesStats[i], primary),
+      ),
+    );
+  }
+
+  Widget _buildActivityStatCard(Map<String, dynamic> stat, Color primary) {
+    final name       = stat['name'] as String;
+    final type       = stat['type'] as String;
+    final weighting  = (stat['weighting'] as double) * 100;
+    final total      = stat['total'] as int;
+    final entregados = stat['entregados'] as int;
+    final calificados = stat['calificados'] as int;
+    final promedio   = stat['promedio'] as double?;
+    final actId      = stat['activityId'] as int;
+
+    final String typeLabel;
+    final Color typeColor;
+    switch (type) {
+      case 'midterm':  typeLabel = 'Parcial';   typeColor = Colors.orange; break;
+      case 'project':  typeLabel = 'Proyecto';  typeColor = Colors.blue;   break;
+      case 'resource': typeLabel = 'Recurso';   typeColor = Colors.green;  break;
+      default:         typeLabel = 'Otro';       typeColor = Colors.purple;
+    }
+
+    final double progress = total > 0 ? entregados / total : 0.0;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 2,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => Navigator.push(context, MaterialPageRoute(
+          builder: (_) => GradeStudentsScreen(
+            courseId: widget.courseId,
+            courseName: widget.courseName,
+            activityId: actId,
+            activityName: name,
+          ),
+        )).then((_) => _load()),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            // Encabezado
+            Row(children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: typeColor.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.assignment_rounded, color: typeColor, size: 20),
+              ),
+              const SizedBox(width: 10),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(name, style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 14),
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                Row(children: [
+                  Container(
+                    margin: const EdgeInsets.only(top: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: typeColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(typeLabel,
+                        style: GoogleFonts.poppins(fontSize: 10, color: typeColor, fontWeight: FontWeight.w600)),
+                  ),
+                  const SizedBox(width: 6),
+                  Text('${weighting.toStringAsFixed(0)}%',
+                      style: GoogleFonts.poppins(fontSize: 11, color: Colors.grey.shade500)),
+                ]),
+              ])),
+              // Promedio
+              if (promedio != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _gradeColor(promedio).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: _gradeColor(promedio).withOpacity(0.3)),
+                  ),
+                  child: Column(children: [
+                    Text(promedio.toStringAsFixed(2),
+                        style: GoogleFonts.poppins(
+                            fontSize: 16, fontWeight: FontWeight.w800, color: _gradeColor(promedio))),
+                    Text('prom.', style: GoogleFonts.poppins(fontSize: 9, color: Colors.grey.shade500)),
+                  ]),
+                ),
+            ]),
+            const SizedBox(height: 12),
+
+            // Barra de progreso de entregas
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 6,
+                backgroundColor: Colors.grey.shade200,
+                color: entregados == total && total > 0 ? Colors.green : primary,
+              ),
+            ),
+            const SizedBox(height: 8),
+
+            // Contadores
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              _miniStat('$total', 'Total', Colors.grey.shade600),
+              _miniStat('$entregados', 'Entregaron', Colors.green.shade700),
+              _miniStat('$calificados', 'Calificados', Colors.indigo),
+              _miniStat('${total - entregados}', 'Sin entrega', Colors.orange.shade700),
+            ]),
+            const SizedBox(height: 8),
+
+            // Botón ver detalle
+            Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+              Text('Ver entregas →',
+                  style: GoogleFonts.poppins(
+                      fontSize: 12, color: primary, fontWeight: FontWeight.w600)),
+            ]),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _miniStat(String value, String label, Color color) {
+    return Column(children: [
+      Text(value, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w800, color: color)),
+      Text(label, style: GoogleFonts.poppins(fontSize: 9, color: Colors.grey.shade500)),
+    ]);
   }
 
   /// Barra superior con contadores de total, entregados y calificados.

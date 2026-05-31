@@ -450,39 +450,117 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
+  // ── Criterios de contraseña ────────────────────────────────────────────────
+
+  bool _pwHasLength(String p) => p.length >= 8 && p.length <= 64;
+  bool _pwHasNumber(String p) => p.contains(RegExp(r'\d'));
+  bool _pwHasLetter(String p) => p.contains(RegExp(r'[a-zA-Z]'));
+  bool _pwNoUser(String p) {
+    final u = _userCtrl.text.trim().toLowerCase();
+    return u.isEmpty || !p.toLowerCase().contains(u);
+  }
+
   Widget _buildPasswordField(Color primary) {
-    return Semantics(
-      label: 'Campo de contraseña',
-      obscured: !_showPass,
-      textField: true,
-      child: TextFormField(
-        controller: _passCtrl,
-        focusNode: _passFocus,
-        obscureText: !_showPass,
-        textInputAction: TextInputAction.done,
-        style: GoogleFonts.poppins(fontSize: 15),
-        onFieldSubmitted: (_) => _loading ? null : _login(),
-        onChanged: (_) {
-          if (_serverError != null) setState(() => _serverError = null);
-        },
-        decoration: InputDecoration(
-          labelText: 'Contraseña',
-          helperText: 'Ingresa tu contraseña institucional',
-          prefixIcon: Icon(Icons.lock_outline_rounded, color: primary),
-          suffixIcon: Semantics(
-            label: _showPass ? 'Ocultar contraseña' : 'Mostrar contraseña',
-            button: true,
-            child: IconButton(
-              icon: Icon(
-                _showPass ? Icons.visibility_off_rounded : Icons.visibility_rounded,
-                color: Colors.grey.shade500,
+    final pass = _passCtrl.text;
+    final criteria = [
+      _pwHasLength(pass),
+      _pwHasNumber(pass),
+      _pwHasLetter(pass),
+      _pwNoUser(pass),
+    ];
+    final passed   = criteria.where((c) => c).length;
+    final barColor = passed <= 1
+        ? Colors.red
+        : passed == 2
+            ? Colors.orange
+            : passed == 3
+                ? Colors.yellow.shade700
+                : Colors.green;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Semantics(
+          label: 'Campo de contraseña',
+          obscured: !_showPass,
+          textField: true,
+          child: TextFormField(
+            controller: _passCtrl,
+            focusNode: _passFocus,
+            obscureText: !_showPass,
+            textInputAction: TextInputAction.done,
+            style: GoogleFonts.poppins(fontSize: 15),
+            onFieldSubmitted: (_) => _loading ? null : _login(),
+            onChanged: (_) => setState(() => _serverError = null),
+            decoration: InputDecoration(
+              labelText: 'Contraseña',
+              helperText: 'Ingresa tu contraseña institucional',
+              prefixIcon: Icon(Icons.lock_outline_rounded, color: primary),
+              suffixIcon: Semantics(
+                label: _showPass ? 'Ocultar contraseña' : 'Mostrar contraseña',
+                button: true,
+                child: IconButton(
+                  icon: Icon(
+                    _showPass
+                        ? Icons.visibility_off_rounded
+                        : Icons.visibility_rounded,
+                    color: Colors.grey.shade500,
+                  ),
+                  onPressed: () => setState(() => _showPass = !_showPass),
+                ),
               ),
-              onPressed: () => setState(() => _showPass = !_showPass),
             ),
+            validator: _validatePassword,
           ),
         ),
-        validator: _validatePassword,
-      ),
+
+        // Indicador de fortaleza — aparece al escribir
+        if (pass.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          // Barras de fortaleza
+          Row(
+            children: List.generate(4, (i) => Expanded(
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 2),
+                height: 4,
+                decoration: BoxDecoration(
+                  color: i < passed ? barColor : Colors.grey.shade200,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            )),
+          ),
+          const SizedBox(height: 8),
+          // Lista de criterios
+          _pwCriterion(_pwHasLength(pass), '8-64 caracteres'),
+          _pwCriterion(_pwHasNumber(pass), 'Al menos un número'),
+          _pwCriterion(_pwHasLetter(pass), 'Al menos una letra'),
+          _pwCriterion(_pwNoUser(pass),    'No incluir tu usuario'),
+        ],
+      ],
+    );
+  }
+
+  Widget _pwCriterion(bool met, String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(children: [
+        Icon(
+          met
+              ? Icons.check_circle_rounded
+              : Icons.radio_button_unchecked_rounded,
+          size: 15,
+          color: met ? Colors.green : Colors.grey.shade400,
+        ),
+        const SizedBox(width: 6),
+        Text(
+          text,
+          style: GoogleFonts.poppins(
+            fontSize: 11,
+            color: met ? Colors.green.shade700 : Colors.grey.shade500,
+          ),
+        ),
+      ]),
     );
   }
 
