@@ -669,8 +669,9 @@ class _NotificationBellState extends State<NotificationBell> {
                 ),
               ),
             );
-            // Recalcular conteo al volver
-            if (mounted) _calcularConteo();
+            // Al volver del panel el usuario ya leyó las notificaciones,
+            // se resetea el badge a 0 inmediatamente.
+            if (mounted) setState(() { _count = 0; });
           },
         ),
         if (_count > 0)
