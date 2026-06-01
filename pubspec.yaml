@@ -37,8 +37,6 @@ dependencies:
   # Calendario académico interactivo (CU-09: calendario)
   table_calendar: ^3.1.0
 
-  # Inicio de sesión con Google (CU-10: Google SSO)
-  google_sign_in: ^6.2.2
   url_launcher: ^6.3.2
   flutter_tts: ^4.2.5
   image_picker: ^1.2.2
@@ -47,6 +45,16 @@ dependencies:
 
 dev_dependencies:
   flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.14.1
+
+# Configuración del ícono de la app para todas las plataformas
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/icon.png"
+  min_sdk_android: 21
+  adaptive_icon_background: "#1565C0"
+  adaptive_icon_foreground: "assets/icon/icon.png"
 
 flutter:
   uses-material-design: true
@@ -54,5 +62,7 @@ flutter:
     - assets/images/
 
 dependency_overrides:
-  objective_c: ^9.3.0
   path_provider_foundation: ^2.3.2
+  # Fijar objective_c a 9.3.0 para evitar el bug del build hook
+  # con rutas que contienen espacios (C:\Users\JORGE TECHNOLOGY\flutter)
+  objective_c: 9.3.0

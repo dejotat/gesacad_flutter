@@ -210,7 +210,7 @@ class _LoginScreenState extends State<LoginScreen>
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  'Unicomfacauca · v1.1.2',
+                                  'Unicomfacauca · v 1.1.2',
                                   style: GoogleFonts.poppins(
                                       color: Colors.white38,
                                       fontSize: esMobil ? 9 : 11),

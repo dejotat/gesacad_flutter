@@ -1,6 +1,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Permiso de internet requerido para llamar a la API de Gemini -->
+
+    <!-- Internet: backend Railway + API externas -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- file_picker: lectura de archivos en Android 9 y anteriores -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32"/>
+
+    <!-- image_picker: cámara para foto de perfil -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+
     <application
         android:label="gesacad"
         android:name="${applicationName}"
@@ -39,9 +48,24 @@
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
+        <!-- Texto: requerido por el motor Flutter -->
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- url_launcher: abrir URLs https en Android 11+ -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="http"/>
+        </intent>
+        <!-- url_launcher: abrir archivos PDF/Office con apps externas -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:mimeType="application/pdf"/>
         </intent>
     </queries>
 </manifest>

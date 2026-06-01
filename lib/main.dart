@@ -150,7 +150,7 @@ class _SplashScreenState extends State<SplashScreen>
                     ),
                     const SizedBox(height: 6),
                     const Text(
-                      'Unicomfacauca · v1.1.2',
+                      'Unicomfacauca · v 1.1.2',
                       style: TextStyle(color: Colors.white54, fontSize: 12),
                     ),
                     const SizedBox(height: 48),
