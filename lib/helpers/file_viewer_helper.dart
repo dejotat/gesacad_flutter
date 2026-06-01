@@ -104,13 +104,11 @@ class FileViewerHelper {
     }
 
     if (isPdf(ext)) {
-      // PDFs: usar el proxy de Railway que genera una URL firmada de Cloudinary.
-      // La cuenta de Cloudinary requiere autenticación para recursos raw (devuelve 401
-      // tanto en acceso directo como en peticiones server-to-server sin firma).
-      // El proxy extrae el public_id de la URL, genera una URL firmada con
-      // la API key/secret de Cloudinary (válida 2 horas) y redirige el navegador.
-      // El navegador sigue el redirect y Chrome renderiza el PDF correctamente.
-      PlatformUtils.openUrl(proxyUrl(rawUrl));
+      // PDFs se sirven directamente desde Railway (no desde Cloudinary).
+      // El backend guarda los PDFs en /uploads y los sirve como archivos estáticos
+      // públicos. La URL es del tipo: https://gesacad-backend.../uploads/archivo.pdf
+      // No se necesita proxy ni URL firmada — Railway los sirve sin restricciones.
+      PlatformUtils.openUrl(realUrl);
       return;
     }
 
