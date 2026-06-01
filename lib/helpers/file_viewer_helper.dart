@@ -104,10 +104,7 @@ class FileViewerHelper {
     }
 
     if (isPdf(ext)) {
-      // PDFs se sirven directamente desde Railway (no desde Cloudinary).
-      // El backend guarda los PDFs en /uploads y los sirve como archivos estáticos
-      // públicos. La URL es del tipo: https://gesacad-backend.../uploads/archivo.pdf
-      // No se necesita proxy ni URL firmada — Railway los sirve sin restricciones.
+      // PDFs: abrir la URL directa de Cloudinary en el navegador.
       PlatformUtils.openUrl(realUrl);
       return;
     }
