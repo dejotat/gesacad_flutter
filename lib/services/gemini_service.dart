@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'package:http/http.dart' as http;
 
 /// Servicio para comunicarse con la API de Gemini de Google.
@@ -50,6 +51,9 @@ class GeminiService {
       },
     });
 
+    developer.log('[Gemini] Enviando ${historial.length} turno(s) al modelo',
+        name: 'GESACAD.Chatbot');
+
     final respuesta = await http
         .post(
           uri,
@@ -58,15 +62,25 @@ class GeminiService {
         )
         .timeout(const Duration(seconds: 30));
 
+    developer.log(
+      '[Gemini] status=${respuesta.statusCode} body=${respuesta.body.length > 200 ? respuesta.body.substring(0, 200) : respuesta.body}',
+      name: 'GESACAD.Chatbot',
+    );
+
     if (respuesta.statusCode != 200) {
-      throw Exception(
-          'Error ${respuesta.statusCode}: ${respuesta.body}');
+      // Extraer mensaje de error legible de la respuesta JSON si es posible
+      String detalle = respuesta.body;
+      try {
+        final err = jsonDecode(respuesta.body);
+        detalle   = err['error']?['message'] ?? respuesta.body;
+      } catch (_) {}
+      throw Exception('HTTP ${respuesta.statusCode}: $detalle');
     }
 
     final datos      = jsonDecode(respuesta.body) as Map<String, dynamic>;
     final candidatos = datos['candidates'] as List?;
     if (candidatos == null || candidatos.isEmpty) {
-      throw Exception('La API no devolvió candidatos');
+      throw Exception('La API no devolvió candidatos. Body: ${respuesta.body}');
     }
 
     final contenido = candidatos[0]['content'] as Map<String, dynamic>;

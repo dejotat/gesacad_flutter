@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/gemini_service.dart';
@@ -76,10 +77,14 @@ class _ChatbotWidgetState extends State<ChatbotWidget> {
         });
       }
     } catch (e) {
+      // Registrar el error real para diagnóstico en la consola de desarrollo
+      developer.log('[Chatbot] Error al llamar a Gemini: $e',
+          name: 'GESACAD.Chatbot', error: e);
       if (mounted) {
         actualizarSheet(() {
+          // Mostrar el error real en el chat para facilitar el diagnóstico
           _mensajes.add(_Mensaje(
-            texto:    'No pude conectarme. Verifica tu conexión e intenta de nuevo.',
+            texto:     'Error: $e',
             esUsuario: false,
             esError:   true,
           ));

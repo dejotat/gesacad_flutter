@@ -1,4 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Permiso de internet requerido para llamar a la API de Gemini -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="gesacad"
         android:name="${applicationName}"
