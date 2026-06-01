@@ -17,9 +17,6 @@ class GeminiService {
 
   static const String _modelo = 'gemini-1.5-flash';
 
-  static const String _urlBase =
-      'https://generativelanguage.googleapis.com/v1beta/models/$_modelo:generateContent';
-
   /// Prompt del sistema que define el comportamiento del asistente.
   static const String _promptSistema =
       'Eres el asistente virtual de la Universidad Unicomfacauca y la plataforma GESACAD. '
@@ -36,7 +33,14 @@ class GeminiService {
   static Future<String> generarRespuesta(
     List<Map<String, dynamic>> historial,
   ) async {
-    final uri = Uri.parse('$_urlBase?key=$_apiKey');
+    // Usar Uri.https con queryParameters en lugar de interpolación de string.
+    // Esto garantiza que la API key se codifique correctamente en la URL
+    // y se envíe como parámetro ?key= tal como exige la API de Gemini.
+    final uri = Uri.https(
+      'generativelanguage.googleapis.com',
+      '/v1beta/models/$_modelo:generateContent',
+      {'key': _apiKey},
+    );
 
     final cuerpo = jsonEncode({
       'contents': historial,
