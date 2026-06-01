@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 import '../models/user_model.dart';
@@ -263,11 +264,10 @@ class ApiService {
   /// Crea una nueva actividad en un curso (CU-04 / RF06, RF07).
   ///
   /// [weighting] debe ser el valor decimal (0.0–1.0), NO el porcentaje.
-  ///
-  /// [archivos] está reservado para una futura versión cuando el backend
-  /// del endpoint /courses/activities/addActivity soporte la subida de
-  /// materiales del profesor. Actualmente el endpoint rechaza archivos
-  /// adjuntos y falla silenciosamente, por eso se omiten aquí.
+  /// [archivos] lista de archivos que el profesor adjunta a la actividad.
+  /// Solo se envía el primero; el backend lo sube a Cloudinary y guarda
+  /// la URL en el campo 'content' de la actividad para que los estudiantes
+  /// puedan descargarlo desde el detalle de la actividad.
   Future<void> addActivity({
     required int week,
     required String type,
@@ -292,14 +292,23 @@ class ApiService {
     request.fields['courseId']    = courseId.toString();
     request.fields['teacherId']   = teacherId.toString();
 
-    // No se adjuntan archivos: el endpoint del backend no los acepta aún.
-    // Si se enviara un archivo, el servidor retorna error y la actividad
-    // no se crea. Los archivos se subirán por separado en una versión futura.
+    // Si el profesor adjuntó archivos, enviar el primero al backend.
+    // El backend lo sube a Cloudinary y guarda la URL en activities.content
+    // con formato url::name::nombre_original para que el cliente pueda
+    // mostrar el nombre y tipo de archivo correctamente.
+    if (archivos.isNotEmpty) {
+      final f     = archivos.first;
+      final bytes = f['bytes'] as Uint8List;
+      final name  = f['name']  as String;
+      request.files.add(
+        http.MultipartFile.fromBytes('File', bytes.toList(), filename: name),
+      );
+    }
 
     final respuesta = await request.send().timeout(_timeout);
 
-    // Verificar que el servidor aceptó la solicitud.
-    // Si el status no es 2xx, lanzar excepción para que la UI muestre el error.
+    // Si el servidor rechaza la solicitud, lanzar excepción para que la UI
+    // muestre el error en lugar de mostrar éxito falso.
     if (respuesta.statusCode < 200 || respuesta.statusCode >= 300) {
       throw Exception(
           'El servidor rechazó la creación de la actividad (código ${respuesta.statusCode})');
