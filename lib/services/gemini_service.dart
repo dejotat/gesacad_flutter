@@ -5,44 +5,60 @@
 class GeminiService {
   GeminiService._();
 
-  /// Mapa de palabras clave → respuesta correspondiente.
-  /// Se evalúan en orden; la primera coincidencia gana.
+  /// Reglas ordenadas: se evalúa la primera coincidencia.
   static const List<_Regla> _reglas = [
     _Regla(
       palabras: ['matrícula', 'matricula', 'inscripción', 'inscripcion'],
       respuesta:
-          'El proceso de matrícula en Unicomfacauca se realiza en las fechas '
-          'establecidas en el calendario académico. '
-          'Visita unicomfacauca.edu.co para más información.',
+          'El régimen de matrícula está disponible en:\n'
+          'https://www.unicomfacauca.edu.co/estudiantes/',
     ),
     _Regla(
       palabras: ['programas', 'carreras', 'programa', 'carrera'],
       respuesta:
-          'Unicomfacauca ofrece programas en Ingeniería, Ciencias Sociales, '
-          'Ciencias de la Salud y más. '
-          'Visita unicomfacauca.edu.co/programas',
+          'Unicomfacauca ofrece: Ingeniería de Sistemas, Ingeniería Industrial, '
+          'Ingeniería Mecatrónica, Contaduría Pública, Derecho, Comunicación Social, '
+          'Administración de Empresas y más. Ver todos en:\n'
+          'https://www.unicomfacauca.edu.co',
     ),
     _Regla(
-      palabras: ['reglamento', 'normas', 'norma', 'regla', 'reglas'],
+      palabras: ['reglamento', 'normas', 'norma'],
       respuesta:
-          'El reglamento estudiantil está disponible en unicomfacauca.edu.co. '
-          'Regula derechos, deberes y procesos académicos.',
+          'Reglamento Estudiantil Acuerdo 019 de 2018. Descárgalo aquí:\n'
+          'https://www.unicomfacauca.edu.co/wp-content/uploads/2020/11/Reglamento-estudiantil-Unicomfacauca.pdf',
+    ),
+    _Regla(
+      palabras: ['normatividad', 'acuerdos', 'acuerdo'],
+      respuesta:
+          'Toda la normatividad en:\n'
+          'https://www.unicomfacauca.edu.co/nuestra-u/normatividad/',
+    ),
+    _Regla(
+      palabras: ['calendario', 'fechas', 'fecha'],
+      respuesta:
+          'Calendario Académico 2026 en:\n'
+          'https://www.unicomfacauca.edu.co/estudiantes/',
+    ),
+    _Regla(
+      palabras: ['bienestar', 'salud', 'deporte', 'cultura', 'recreación', 'recreacion'],
+      respuesta:
+          'Bienestar Universitario: salud, recreación, cultura y desarrollo humano:\n'
+          'https://www.unicomfacauca.edu.co/estudiantes/',
     ),
     _Regla(
       palabras: ['calificaciones', 'notas', 'nota', 'calificación', 'calificacion'],
       respuesta:
-          'Puedes ver tus calificaciones en GESACAD en la sección de cada curso.',
+          'Consulta tus calificaciones en GESACAD entrando a cada curso.',
     ),
     _Regla(
       palabras: ['actividad', 'tarea', 'entrega', 'entregar', 'actividades'],
       respuesta:
-          'Para entregar una actividad entra al curso, selecciona la actividad '
-          'y usa el botón Agregar entrega.',
+          'Para entregar: entra al curso, selecciona la actividad y toca Agregar entrega.',
     ),
     _Regla(
       palabras: ['contacto', 'teléfono', 'telefono', 'dirección', 'direccion'],
       respuesta:
-          'Unicomfacauca: unicomfacauca.edu.co | Popayán, Cauca, Colombia.',
+          'Unicomfacauca | Popayán, Cauca | www.unicomfacauca.edu.co',
     ),
   ];
 
@@ -50,13 +66,11 @@ class GeminiService {
       'Puedo ayudarte con información sobre Unicomfacauca y GESACAD. '
       'Intenta preguntar sobre matrículas, programas, reglamento o calificaciones.';
 
-  /// Genera una respuesta basada en palabras clave del mensaje del usuario.
-  /// El parámetro [historial] se mantiene por compatibilidad con la firma
-  /// anterior pero no se usa en la lógica local.
+  /// Genera una respuesta basada en palabras clave del último mensaje del usuario.
+  /// [historial] se mantiene por compatibilidad de firma.
   static Future<String> generarRespuesta(
     List<Map<String, dynamic>> historial,
   ) async {
-    // Extraer el último mensaje del usuario del historial
     if (historial.isEmpty) return _respuestaDefault;
 
     final ultimoTurno = historial.last;
@@ -65,10 +79,8 @@ class GeminiService {
         ? (partes.last['text'] as String? ?? '').toLowerCase()
         : '';
 
-    // Buscar la primera regla cuyas palabras clave aparezcan en el texto
     for (final regla in _reglas) {
       if (regla.palabras.any((p) => texto.contains(p))) {
-        // Simular un pequeño retardo para que la UI "escribiendo" sea visible
         await Future.delayed(const Duration(milliseconds: 600));
         return regla.respuesta;
       }

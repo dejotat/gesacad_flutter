@@ -1,6 +1,7 @@
 import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/gemini_service.dart';
 
 /// Modelo de un mensaje individual en el chat.
@@ -437,18 +438,24 @@ class _ChatSheetState extends State<_ChatSheet> {
                   bottomRight: Radius.circular(esUsuario ? 4 : 16),
                 ),
               ),
-              child: Text(
-                msg.texto,
-                style: GoogleFonts.poppins(
-                  fontSize: 13,
-                  color:    esUsuario
-                      ? Colors.white
-                      : msg.esError
+              // Las burbujas del usuario muestran texto plano.
+              // Las burbujas del bot detectan URLs y las renderiza como
+              // enlaces azules tocables que abren el navegador.
+              child: esUsuario
+                  ? Text(
+                      msg.texto,
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        color:   Colors.white,
+                        height:  1.45,
+                      ),
+                    )
+                  : _buildTextoConLinks(
+                      msg.texto,
+                      msg.esError
                           ? Colors.red.shade700
                           : Colors.grey.shade800,
-                  height:   1.45,
-                ),
-              ),
+                    ),
             ),
           ),
           if (esUsuario) ...[
@@ -462,6 +469,76 @@ class _ChatSheetState extends State<_ChatSheet> {
           ],
         ],
       ),
+    );
+  }
+
+  // ── Texto con URLs detectadas y tocables ─────────────────────────────────
+
+  /// Renderiza [texto] como un [RichText] donde cualquier URL que comience con
+  /// http:// o https:// aparece en azul subrayado y al tocarla abre el navegador.
+  Widget _buildTextoConLinks(String texto, Color colorBase) {
+    final urlRegex = RegExp(r'https?://[^\s]+');
+    final coincidencias = urlRegex.allMatches(texto);
+
+    // Sin URLs: devolver un Text normal para no gastar recursos
+    if (coincidencias.isEmpty) {
+      return Text(
+        texto,
+        style: GoogleFonts.poppins(fontSize: 13, color: colorBase, height: 1.45),
+      );
+    }
+
+    final spans = <InlineSpan>[];
+    int cursor  = 0;
+
+    for (final m in coincidencias) {
+      // Fragmento de texto antes de la URL
+      if (m.start > cursor) {
+        spans.add(TextSpan(
+          text:  texto.substring(cursor, m.start),
+          style: GoogleFonts.poppins(fontSize: 13, color: colorBase, height: 1.45),
+        ));
+      }
+
+      // La URL como WidgetSpan con GestureDetector (evita gestionar
+      // TapGestureRecognizer y su ciclo de vida manualmente)
+      final url = m.group(0)!;
+      spans.add(WidgetSpan(
+        alignment: PlaceholderAlignment.baseline,
+        baseline:  TextBaseline.alphabetic,
+        child: GestureDetector(
+          onTap: () async {
+            final uri = Uri.tryParse(url);
+            if (uri != null && await canLaunchUrl(uri)) {
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+            }
+          },
+          child: Text(
+            url,
+            style: GoogleFonts.poppins(
+              fontSize:   13,
+              color:      Colors.blue.shade600,
+              decoration: TextDecoration.underline,
+              decorationColor: Colors.blue.shade600,
+              height:     1.45,
+            ),
+          ),
+        ),
+      ));
+
+      cursor = m.end;
+    }
+
+    // Texto restante después de la última URL
+    if (cursor < texto.length) {
+      spans.add(TextSpan(
+        text:  texto.substring(cursor),
+        style: GoogleFonts.poppins(fontSize: 13, color: colorBase, height: 1.45),
+      ));
+    }
+
+    return RichText(
+      text: TextSpan(children: spans),
     );
   }
 
