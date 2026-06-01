@@ -132,24 +132,18 @@ class FileViewerHelper {
     PlatformUtils.openUrl(realUrl);
   }
 
-  /// Inserta la transformación `fl_attachment:filename` de Cloudinary en la URL
-  /// para que el archivo se sirva con el Content-Type y nombre correctos.
-  /// Ejemplo: .../upload/v123/file  →  .../upload/fl_attachment:archivo.xlsx/v123/file
-  static String _flAttachment(String cloudUrl, String filename) {
-    if (!cloudUrl.contains('cloudinary.com')) return cloudUrl;
-    if (!filename.contains('.')) return cloudUrl;
-    final safe = filename.replaceAll(' ', '_');
-    return cloudUrl.replaceFirst('/upload/', '/upload/fl_attachment:$safe/');
-  }
 
   // ── Descargar archivo ───────────────────────────────────────────────────────
 
   static void descargarArchivo(String rawUrl, {int index = 1}) {
     final name    = extractName(rawUrl, index: index);
     final realUrl = extractUrl(rawUrl);
-    // fl_attachment fuerza el nombre correcto en la descarga
-    final dlUrl   = name.contains('.') ? _flAttachment(realUrl, name) : realUrl;
-    PlatformUtils.downloadFile(dlUrl, name);
+    // Se usa la URL directa de Cloudinary SIN fl_attachment.
+    // fl_attachment insertaba una transformación en la URL que Cloudinary
+    // rechazaba con HTTP 400 para raw uploads (pptx, xlsx, etc.).
+    // El nombre correcto de descarga lo maneja el atributo 'download'
+    // del anchor HTML en PlatformUtils.downloadFile().
+    PlatformUtils.downloadFile(realUrl, name);
   }
 
   // ── Ícono y color ───────────────────────────────────────────────────────────
