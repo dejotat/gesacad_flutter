@@ -97,12 +97,20 @@ class FileViewerHelper {
       return;
     }
 
-    if (isPdf(ext) || isImage(ext)) {
-      // Abrir la URL de Cloudinary directamente — las URLs públicas de
-      // Cloudinary no requieren autenticación y el navegador las renderiza.
-      // Evitamos el proxy de Railway que puede devolver 401 si Cloudinary
-      // tiene restricciones de acceso server-to-server.
+    if (isImage(ext)) {
+      // Imágenes: abrir directamente, el navegador las renderiza sin problemas.
       PlatformUtils.openUrl(realUrl);
+      return;
+    }
+
+    if (isPdf(ext)) {
+      // PDFs: usar Google Docs Viewer porque la apertura directa de URLs
+      // raw de Cloudinary falla en el visor nativo de Chrome con el error
+      // "Se ha producido un error al cargar el documento PDF".
+      // Google Docs Viewer soporta PDFs desde URLs externas correctamente.
+      final encoded = Uri.encodeComponent(realUrl);
+      PlatformUtils.openUrl(
+          'https://docs.google.com/viewer?url=$encoded&embedded=false');
       return;
     }
 
