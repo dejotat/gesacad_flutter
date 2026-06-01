@@ -104,13 +104,16 @@ class FileViewerHelper {
     }
 
     if (isPdf(ext)) {
-      // PDFs: usar Google Docs Viewer porque la apertura directa de URLs
-      // raw de Cloudinary falla en el visor nativo de Chrome con el error
-      // "Se ha producido un error al cargar el documento PDF".
-      // Google Docs Viewer soporta PDFs desde URLs externas correctamente.
-      final encoded = Uri.encodeComponent(realUrl);
-      PlatformUtils.openUrl(
-          'https://docs.google.com/viewer?url=$encoded&embedded=false');
+      // PDFs: usar el proxy de Railway para servirlos con headers correctos.
+      // Opciones descartadas y por qué fallan:
+      //  - Apertura directa: Chrome falla con "error al cargar el documento PDF"
+      //    para URLs raw de Cloudinary (problema de Content-Type/CORS en el visor nativo).
+      //  - Google Docs Viewer: no puede acceder a URLs raw de Cloudinary
+      //    ("No hay ninguna vista previa disponible").
+      // El proxy de Railway hace la petición server-to-server a Cloudinary,
+      // evita el problema de CORS y sirve el PDF con Content-Type: application/pdf
+      // y Access-Control-Allow-Origin: * para que Chrome lo renderice correctamente.
+      PlatformUtils.openUrl(proxyUrl(rawUrl));
       return;
     }
 
