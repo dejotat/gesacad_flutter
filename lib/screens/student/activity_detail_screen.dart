@@ -1133,24 +1133,56 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
         _tableRow('Archivos enviados',
             yaEntrego && (a.resolution ?? '').isNotEmpty
                 ? (() {
-                    // Soporta múltiples archivos separados por '|||'
+                    // Soporta múltiples archivos separados por '|||'.
+                    // Muestra los archivos ya guardados en el servidor.
+                    // Si _uploadSuccess está activo y hay pendientes, los agrega
+                    // temporalmente hasta que _refreshActivityState() actualice
+                    // a.resolution con los nuevos archivos del servidor.
                     final urls = a.resolution!
                         .split('|||')
                         .map((u) => u.trim())
                         .where((u) => u.isNotEmpty)
                         .toList();
+
+                    // Nombres ya en servidor para no duplicar con los pendientes
+                    final nombresServidor = urls
+                        .map((u) => u.split('::name::').last.trim().toLowerCase())
+                        .toSet();
+
+                    // Archivos recién subidos que aún no llegaron desde el servidor
+                    final pendientesNuevos = _uploadSuccess
+                        ? _pendingFiles
+                            .where((f) =>
+                                !nombresServidor.contains(f.name.toLowerCase()))
+                            .toList()
+                        : <PlatformFile>[];
+
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: urls
-                          .map((u) => Padding(
-                                padding: const EdgeInsets.only(bottom: 4),
-                                child: _buildFileLink(u),
-                              ))
-                          .toList(),
+                      children: [
+                        ...urls.map((u) => Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: _buildFileLink(u),
+                            )),
+                        ...pendientesNuevos.map((f) => Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: _buildFileLink(f.name, isLocal: true),
+                            )),
+                      ],
                     );
                   })()
                 : (_uploadSuccess && _pendingFiles.isNotEmpty
-                    ? _buildFileLink(_pendingFiles[0].name, isLocal: true)
+                    // Muestra TODOS los archivos pendientes mientras _refreshActivityState()
+                    // completa y trae los datos actualizados del servidor.
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: _pendingFiles
+                            .map((f) => Padding(
+                                  padding: const EdgeInsets.only(bottom: 4),
+                                  child: _buildFileLink(f.name, isLocal: true),
+                                ))
+                            .toList(),
+                      )
                     : Text('—',
                         style: GoogleFonts.poppins(
                             fontSize: 13, color: Colors.grey.shade400)))),
