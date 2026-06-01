@@ -104,13 +104,13 @@ class FileViewerHelper {
     }
 
     if (isPdf(ext)) {
-      // PDFs nuevos (subidos con resource_type:"raw" + extensión .pdf en public_id):
-      // Cloudinary los sirve con Content-Type: application/pdf y Chrome los
-      // renderiza directamente en su visor nativo al abrir la URL.
-      // - El proxy de Railway falla con 401 (IP del servidor bloqueada por Cloudinary CDN).
-      // - Google Docs Viewer no puede acceder a URLs raw de Cloudinary.
-      // La URL directa es la solución correcta para archivos públicos con resource_type:raw.
-      PlatformUtils.openUrl(realUrl);
+      // PDFs: usar el proxy de Railway que genera una URL firmada de Cloudinary.
+      // La cuenta de Cloudinary requiere autenticación para recursos raw (devuelve 401
+      // tanto en acceso directo como en peticiones server-to-server sin firma).
+      // El proxy extrae el public_id de la URL, genera una URL firmada con
+      // la API key/secret de Cloudinary (válida 2 horas) y redirige el navegador.
+      // El navegador sigue el redirect y Chrome renderiza el PDF correctamente.
+      PlatformUtils.openUrl(proxyUrl(rawUrl));
       return;
     }
 
