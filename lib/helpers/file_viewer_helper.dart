@@ -104,16 +104,13 @@ class FileViewerHelper {
     }
 
     if (isPdf(ext)) {
-      // PDFs: usar el proxy de Railway para servirlos con headers correctos.
-      // Opciones descartadas y por qué fallan:
-      //  - Apertura directa: Chrome falla con "error al cargar el documento PDF"
-      //    para URLs raw de Cloudinary (problema de Content-Type/CORS en el visor nativo).
-      //  - Google Docs Viewer: no puede acceder a URLs raw de Cloudinary
-      //    ("No hay ninguna vista previa disponible").
-      // El proxy de Railway hace la petición server-to-server a Cloudinary,
-      // evita el problema de CORS y sirve el PDF con Content-Type: application/pdf
-      // y Access-Control-Allow-Origin: * para que Chrome lo renderice correctamente.
-      PlatformUtils.openUrl(proxyUrl(rawUrl));
+      // PDFs nuevos (subidos con resource_type:"raw" + extensión .pdf en public_id):
+      // Cloudinary los sirve con Content-Type: application/pdf y Chrome los
+      // renderiza directamente en su visor nativo al abrir la URL.
+      // - El proxy de Railway falla con 401 (IP del servidor bloqueada por Cloudinary CDN).
+      // - Google Docs Viewer no puede acceder a URLs raw de Cloudinary.
+      // La URL directa es la solución correcta para archivos públicos con resource_type:raw.
+      PlatformUtils.openUrl(realUrl);
       return;
     }
 
