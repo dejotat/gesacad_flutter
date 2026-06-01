@@ -1,94 +1,88 @@
-import 'dart:convert';
-import 'dart:developer' as developer;
-import 'package:http/http.dart' as http;
-
-/// Servicio para comunicarse con la API de Gemini de Google.
+/// Asistente virtual de GESACAD con respuestas predefinidas por palabras clave.
 ///
-/// Modelo: gemini-1.5-flash (capa gratuita de Google AI).
-/// La clave API se usa directamente desde el cliente porque esta es una
-/// aplicación académica. En producción se recomienda llamar a Gemini
-/// desde el backend para no exponer la clave en el código fuente.
+/// No usa ninguna API externa. Las respuestas se generan localmente en Flutter
+/// comparando el mensaje del usuario con palabras clave definidas.
 class GeminiService {
   GeminiService._();
 
-  // Clave API de Google AI Studio (Gemini)
-  static const String _apiKey =
-      'AQ.Ab8RN6I73JVgI1_7Rn2BBY7IpL01uVilzJY4crY6YFTmmZ6uMQ';
+  /// Mapa de palabras clave → respuesta correspondiente.
+  /// Se evalúan en orden; la primera coincidencia gana.
+  static const List<_Regla> _reglas = [
+    _Regla(
+      palabras: ['matrícula', 'matricula', 'inscripción', 'inscripcion'],
+      respuesta:
+          'El proceso de matrícula en Unicomfacauca se realiza en las fechas '
+          'establecidas en el calendario académico. '
+          'Visita unicomfacauca.edu.co para más información.',
+    ),
+    _Regla(
+      palabras: ['programas', 'carreras', 'programa', 'carrera'],
+      respuesta:
+          'Unicomfacauca ofrece programas en Ingeniería, Ciencias Sociales, '
+          'Ciencias de la Salud y más. '
+          'Visita unicomfacauca.edu.co/programas',
+    ),
+    _Regla(
+      palabras: ['reglamento', 'normas', 'norma', 'regla', 'reglas'],
+      respuesta:
+          'El reglamento estudiantil está disponible en unicomfacauca.edu.co. '
+          'Regula derechos, deberes y procesos académicos.',
+    ),
+    _Regla(
+      palabras: ['calificaciones', 'notas', 'nota', 'calificación', 'calificacion'],
+      respuesta:
+          'Puedes ver tus calificaciones en GESACAD en la sección de cada curso.',
+    ),
+    _Regla(
+      palabras: ['actividad', 'tarea', 'entrega', 'entregar', 'actividades'],
+      respuesta:
+          'Para entregar una actividad entra al curso, selecciona la actividad '
+          'y usa el botón Agregar entrega.',
+    ),
+    _Regla(
+      palabras: ['contacto', 'teléfono', 'telefono', 'dirección', 'direccion'],
+      respuesta:
+          'Unicomfacauca: unicomfacauca.edu.co | Popayán, Cauca, Colombia.',
+    ),
+  ];
 
-  static const String _modelo = 'gemini-1.5-flash';
+  static const String _respuestaDefault =
+      'Puedo ayudarte con información sobre Unicomfacauca y GESACAD. '
+      'Intenta preguntar sobre matrículas, programas, reglamento o calificaciones.';
 
-  /// Prompt del sistema que define el comportamiento del asistente.
-  static const String _promptSistema =
-      'Eres el asistente virtual de la Universidad Unicomfacauca y la plataforma GESACAD. '
-      'Responde preguntas sobre la universidad, programas académicos, reglamento estudiantil, '
-      'procesos de matrícula y uso de GESACAD. Si te preguntan algo fuera de estos temas, '
-      'redirige amablemente. La página oficial es unicomfacauca.edu.co';
-
-  /// Genera una respuesta del modelo dado el historial completo de la conversación.
-  ///
-  /// [historial] contiene todos los turnos anteriores (usuario y modelo) en
-  /// formato de la API de Gemini: lista de mapas con claves 'role' y 'parts'.
-  ///
-  /// Lanza [Exception] si la API devuelve un error o la respuesta está vacía.
+  /// Genera una respuesta basada en palabras clave del mensaje del usuario.
+  /// El parámetro [historial] se mantiene por compatibilidad con la firma
+  /// anterior pero no se usa en la lógica local.
   static Future<String> generarRespuesta(
     List<Map<String, dynamic>> historial,
   ) async {
-    // Usar Uri.https con queryParameters en lugar de interpolación de string.
-    // Esto garantiza que la API key se codifique correctamente en la URL
-    // y se envíe como parámetro ?key= tal como exige la API de Gemini.
-    final uri = Uri.https(
-      'generativelanguage.googleapis.com',
-      '/v1beta/models/$_modelo:generateContent',
-      {'key': _apiKey},
-    );
+    // Extraer el último mensaje del usuario del historial
+    if (historial.isEmpty) return _respuestaDefault;
 
-    final cuerpo = jsonEncode({
-      'contents': historial,
-      'systemInstruction': {
-        'parts': [
-          {'text': _promptSistema},
-        ],
-      },
-      'generationConfig': {
-        'temperature':     0.7,
-        'maxOutputTokens': 1024,
-      },
-    });
+    final ultimoTurno = historial.last;
+    final partes      = ultimoTurno['parts'] as List? ?? [];
+    final texto       = partes.isNotEmpty
+        ? (partes.last['text'] as String? ?? '').toLowerCase()
+        : '';
 
-    developer.log('[Gemini] Enviando ${historial.length} turno(s) al modelo',
-        name: 'GESACAD.Chatbot');
-
-    final respuesta = await http
-        .post(
-          uri,
-          headers: {'Content-Type': 'application/json'},
-          body: cuerpo,
-        )
-        .timeout(const Duration(seconds: 30));
-
-    developer.log(
-      '[Gemini] status=${respuesta.statusCode} body=${respuesta.body.length > 200 ? respuesta.body.substring(0, 200) : respuesta.body}',
-      name: 'GESACAD.Chatbot',
-    );
-
-    if (respuesta.statusCode != 200) {
-      // Extraer mensaje de error legible de la respuesta JSON si es posible
-      String detalle = respuesta.body;
-      try {
-        final err = jsonDecode(respuesta.body);
-        detalle   = err['error']?['message'] ?? respuesta.body;
-      } catch (_) {}
-      throw Exception('HTTP ${respuesta.statusCode}: $detalle');
+    // Buscar la primera regla cuyas palabras clave aparezcan en el texto
+    for (final regla in _reglas) {
+      if (regla.palabras.any((p) => texto.contains(p))) {
+        // Simular un pequeño retardo para que la UI "escribiendo" sea visible
+        await Future.delayed(const Duration(milliseconds: 600));
+        return regla.respuesta;
+      }
     }
 
-    final datos      = jsonDecode(respuesta.body) as Map<String, dynamic>;
-    final candidatos = datos['candidates'] as List?;
-    if (candidatos == null || candidatos.isEmpty) {
-      throw Exception('La API no devolvió candidatos. Body: ${respuesta.body}');
-    }
-
-    final contenido = candidatos[0]['content'] as Map<String, dynamic>;
-    final partes    = contenido['parts'] as List;
-    return (partes[0]['text'] as String).trim();
+    await Future.delayed(const Duration(milliseconds: 600));
+    return _respuestaDefault;
   }
+}
+
+/// Modelo interno de una regla: palabras clave → respuesta.
+class _Regla {
+  final List<String> palabras;
+  final String       respuesta;
+
+  const _Regla({required this.palabras, required this.respuesta});
 }
