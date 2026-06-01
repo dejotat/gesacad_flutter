@@ -141,7 +141,9 @@ class _NotificationsPanelState extends State<NotificationsPanel>
                       body: '${_tipoLabel(act.type)} "${act.tittle}" en ${curso.name}. '
                           'Fecha límite: ${act.closingDate.split("T")[0]}',
                       type: NotifType.activity,
-                      time: DateTime.now(),
+                      // Usar startDate para mostrar cuándo fue publicada la actividad.
+                      // Así _timeAgo calcula el tiempo relativo real: '5 min', '2 h', '3 d', etc.
+                      time: startDate,
                     ));
                   }
                 }
