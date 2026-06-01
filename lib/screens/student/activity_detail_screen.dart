@@ -1069,13 +1069,28 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
     } else {
       try {
         final cierre = DateTime.parse(a.closingDate);
-        final diff = cierre.difference(DateTime.now());
-        final dias = diff.inDays;
-        final horas = diff.inHours % 24;
-        tiempoRestante = dias > 0
-            ? '$dias día${dias == 1 ? '' : 's'} y $horas hora${horas == 1 ? '' : 's'}'
-            : '$horas hora${horas == 1 ? '' : 's'} restantes';
-        tiempoColor = dias < 1 ? Colors.orange.shade700 : Colors.teal;
+        final diff   = cierre.difference(DateTime.now());
+        final dias   = diff.inDays;
+        final horas  = diff.inHours % 24;
+        final mins   = diff.inMinutes % 60;
+
+        if (dias > 0) {
+          tiempoRestante = '$dias día${dias == 1 ? '' : 's'} y '
+              '$horas hora${horas == 1 ? '' : 's'}';
+          tiempoColor = Colors.teal;
+        } else if (horas > 0) {
+          // Menos de 1 día: mostrar horas y minutos exactos
+          tiempoRestante = '$horas hora${horas == 1 ? '' : 's'} y '
+              '$mins minuto${mins == 1 ? '' : 's'}';
+          tiempoColor = Colors.orange.shade700;
+        } else if (mins > 0) {
+          // Menos de 1 hora: urgente
+          tiempoRestante = '$mins minuto${mins == 1 ? '' : 's'} restantes';
+          tiempoColor = Colors.red.shade600;
+        } else {
+          tiempoRestante = 'Cierra en menos de un minuto';
+          tiempoColor = Colors.red.shade600;
+        }
       } catch (_) {
         tiempoRestante = a.closingDate.split('T')[0];
         tiempoColor = Colors.grey.shade700;

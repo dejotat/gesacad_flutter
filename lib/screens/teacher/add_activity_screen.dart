@@ -43,6 +43,8 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
   int _week = 1;
   DateTime _startDate = DateTime.now();
   DateTime _closeDate = DateTime.now().add(const Duration(days: 7));
+  // Hora de cierre — por defecto 11:59 PM para dar el día completo al estudiante.
+  TimeOfDay _closeTime = const TimeOfDay(hour: 23, minute: 59);
   bool _loading = false;
   List<Map<String, dynamic>> _archivos = [];
 
@@ -103,7 +105,7 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
     }
   }
 
-  /// Abre el selector de fecha para [isStart] o la fecha de cierre.
+  /// Abre el selector de fecha para inicio o cierre.
   Future<void> _pickDate(bool isStart) async {
     final picked = await showDatePicker(
       context: context,
@@ -122,9 +124,28 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
     }
   }
 
-  /// Formatea una [DateTime] al formato esperado por el backend: 'YYYY-MM-DDTHH:mm'.
-  String _formatDate(DateTime d) =>
+  /// Abre el selector de hora para la fecha de cierre.
+  Future<void> _pickCloseTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _closeTime,
+      helpText: 'Hora límite de entrega',
+      builder: (ctx, child) => MediaQuery(
+        data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: false),
+        child: child!,
+      ),
+    );
+    if (picked != null) setState(() => _closeTime = picked);
+  }
+
+  /// Formatea fecha de inicio: 'YYYY-MM-DDTHH:mm' con hora 00:00.
+  String _formatStartDate(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}T00:00';
+
+  /// Formatea fecha de cierre con la hora elegida por el profesor.
+  String _formatCloseDate(DateTime d, TimeOfDay t) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}'
+      'T${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
   /// Guarda la nueva actividad en el backend tras superar todas las validaciones.
   ///
@@ -176,8 +197,8 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
         tittle: _titleCtrl.text.trim(),
         description: _descCtrl.text.trim(),
         weighting: weight / 100,
-        startDate: _formatDate(_startDate),
-        closingDate: _formatDate(_closeDate),
+        startDate:   _formatStartDate(_startDate),
+        closingDate: _formatCloseDate(_closeDate, _closeTime),
         courseId: widget.courseId,
         teacherId: widget.teacherId,
         archivos: _archivos,
@@ -430,18 +451,36 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
                   ),
                   const Divider(height: 1),
                   Semantics(
-                    label:
-                        'Fecha de cierre: ${_closeDate.day.toString().padLeft(2, '0')}/${_closeDate.month.toString().padLeft(2, '0')}/${_closeDate.year}',
-                    hint: 'Toca dos veces para cambiar la fecha límite de entrega',
-                    button: true,
+                    label: 'Fecha de cierre con hora',
+                    hint: 'Toca fecha u hora para cambiarlas',
                     child: ListTile(
-                      leading: const Icon(Icons.event_busy,
-                          color: Colors.red),
+                      leading: const Icon(Icons.event_busy, color: Colors.red),
                       title: const Text('Fecha de cierre'),
                       subtitle: Text(
-                          '${_closeDate.day.toString().padLeft(2, '0')}/${_closeDate.month.toString().padLeft(2, '0')}/${_closeDate.year}'),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () => _pickDate(false),
+                        '${_closeDate.day.toString().padLeft(2, '0')}/'
+                        '${_closeDate.month.toString().padLeft(2, '0')}/'
+                        '${_closeDate.year}  —  '
+                        '${_closeTime.hour.toString().padLeft(2, '0')}:'
+                        '${_closeTime.minute.toString().padLeft(2, '0')}',
+                      ),
+                      // Botones separados para fecha y hora
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            tooltip: 'Cambiar fecha',
+                            icon: const Icon(Icons.calendar_today_rounded,
+                                color: Colors.red, size: 20),
+                            onPressed: () => _pickDate(false),
+                          ),
+                          IconButton(
+                            tooltip: 'Cambiar hora',
+                            icon: const Icon(Icons.access_time_rounded,
+                                color: Colors.red, size: 20),
+                            onPressed: _pickCloseTime,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
