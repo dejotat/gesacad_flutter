@@ -11,6 +11,7 @@ import '../../models/course_model.dart';
 import '../../widgets/course_card.dart';
 import '../../widgets/tts_button.dart';
 import '../../widgets/talk_widget.dart';
+import '../../widgets/chatbot_widget.dart';
 import '../login_screen.dart';
 import '../settings_screen.dart';
 import '../notifications/notifications_panel.dart';
@@ -162,7 +163,16 @@ class _TeacherHomeState extends State<TeacherHome> with TickerProviderStateMixin
                 ),
               ),
       ),
-      floatingActionButton: _loading ? null : TtsButton(text: _ttsText),
+      floatingActionButton: _loading
+          ? null
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const ChatbotWidget(),
+                const SizedBox(height: 8),
+                TtsButton(text: _ttsText),
+              ],
+            ),
     );
   }
 

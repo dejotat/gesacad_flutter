@@ -18,6 +18,7 @@ import '../profile/profile_screen.dart';
 import '../calendar/calendar_screen.dart';
 import 'student_course_content.dart';
 import 'grades_screen.dart';
+import '../../widgets/chatbot_widget.dart';
 
 class StudentHome extends StatefulWidget {
   const StudentHome({super.key});
@@ -125,7 +126,16 @@ class _StudentHomeState extends State<StudentHome> with TickerProviderStateMixin
                 ),
               ),
       ),
-      floatingActionButton: _loading ? null : TtsButton(text: _ttsText),
+      floatingActionButton: _loading
+          ? null
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const ChatbotWidget(),
+                const SizedBox(height: 8),
+                TtsButton(text: _ttsText),
+              ],
+            ),
     );
   }
 
