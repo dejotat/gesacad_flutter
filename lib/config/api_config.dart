@@ -56,6 +56,10 @@ class ApiConfig {
   // Perfil extendido de usuario — campos adicionales no relacionados con rol/auth
   // ---------------------------------------------------------------------------
 
+  /// Registra una solicitud de recuperación de contraseña para que el admin la vea.
+  /// Ruta: POST /users/passwordRequest
+  static const String passwordRequest = '/users/passwordRequest';
+
   /// Obtiene el perfil extendido de un usuario por su ID.
   /// Ruta: GET /users/getProfile/:id
   static const String getProfile = '/users/getProfile';

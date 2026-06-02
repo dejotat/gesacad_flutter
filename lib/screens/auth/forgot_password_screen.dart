@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../services/settings_service.dart';
+import '../../config/api_config.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 /// Pantalla de recuperación de contraseña.
 ///
@@ -22,6 +26,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
   late AnimationController _anim;
   late Animation<double> _fade;
 
+  // Número de WhatsApp del administrador del sistema (formato internacional)
+  static const String _adminWhatsApp = '573205771845';
+
   @override
   void initState() {
     super.initState();
@@ -38,12 +45,38 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
     super.dispose();
   }
 
+  /// Envía la solicitud al backend (queda registrada para el admin)
+  /// y marca la pantalla como enviada.
   Future<void> _sendRecovery() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _loading = true);
-    // Simular tiempo de red (en producción se llama al backend)
-    await Future.delayed(const Duration(milliseconds: 1600));
+    try {
+      // Registrar la solicitud en el backend para que el admin la vea
+      // en su panel de notificaciones de GESACAD.
+      await http.post(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.passwordRequest}'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'username': _emailCtrl.text.trim()}),
+      ).timeout(const Duration(seconds: 10));
+    } catch (_) {
+      // Si no hay conexión, la solicitud continúa igual —
+      // el usuario puede contactar al admin directamente por WhatsApp.
+    }
     if (mounted) setState(() { _loading = false; _sent = true; });
+  }
+
+  /// Abre WhatsApp con un mensaje pre-llenado para el administrador.
+  Future<void> _abrirWhatsApp() async {
+    final usuario = _emailCtrl.text.trim();
+    final mensaje = Uri.encodeComponent(
+      '¡Hola! Soy el usuario "$usuario" de GESACAD '
+      '(Unicomfacauca) y necesito que el administrador '
+      'restablezca mi contraseña. ¡Gracias!',
+    );
+    final uri = Uri.parse('https://wa.me/$_adminWhatsApp?text=$mensaje');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 
   @override
@@ -287,15 +320,34 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
             ]),
           ),
           const SizedBox(height: 24),
+          // Botón WhatsApp — contacto directo con el administrador
           SizedBox(
             width: double.infinity,
             height: 50,
             child: ElevatedButton.icon(
-              onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.login_rounded),
-              label: Text('Volver al inicio de sesión',
+              onPressed: _abrirWhatsApp,
+              icon: const Icon(Icons.chat_rounded, size: 20),
+              label: Text('Contactar Admin por WhatsApp',
                   style: GoogleFonts.poppins(fontWeight: FontWeight.w700)),
               style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF25D366), // verde WhatsApp
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+                elevation: 3,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: OutlinedButton.icon(
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.login_rounded, size: 18),
+              label: Text('Volver al inicio de sesión',
+                  style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+              style: OutlinedButton.styleFrom(
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14)),
               ),
