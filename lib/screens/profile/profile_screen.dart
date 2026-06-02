@@ -48,48 +48,56 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     super.dispose();
   }
 
-  /// Carga el perfil: primero desde SharedPreferences (datos de sesión básicos)
-  /// y luego sincroniza con el backend para obtener los campos extendidos.
+  /// Carga el perfil directamente desde el backend (fuente de verdad).
+  /// Si no hay conexión, cae al caché de SharedPreferences.
   Future<void> _loadProfile() async {
     final prefs  = await SharedPreferences.getInstance();
     final userId = prefs.getInt('userId') ?? 0;
     _rol         = prefs.getString('userRol') ?? '';
+    _nameCtrl.text = prefs.getString('userName') ?? '';
 
-    // Cargar datos básicos desde SharedPreferences como punto de partida
-    _nameCtrl.text          = prefs.getString('userName') ?? '';
-    _emailInstCtrl.text     = prefs.getString('profile_email_inst') ?? '';
-    _emailPersonalCtrl.text = prefs.getString('profile_email_personal') ?? '';
-    _telefonoCtrl.text      = prefs.getString('profile_telefono') ?? '';
-    _programaCtrl.text      = prefs.getString('profile_programa') ?? '';
-    _semestreCtrl.text      = prefs.getString('profile_semestre') ?? '';
-    _bioCtrl.text           = prefs.getString('profile_bio') ?? '';
-    final photoB64          = prefs.getString('profile_photo');
+    // Foto desde caché local (no está en el backend aún)
+    final photoB64 = prefs.getString('profile_photo');
     if (photoB64 != null && photoB64.isNotEmpty) {
       try { _photoBytes = base64Decode(photoB64); } catch (_) {}
     }
-    if (mounted) setState(() {});
 
-    // Sincronizar con el backend para obtener los datos más recientes
     if (userId > 0) {
+      // Cargar desde el backend — fuente de verdad para todos los campos extendidos
       final perfil = await ApiService().getUserProfile(userId);
       if (perfil != null && mounted) {
-        // Los campos extendidos vienen del backend; username se mantiene de la sesión
-        _emailPersonalCtrl.text = perfil['email_personal'] as String? ?? _emailPersonalCtrl.text;
-        _telefonoCtrl.text      = perfil['telefono']       as String? ?? _telefonoCtrl.text;
-        _programaCtrl.text      = perfil['programa']       as String? ?? _programaCtrl.text;
-        _semestreCtrl.text      = perfil['semestre']       as String? ?? _semestreCtrl.text;
-        _bioCtrl.text           = perfil['bio']            as String? ?? _bioCtrl.text;
+        // Usar toString() en lugar de cast directo para evitar errores de tipo
+        void setField(TextEditingController ctrl, String key) {
+          final val = perfil[key]?.toString() ?? '';
+          if (val.isNotEmpty) ctrl.text = val;
+        }
 
-        // Actualizar la caché local con los valores del servidor
-        await prefs.setString('profile_email_personal', _emailPersonalCtrl.text);
+        setField(_telefonoCtrl,      'telefono');
+        setField(_bioCtrl,           'bio');
+        setField(_emailPersonalCtrl, 'email_personal');
+        setField(_programaCtrl,      'programa');
+        setField(_semestreCtrl,      'semestre');
+
+        // Guardar en caché para acceso sin red
         await prefs.setString('profile_telefono',       _telefonoCtrl.text);
+        await prefs.setString('profile_bio',            _bioCtrl.text);
+        await prefs.setString('profile_email_personal', _emailPersonalCtrl.text);
         await prefs.setString('profile_programa',       _programaCtrl.text);
         await prefs.setString('profile_semestre',       _semestreCtrl.text);
-        await prefs.setString('profile_bio',            _bioCtrl.text);
 
-        setState(() {});
+        if (mounted) setState(() {});
+        return; // Éxito: no hace falta cargar del caché
       }
     }
+
+    // Fallback: sin conexión o sin userId → usar caché local
+    _emailPersonalCtrl.text = prefs.getString('profile_email_personal') ?? '';
+    _emailInstCtrl.text     = prefs.getString('profile_email_inst')     ?? '';
+    _telefonoCtrl.text      = prefs.getString('profile_telefono')       ?? '';
+    _programaCtrl.text      = prefs.getString('profile_programa')       ?? '';
+    _semestreCtrl.text      = prefs.getString('profile_semestre')       ?? '';
+    _bioCtrl.text           = prefs.getString('profile_bio')            ?? '';
+    if (mounted) setState(() {});
   }
 
   Future<void> _pickPhoto() async {
