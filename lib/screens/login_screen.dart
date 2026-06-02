@@ -36,6 +36,9 @@ class _LoginScreenState extends State<LoginScreen>
   late AnimationController _loginBtnCtrl;
   late Animation<double> _loginBtnScale;
 
+  // Controlador del gradiente animado del fondo (azul/morado en movimiento suave)
+  late AnimationController _bgAnim;
+
   @override
   void initState() {
     super.initState();
@@ -50,12 +53,18 @@ class _LoginScreenState extends State<LoginScreen>
         vsync: this, duration: const Duration(milliseconds: 120));
     _loginBtnScale = Tween<double>(begin: 1.0, end: 0.96)
         .animate(CurvedAnimation(parent: _loginBtnCtrl, curve: Curves.easeOut));
+
+    // Gradiente animado del fondo: ciclo de 6 segundos, va y vuelve suavemente
+    _bgAnim = AnimationController(
+        vsync: this, duration: const Duration(seconds: 6))
+      ..repeat(reverse: true);
   }
 
   @override
   void dispose() {
     _anim.dispose();
     _loginBtnCtrl.dispose();
+    _bgAnim.dispose();
     _userCtrl.dispose();
     _passCtrl.dispose();
     _userFocus.dispose();
@@ -160,19 +169,48 @@ class _LoginScreenState extends State<LoginScreen>
   Widget build(BuildContext context) {
     final themeType = AppSettings.currentTheme.value;
     return Scaffold(
-      body: Container(
-        // Fondo con gradiente de dos colores del tema activo
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              themeType.gradient[0],
-              themeType.gradient[1],
-              themeType.primaryColor.withOpacity(0.6),
-            ],
+      body: AnimatedBuilder(
+        animation: _bgAnim,
+        builder: (_, child) {
+          final t = _bgAnim.value; // 0.0 → 1.0 → 0.0 (reverse: true)
+
+          // Paleta azul/morado: interpola suavemente entre dos estados de color
+          final c1 = Color.lerp(
+              const Color(0xFF1A237E), // azul índigo profundo
+              const Color(0xFF4A148C), // morado profundo
+              t)!;
+          final c2 = Color.lerp(
+              const Color(0xFF6A1B9A), // morado medio
+              const Color(0xFF1565C0), // azul medio
+              t)!;
+          final c3 = Color.lerp(
+              const Color(0xFF283593), // azul oscuro
+              const Color(0xFF7B1FA2), // violeta
+              t)!;
+
+          // La alineación también se desplaza para dar sensación de movimiento
+          final begin = AlignmentTween(
             begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
+            end:   Alignment.bottomLeft,
+          ).lerp(t);
+          final end = AlignmentTween(
+            begin: Alignment.bottomRight,
+            end:   Alignment.topRight,
+          ).lerp(t);
+
+          return Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [c1, c2, c3],
+                begin:  begin,
+                end:    end,
+              ),
+            ),
+            child: child,
+          );
+        },
+        // child se pasa fuera del builder para no reconstruir el árbol interno
+        // en cada frame de la animación (optimización de rendimiento)
         child: SafeArea(
           // LayoutBuilder detecta el tamaño real de pantalla para ser responsive
           child: LayoutBuilder(
