@@ -1,6 +1,7 @@
 import 'package:gesacad/utils/platform_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:typed_data';
 import 'dart:convert';
@@ -63,34 +64,46 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     }
 
     if (userId > 0) {
-      // Cargar desde el backend — fuente de verdad para todos los campos extendidos
-      final perfil = await ApiService().getUserProfile(userId);
-      if (perfil != null && mounted) {
-        // Usar toString() en lugar de cast directo para evitar errores de tipo
-        void setField(TextEditingController ctrl, String key) {
-          final val = perfil[key]?.toString() ?? '';
-          if (val.isNotEmpty) ctrl.text = val;
+      // Intentar cargar desde el backend (fuente de verdad)
+      try {
+        final uri = Uri.https(
+          'gesacad-backend-production.up.railway.app',
+          '/users/getProfile/$userId',
+        );
+        final res = await http
+            .get(uri)
+            .timeout(const Duration(seconds: 15));
+
+        if (res.statusCode == 200 && mounted) {
+          final perfil = jsonDecode(res.body) as Map<String, dynamic>;
+
+          void setField(TextEditingController ctrl, String key) {
+            final val = perfil[key]?.toString() ?? '';
+            if (val.isNotEmpty) ctrl.text = val;
+          }
+
+          setField(_telefonoCtrl,      'telefono');
+          setField(_bioCtrl,           'bio');
+          setField(_emailPersonalCtrl, 'email_personal');
+          setField(_programaCtrl,      'programa');
+          setField(_semestreCtrl,      'semestre');
+
+          // Actualizar caché local con los valores del servidor
+          await prefs.setString('profile_telefono',       _telefonoCtrl.text);
+          await prefs.setString('profile_bio',            _bioCtrl.text);
+          await prefs.setString('profile_email_personal', _emailPersonalCtrl.text);
+          await prefs.setString('profile_programa',       _programaCtrl.text);
+          await prefs.setString('profile_semestre',       _semestreCtrl.text);
+
+          if (mounted) setState(() {});
+          return;
         }
-
-        setField(_telefonoCtrl,      'telefono');
-        setField(_bioCtrl,           'bio');
-        setField(_emailPersonalCtrl, 'email_personal');
-        setField(_programaCtrl,      'programa');
-        setField(_semestreCtrl,      'semestre');
-
-        // Guardar en caché para acceso sin red
-        await prefs.setString('profile_telefono',       _telefonoCtrl.text);
-        await prefs.setString('profile_bio',            _bioCtrl.text);
-        await prefs.setString('profile_email_personal', _emailPersonalCtrl.text);
-        await prefs.setString('profile_programa',       _programaCtrl.text);
-        await prefs.setString('profile_semestre',       _semestreCtrl.text);
-
-        if (mounted) setState(() {});
-        return; // Éxito: no hace falta cargar del caché
+      } catch (_) {
+        // Si falla el backend se usa caché local (abajo)
       }
     }
 
-    // Fallback: sin conexión o sin userId → usar caché local
+    // Fallback: sin conexión o error → usar caché local
     _emailPersonalCtrl.text = prefs.getString('profile_email_personal') ?? '';
     _emailInstCtrl.text     = prefs.getString('profile_email_inst')     ?? '';
     _telefonoCtrl.text      = prefs.getString('profile_telefono')       ?? '';
