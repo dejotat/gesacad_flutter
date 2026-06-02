@@ -608,6 +608,58 @@ class ApiService {
     final all = await getUsers();
     return all.where((u) => u.rol == 'Teacher').toList();
   }
+  // ---------------------------------------------------------------------------
+  // Perfil extendido de usuario
+  // ---------------------------------------------------------------------------
+
+  /// Carga el perfil extendido de un usuario desde el backend.
+  /// Retorna un mapa con todos los campos opcionales (teléfono, bio, etc.)
+  /// o null si ocurre un error de red.
+  Future<Map<String, dynamic>?> getUserProfile(int userId) async {
+    try {
+      final res = await http
+          .get(Uri.parse('$_base${ApiConfig.getProfile}/$userId'))
+          .timeout(_timeout);
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body) as Map<String, dynamic>;
+      }
+    } catch (e) {
+      developer.log('[ApiService] getUserProfile error: $e', name: 'GESACAD');
+    }
+    return null;
+  }
+
+  /// Guarda los datos de perfil extendido en el backend.
+  /// Retorna true si el guardado fue exitoso.
+  Future<bool> updateUserProfile({
+    required int    userId,
+    String? telefono,
+    String? bio,
+    String? emailPersonal,
+    String? programa,
+    String? semestre,
+    String? photoUrl,
+  }) async {
+    try {
+      final res = await http.put(
+        Uri.parse('$_base${ApiConfig.updateProfile}/$userId'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'telefono':       telefono       ?? '',
+          'bio':            bio            ?? '',
+          'email_personal': emailPersonal  ?? '',
+          'programa':       programa       ?? '',
+          'semestre':       semestre       ?? '',
+          'photo_url':      photoUrl       ?? '',
+        }),
+      ).timeout(_timeout);
+      return res.statusCode == 200;
+    } catch (e) {
+      developer.log('[ApiService] updateUserProfile error: $e', name: 'GESACAD');
+      return false;
+    }
+  }
+
   /// Obtiene las notificaciones reales del usuario desde el backend.
   /// Combina: actividades nuevas, calificaciones publicadas y logs del sistema.
   Future<List<Map<String, dynamic>>> getNotifications(int userId, String rol) async {

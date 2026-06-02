@@ -53,6 +53,18 @@ class ApiConfig {
   static const String getTeachers = '/users/getTeachers';
 
   // ---------------------------------------------------------------------------
+  // Perfil extendido de usuario — campos adicionales no relacionados con rol/auth
+  // ---------------------------------------------------------------------------
+
+  /// Obtiene el perfil extendido de un usuario por su ID.
+  /// Ruta: GET /users/getProfile/:id
+  static const String getProfile = '/users/getProfile';
+
+  /// Actualiza los campos de perfil extendido (teléfono, bio, correos, etc.).
+  /// Ruta: PUT /users/updateProfile/:id
+  static const String updateProfile = '/users/updateProfile';
+
+  // ---------------------------------------------------------------------------
   // RF04 — Gestión de Cursos (CU-03, Admin/Teacher/Student)
   // ---------------------------------------------------------------------------
 

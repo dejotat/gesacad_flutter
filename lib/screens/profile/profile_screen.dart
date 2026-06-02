@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:typed_data';
 import 'dart:convert';
 import '../../services/settings_service.dart';
+import '../../services/api_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -47,21 +48,48 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     super.dispose();
   }
 
+  /// Carga el perfil: primero desde SharedPreferences (datos de sesión básicos)
+  /// y luego sincroniza con el backend para obtener los campos extendidos.
   Future<void> _loadProfile() async {
-    final prefs = await SharedPreferences.getInstance();
-    _nameCtrl.text = prefs.getString('userName') ?? '';
-    _rol = prefs.getString('userRol') ?? '';
+    final prefs  = await SharedPreferences.getInstance();
+    final userId = prefs.getInt('userId') ?? 0;
+    _rol         = prefs.getString('userRol') ?? '';
+
+    // Cargar datos básicos desde SharedPreferences como punto de partida
+    _nameCtrl.text          = prefs.getString('userName') ?? '';
+    _emailInstCtrl.text     = prefs.getString('profile_email_inst') ?? '';
     _emailPersonalCtrl.text = prefs.getString('profile_email_personal') ?? '';
-    _emailInstCtrl.text = prefs.getString('profile_email_inst') ?? '';
-    _telefonoCtrl.text = prefs.getString('profile_telefono') ?? '';
-    _programaCtrl.text = prefs.getString('profile_programa') ?? '';
-    _semestreCtrl.text = prefs.getString('profile_semestre') ?? '';
-    _bioCtrl.text = prefs.getString('profile_bio') ?? '';
-    final photoB64 = prefs.getString('profile_photo');
+    _telefonoCtrl.text      = prefs.getString('profile_telefono') ?? '';
+    _programaCtrl.text      = prefs.getString('profile_programa') ?? '';
+    _semestreCtrl.text      = prefs.getString('profile_semestre') ?? '';
+    _bioCtrl.text           = prefs.getString('profile_bio') ?? '';
+    final photoB64          = prefs.getString('profile_photo');
     if (photoB64 != null && photoB64.isNotEmpty) {
       try { _photoBytes = base64Decode(photoB64); } catch (_) {}
     }
     if (mounted) setState(() {});
+
+    // Sincronizar con el backend para obtener los datos más recientes
+    if (userId > 0) {
+      final perfil = await ApiService().getUserProfile(userId);
+      if (perfil != null && mounted) {
+        // Los campos extendidos vienen del backend; username se mantiene de la sesión
+        _emailPersonalCtrl.text = perfil['email_personal'] as String? ?? _emailPersonalCtrl.text;
+        _telefonoCtrl.text      = perfil['telefono']       as String? ?? _telefonoCtrl.text;
+        _programaCtrl.text      = perfil['programa']       as String? ?? _programaCtrl.text;
+        _semestreCtrl.text      = perfil['semestre']       as String? ?? _semestreCtrl.text;
+        _bioCtrl.text           = perfil['bio']            as String? ?? _bioCtrl.text;
+
+        // Actualizar la caché local con los valores del servidor
+        await prefs.setString('profile_email_personal', _emailPersonalCtrl.text);
+        await prefs.setString('profile_telefono',       _telefonoCtrl.text);
+        await prefs.setString('profile_programa',       _programaCtrl.text);
+        await prefs.setString('profile_semestre',       _semestreCtrl.text);
+        await prefs.setString('profile_bio',            _bioCtrl.text);
+
+        setState(() {});
+      }
+    }
   }
 
   Future<void> _pickPhoto() async {
@@ -71,22 +99,53 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     setState(() => _photoBytes = Uint8List.fromList(bytes));
   }
 
+  /// Guarda el perfil: primero en el backend y luego actualiza la caché local.
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
-    await Future.delayed(const Duration(milliseconds: 500));
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('userName', _nameCtrl.text.trim());
+
+    final prefs  = await SharedPreferences.getInstance();
+    final userId = prefs.getInt('userId') ?? 0;
+
+    // Guardar datos extendidos en el backend (persistencia real)
+    bool exito = false;
+    if (userId > 0) {
+      exito = await ApiService().updateUserProfile(
+        userId:        userId,
+        telefono:      _telefonoCtrl.text.trim(),
+        bio:           _bioCtrl.text.trim(),
+        emailPersonal: _emailPersonalCtrl.text.trim(),
+        programa:      _programaCtrl.text.trim(),
+        semestre:      _semestreCtrl.text.trim(),
+      );
+    }
+
+    // Actualizar la caché local de SharedPreferences (para acceso rápido sin red)
+    await prefs.setString('userName',               _nameCtrl.text.trim());
     await prefs.setString('profile_email_personal', _emailPersonalCtrl.text.trim());
-    await prefs.setString('profile_email_inst', _emailInstCtrl.text.trim());
-    await prefs.setString('profile_telefono', _telefonoCtrl.text.trim());
-    await prefs.setString('profile_programa', _programaCtrl.text.trim());
-    await prefs.setString('profile_semestre', _semestreCtrl.text.trim());
-    await prefs.setString('profile_bio', _bioCtrl.text.trim());
-    if (_photoBytes != null) await prefs.setString('profile_photo', base64Encode(_photoBytes!));
+    await prefs.setString('profile_email_inst',     _emailInstCtrl.text.trim());
+    await prefs.setString('profile_telefono',       _telefonoCtrl.text.trim());
+    await prefs.setString('profile_programa',       _programaCtrl.text.trim());
+    await prefs.setString('profile_semestre',       _semestreCtrl.text.trim());
+    await prefs.setString('profile_bio',            _bioCtrl.text.trim());
+    if (_photoBytes != null) {
+      await prefs.setString('profile_photo', base64Encode(_photoBytes!));
+    }
+
     if (mounted) {
       setState(() { _saving = false; _saved = true; });
-      Future.delayed(const Duration(seconds: 3), () { if (mounted) setState(() => _saved = false); });
+      // Mostrar mensaje diferenciado según si el backend respondió correctamente
+      if (!exito && userId > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Sin conexión — datos guardados localmente'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 3),
+        ));
+      }
+      Future.delayed(
+        const Duration(seconds: 3),
+        () { if (mounted) setState(() => _saved = false); },
+      );
     }
   }
 
