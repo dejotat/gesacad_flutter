@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:table_calendar/table_calendar.dart';
+import '../../services/api_service.dart';
 import '../../services/settings_service.dart';
 import '../../widgets/animated_logo.dart';
 import '../../widgets/talk_widget.dart';
@@ -108,60 +110,110 @@ class _CalendarScreenState extends State<CalendarScreen>
     super.dispose();
   }
 
-  /// Construye eventos predeterminados (demo académico).
-  Map<DateTime, List<CalendarEvent>> _buildDefaultEvents() {
-    final now = DateTime.now();
-    return {
-      _norm(now): [
-        const CalendarEvent(
-            title: 'Clase de Cálculo',
-            type: EventType.class_,
-            course: 'Cálculo Diferencial'),
-      ],
-      _norm(now.add(const Duration(days: 2))): [
-        const CalendarEvent(
-            title: 'Entrega Taller 2',
-            type: EventType.assignment,
-            description: 'Sección 4.1 a 4.5',
-            course: 'Sistemas de Info'),
-        const CalendarEvent(
-            title: 'Quiz Lógica',
-            type: EventType.exam,
-            course: 'Lógica de Programación'),
-      ],
-      _norm(now.add(const Duration(days: 5))): [
-        const CalendarEvent(
-            title: 'Parcial 1 — Cálculo',
-            type: EventType.exam,
-            description: 'Capítulos 1, 2 y 3',
-            course: 'Cálculo Diferencial'),
-      ],
-      _norm(now.add(const Duration(days: 7))): [
-        const CalendarEvent(
-            title: 'Feria de Emprendimiento',
-            type: EventType.event,
-            description: 'Auditorio principal — 8am a 5pm'),
-      ],
-      _norm(now.add(const Duration(days: 10))): [
-        const CalendarEvent(
-            title: 'Proyecto final — BD',
-            type: EventType.assignment,
-            course: 'Bases de Datos'),
-      ],
-      _norm(now.add(const Duration(days: 14))): [
-        const CalendarEvent(
-            title: 'Festivo universitario',
-            type: EventType.holiday),
-      ],
-    };
+  /// Punto de partida vacío: los eventos reales los carga
+  /// [_loadActivitiesFromBackend] desde el servidor.
+  Map<DateTime, List<CalendarEvent>> _buildDefaultEvents() => {};
+
+  // ── Mapa de tipo de actividad → EventType del calendario ─────────────────
+
+  /// Convierte el tipo de actividad del backend al tipo de evento del calendario.
+  /// - 'midterm'  → exam       (rojo — representa un examen/parcial)
+  /// - 'project'  → assignment (azul — representa una entrega de proyecto)
+  /// - 'resource' → notification (turquesa — representa un recurso/aviso)
+  /// - otro       → event      (naranja — tipo genérico)
+  EventType _tipoAEventType(String tipo) {
+    switch (tipo) {
+      case 'midterm':  return EventType.exam;
+      case 'project':  return EventType.assignment;
+      case 'resource': return EventType.notification;
+      default:         return EventType.event;
+    }
   }
 
-  /// Inicializa los eventos — por ahora usa datos demo académicos.
-  /// En producción se conecta al backend para sincronizar actividades reales.
+  /// Devuelve la etiqueta legible del tipo de actividad para incluir
+  /// en la descripción del evento del calendario.
+  String _tipoLabel(String tipo) {
+    switch (tipo) {
+      case 'midterm':  return 'Parcial';
+      case 'project':  return 'Proyecto';
+      case 'resource': return 'Recurso';
+      default:         return 'Actividad';
+    }
+  }
+
+  /// Carga las actividades reales de todos los cursos del usuario
+  /// y las inserta en el mapa [_events] del calendario.
+  ///
+  /// Flujo:
+  /// 1. Leer userId y rol desde SharedPreferences.
+  /// 2. Obtener cursos del usuario con [ApiService.getMyCourses].
+  /// 3. Por cada curso obtener actividades con [ApiService.getActivities].
+  /// 4. Mapear cada actividad a un [CalendarEvent] usando la fecha de cierre.
   Future<void> _loadActivitiesFromBackend() async {
-    // Los eventos ya se cargan en _buildDefaultEvents() en initState
-    // Esta función puede extenderse para sincronizar con el backend
-    if (mounted) setState(() => _loading = false);
+    try {
+      // Leer datos de sesión para obtener los cursos correctos del usuario
+      final prefs  = await SharedPreferences.getInstance();
+      final userId = prefs.getInt('userId') ?? 0;
+
+      if (userId == 0) {
+        if (mounted) setState(() => _loading = false);
+        return;
+      }
+
+      // Obtener los cursos en los que está matriculado el usuario
+      final cursos = await ApiService().getMyCourses(userId);
+
+      // Mapa temporal para acumular eventos antes de llamar a setState
+      final nuevosMapa = <DateTime, List<CalendarEvent>>{};
+
+      for (final curso in cursos) {
+        // Obtener todas las actividades del curso
+        final actividades = await ApiService().getActivities(curso.id);
+
+        for (final act in actividades) {
+          // Parsear la fecha de cierre para colocar el evento en el día correcto
+          DateTime? fechaCierre;
+          try {
+            fechaCierre = DateTime.parse(act.closingDate);
+          } catch (_) {
+            continue; // Ignorar actividades con fecha inválida
+          }
+
+          // Extraer la hora de cierre para mostrarla en la descripción
+          final horaCierre =
+              '${fechaCierre.hour.toString().padLeft(2, '0')}:'
+              '${fechaCierre.minute.toString().padLeft(2, '0')}';
+
+          // Construir la descripción con tipo y hora de cierre
+          final descripcion =
+              '${_tipoLabel(act.type)} · Cierre: $horaCierre';
+
+          // Crear el evento del calendario a partir de la actividad
+          final evento = CalendarEvent(
+            title:       act.tittle,
+            type:        _tipoAEventType(act.type),
+            description: descripcion,
+            course:      curso.name,
+          );
+
+          // Agregar el evento al día de cierre (normalizando a medianoche)
+          final diaCierre = _norm(fechaCierre);
+          nuevosMapa.putIfAbsent(diaCierre, () => []).add(evento);
+        }
+      }
+
+      // Actualizar la interfaz con los eventos reales
+      if (mounted) {
+        setState(() {
+          _events  = nuevosMapa;
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      // Si falla la carga (sin conexión, error del servidor, etc.)
+      // se muestra el calendario vacío sin bloquear la pantalla.
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   DateTime _norm(DateTime d) => DateTime(d.year, d.month, d.day);
