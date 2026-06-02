@@ -603,7 +603,7 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
         ]),
         const SizedBox(height: 8),
 
-        // Gráfica de dona con animación de explosión y tooltip elegante
+        // Gráfica de dona con animación de explosión y tooltip personalizado
         SfCircularChart(
           // Anotación central: muestra el total de usuarios en el hueco de la dona
           annotations: <CircularChartAnnotation>[
@@ -621,34 +621,52 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
           ],
           // Leyenda nativa de Syncfusion debajo de la dona
           legend: Legend(
-            isVisible:       true,
-            position:        LegendPosition.bottom,
-            overflowMode:    LegendItemOverflowMode.wrap,
-            textStyle:       GoogleFonts.poppins(fontSize: 12),
+            isVisible:    true,
+            position:     LegendPosition.bottom,
+            overflowMode: LegendItemOverflowMode.wrap,
+            textStyle:    GoogleFonts.poppins(fontSize: 12),
           ),
-          // Tooltip al tocar una sección: muestra nombre, número y porcentaje
+          // Tooltip personalizado: muestra "Profesores : 2 (33%)" sin header
           tooltipBehavior: TooltipBehavior(
-            enable:           true,
-            format:           'point.x : point.y (point.percentage%)',
-            textStyle:        GoogleFonts.poppins(fontSize: 12,
-                                color: Colors.white),
-            color:            const Color(0xFF1A1A2E),
-            borderWidth:      10,
+            enable:    true,
+            // Quitar el header "Series 0" que aparece por defecto
+            header:    '',
+            // Builder manual para calcular el porcentaje correctamente
+            builder:   (data, point, series, pointIndex, seriesIndex) {
+              final d   = data as _PieData;
+              final pct = total > 0
+                  ? (d.value / total * 100).toStringAsFixed(0)
+                  : '0';
+              return Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color:        const Color(0xFF1A1A2E),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '${d.label} : ${d.value} ($pct%)',
+                  style: GoogleFonts.poppins(
+                      fontSize: 13, color: Colors.white,
+                      fontWeight: FontWeight.w600),
+                ),
+              );
+            },
           ),
           series: <CircularSeries>[
             DoughnutSeries<_PieData, String>(
-              dataSource:         datos,
-              xValueMapper:       (_PieData d, _) => d.label,
-              yValueMapper:       (_PieData d, _) => d.value.toDouble(),
-              pointColorMapper:   (_PieData d, _) => d.color,
-              innerRadius:        '55%',       // hueco central de la dona
-              // Al tocar una sección se desplaza hacia afuera (explode)
-              explode:            true,
-              explodeOffset:      '6%',
-              explodeGesture:     ActivationMode.singleTap,
-              animationDuration:  1200,        // 1.2 s de entrada suave
-              strokeColor:        Colors.white,
-              strokeWidth:        2,
+              dataSource:        datos,
+              xValueMapper:      (_PieData d, _) => d.label,
+              yValueMapper:      (_PieData d, _) => d.value.toDouble(),
+              pointColorMapper:  (_PieData d, _) => d.color,
+              innerRadius:       '55%',
+              // Al tocar, la sección explota hacia afuera
+              explode:           true,
+              explodeOffset:     '6%',
+              explodeGesture:    ActivationMode.singleTap,
+              animationDuration: 1500,   // 1.5 s de entrada suave (Linear)
+              strokeColor:       Colors.white,
+              strokeWidth:       2,
             ),
           ],
         ),
@@ -661,14 +679,19 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
   Widget _buildBarChart(Color primary) {
     if (_courseRecords.isEmpty) return const SizedBox();
 
-    // Paleta de colores vibrantes (un color distinto por curso)
-    const paleta = [
-      Color(0xFF1E88E5), // azul eléctrico
-      Color(0xFF43A047), // verde esmeralda
-      Color(0xFF8E24AA), // morado
-      Color(0xFFE53935), // rojo
-      Color(0xFF00897B), // verde azulado
+    // Paletas de gradiente por barra: [color oscuro, color claro]
+    // onCreateShader itera sobre esta lista para asignar un gradiente distinto
+    // a cada barra sin necesidad de conocer el índice en ShaderDetails.
+    const paletasGradiente = [
+      [Color(0xFF1565C0), Color(0xFF90CAF9)], // azul oscuro → celeste
+      [Color(0xFF2E7D32), Color(0xFF81C784)], // verde oscuro → verde claro
+      [Color(0xFF6A1B9A), Color(0xFFCE93D8)], // morado oscuro → lila
+      [Color(0xFFBF360C), Color(0xFFFF8A65)], // naranja oscuro → salmón
+      [Color(0xFF00695C), Color(0xFF80CBC4)], // teal oscuro → teal claro
     ];
+    // Índice de barra reseteado antes de cada build para que el shader
+    // asigne el gradiente correcto a cada columna en orden.
+    var indiceBarra = 0;
 
     // Mismo shell que antes — solo se reemplaza el contenido de la gráfica
     return Container(
@@ -703,44 +726,55 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
           ]),
           const SizedBox(height: 8),
 
-          // Barras verticales con animación de crecimiento desde abajo
+          // Barras verticales con gradiente, animación y bordes redondeados
           SfCartesianChart(
             plotAreaBackgroundColor: Colors.transparent,
             plotAreaBorderWidth:     0,
-            // Tooltip elegante al tocar una barra
+            // Tooltip sin "Series 0": header vacío + formato personalizado
             tooltipBehavior: TooltipBehavior(
-              enable:       true,
-              format:       'point.x\nEstudiantes: point.y',
-              textStyle:    GoogleFonts.poppins(fontSize: 12,
-                              color: Colors.white),
-              color:        const Color(0xFF1A1A2E),
+              enable:    true,
+              header:    '',   // elimina el encabezado "Series 0" por defecto
+              format:    'point.x\nEstudiantes: point.y',
+              textStyle: GoogleFonts.poppins(fontSize: 12, color: Colors.white),
+              color:     const Color(0xFF1A1A2E),
             ),
-            // Eje X: nombres de los cursos
+            // Eje X: nombres de los cursos sin línea de eje
             primaryXAxis: CategoryAxis(
-              axisLine:    const AxisLine(width: 0),
+              axisLine:       const AxisLine(width: 0),
               majorGridLines: const MajorGridLines(width: 0),
-              labelStyle: GoogleFonts.poppins(fontSize: 11),
+              labelStyle:     GoogleFonts.poppins(fontSize: 11),
             ),
-            // Eje Y: número de estudiantes (oculto para un look más limpio)
-            primaryYAxis: NumericAxis(
-              isVisible:   false,
-              minimum:     0,
-            ),
+            // Eje Y oculto para un look más limpio
+            primaryYAxis: NumericAxis(isVisible: false, minimum: 0),
             series: <CartesianSeries>[
               ColumnSeries<Map<String, dynamic>, String>(
-                dataSource:         _courseRecords,
-                xValueMapper:       (r, _) =>
-                    (r['name'] as String?) ?? '',
-                yValueMapper:       (r, _) =>
+                dataSource:        _courseRecords,
+                xValueMapper:      (r, _) => (r['name'] as String?) ?? '',
+                yValueMapper:      (r, _) =>
                     ((r['countUsers'] ?? r['COUNT(*)'] ?? 0) as num).toDouble(),
-                // Un color distinto por barra según la paleta
-                pointColorMapper:   (r, i) => paleta[i % paleta.length],
-                animationDuration:  1200,      // 1.2 s, crece desde abajo
+                animationDuration: 1200,   // crece desde abajo en 1.2 s
+                // Barras más delgadas (60 % del ancho disponible)
+                width:             0.6,
+                // Bordes redondeados en la parte superior de cada barra
+                borderRadius:      const BorderRadius.vertical(
+                    top: Radius.circular(10)),
+                // Gradiente oscuro → claro por barra usando paleta indexada.
+                // onCreateShader se invoca una vez por barra; usamos indiceBarra
+                // como contador para asignar el gradiente correcto a cada columna.
+                onCreateShader: (ShaderDetails details) {
+                  final colores = paletasGradiente[
+                      indiceBarra++ % paletasGradiente.length];
+                  return LinearGradient(
+                    colors: colores,
+                    begin:  Alignment.bottomCenter,
+                    end:    Alignment.topCenter,
+                  ).createShader(details.rect);
+                },
                 // Etiqueta del número encima de cada barra
                 dataLabelSettings: DataLabelSettings(
-                  isVisible:       true,
-                  labelAlignment:  ChartDataLabelAlignment.top,
-                  textStyle:       GoogleFonts.poppins(
+                  isVisible:      true,
+                  labelAlignment: ChartDataLabelAlignment.top,
+                  textStyle:      GoogleFonts.poppins(
                       fontWeight: FontWeight.w800,
                       fontSize:   12,
                       color:      const Color(0xFF1A1A2E)),
