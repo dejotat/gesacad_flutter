@@ -1,10 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/date_symbol_data_local.dart';
-// Licencia community de Syncfusion — gratuita para proyectos con ingresos < $1M.
-// Para activarla: descomenta la siguiente línea y pega la clave obtenida en
-// https://www.syncfusion.com/products/communitylicense
-// import 'package:syncfusion_flutter_core/syncfusion_flutter_core.dart';
 import 'config/app_themes.dart';
 import 'services/settings_service.dart';
 import 'screens/login_screen.dart';
@@ -17,9 +13,6 @@ void main() async {
   // Inicializar locale español para table_calendar y formatos de fecha
   await initializeDateFormatting('es', null);
   await AppSettings.load();
-
-  // Para registrar la licencia Syncfusion, descomenta estas líneas:
-  // SyncfusionLicense.registerLicense('TU_CLAVE_AQUI');
 
   runApp(const GesacadApp());
 }

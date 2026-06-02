@@ -1,7 +1,7 @@
 ﻿import 'dart:convert';
 import 'dart:math' as math;   // Necesario para _BubblePainter (sin animaciones del gráfico)
 import 'dart:typed_data';
-import 'package:syncfusion_flutter_charts/charts.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -41,7 +41,8 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
 
   // ── Estados UI ────────────────────────────────────────────────────────────
   bool _loading         = true;
-  // _touchedPieIndex eliminado: Syncfusion maneja el explode internamente
+  // Índice de la sección de la dona actualmente expandida (explode al tocar)
+  int? _touchedPieIndex;
 
   // ── Animaciones ───────────────────────────────────────────────────────────
   late AnimationController _entryCtrl;
@@ -601,14 +602,64 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
                     fontWeight: FontWeight.w600)),
           ),
         ]),
-        const SizedBox(height: 8),
+        const SizedBox(height: 16),
 
-        // Gráfica de dona con animación de explosión y tooltip personalizado
-        SfCircularChart(
-          // Anotación central: muestra el total de usuarios en el hueco de la dona
-          annotations: <CircularChartAnnotation>[
-            CircularChartAnnotation(
-              widget: Column(mainAxisSize: MainAxisSize.min, children: [
+        // ── Dona con fl_chart ─────────────────────────────────────────────────
+        // Stack: dona + anotación central superpuesta
+        SizedBox(
+          height: 240,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // Gráfica de dona con animación de entrada (swapAnimation)
+              PieChart(
+                PieChartData(
+                  // Al tocar una sección se expande hacia afuera
+                  pieTouchData: PieTouchData(
+                    touchCallback: (FlTouchEvent event, PieTouchResponse? res) {
+                      setState(() {
+                        if (!event.isInterestedForInteractions ||
+                            res == null ||
+                            res.touchedSection == null) {
+                          _touchedPieIndex = null;
+                          return;
+                        }
+                        _touchedPieIndex =
+                            res.touchedSection!.touchedSectionIndex;
+                      });
+                    },
+                  ),
+                  centerSpaceRadius: 58,   // tamaño del hueco central
+                  sectionsSpace:     3,    // separador blanco entre secciones
+                  sections: datos.asMap().entries.map((e) {
+                    final i      = e.key;
+                    final d      = e.value;
+                    final tocada = _touchedPieIndex == i;
+                    final pct    = total > 0
+                        ? (d.value / total * 100).toStringAsFixed(0)
+                        : '0';
+                    return PieChartSectionData(
+                      value:       d.value.toDouble(),
+                      color:       d.color,
+                      // Sección tocada: radio mayor para efecto "explode"
+                      radius:      tocada ? 72 : 60,
+                      // Mostrar porcentaje dentro de la sección tocada
+                      title:       tocada ? '$pct%' : '',
+                      titleStyle:  GoogleFonts.poppins(
+                          fontSize: 13, fontWeight: FontWeight.w700,
+                          color: Colors.white),
+                      borderSide:  const BorderSide(
+                          color: Colors.white, width: 2),
+                    );
+                  }).toList(),
+                ),
+                // Animación de aparición al cargar (1500 ms, suave)
+                swapAnimationDuration: const Duration(milliseconds: 1500),
+                swapAnimationCurve:    Curves.easeInOut,
+              ),
+
+              // Anotación central: total de usuarios en el hueco de la dona
+              Column(mainAxisSize: MainAxisSize.min, children: [
                 Text('$total',
                     style: GoogleFonts.poppins(
                         fontSize: 26, fontWeight: FontWeight.w900,
@@ -617,87 +668,97 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
                     style: GoogleFonts.poppins(
                         fontSize: 11, color: Colors.grey.shade400)),
               ]),
-            ),
-          ],
-          // Leyenda nativa de Syncfusion debajo de la dona
-          legend: Legend(
-            isVisible:    true,
-            position:     LegendPosition.bottom,
-            overflowMode: LegendItemOverflowMode.wrap,
-            textStyle:    GoogleFonts.poppins(fontSize: 12),
+            ],
           ),
-          // Tooltip personalizado: muestra "Profesores : 2 (33%)" sin header
-          tooltipBehavior: TooltipBehavior(
-            enable:    true,
-            // Quitar el header "Series 0" que aparece por defecto
-            header:    '',
-            // Builder manual para calcular el porcentaje correctamente
-            builder:   (data, point, series, pointIndex, seriesIndex) {
-              final d   = data as _PieData;
-              final pct = total > 0
-                  ? (d.value / total * 100).toStringAsFixed(0)
-                  : '0';
-              return Container(
+        ),
+
+        const SizedBox(height: 16),
+
+        // Leyenda manual debajo de la dona
+        // Muestra: punto de color + etiqueta + cantidad + porcentaje
+        Wrap(
+          spacing: 16,
+          runSpacing: 10,
+          alignment: WrapAlignment.center,
+          children: datos.asMap().entries.map((e) {
+            final i   = e.key;
+            final d   = e.value;
+            final pct = total > 0
+                ? (d.value / total * 100).toStringAsFixed(0)
+                : '0';
+            final sel = _touchedPieIndex == i;
+            return GestureDetector(
+              onTap: () => setState(
+                  () => _touchedPieIndex = sel ? null : i),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 14, vertical: 10),
+                    horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color:        const Color(0xFF1A1A2E),
-                  borderRadius: BorderRadius.circular(10),
+                  color:        sel
+                      ? d.color.withOpacity(0.10)
+                      : Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border:       Border.all(
+                      color: sel ? d.color : Colors.grey.shade200,
+                      width: sel ? 2 : 1),
                 ),
-                child: Text(
-                  '${d.label} : ${d.value} ($pct%)',
-                  style: GoogleFonts.poppins(
-                      fontSize: 13, color: Colors.white,
-                      fontWeight: FontWeight.w600),
-                ),
-              );
-            },
-          ),
-          series: <CircularSeries>[
-            DoughnutSeries<_PieData, String>(
-              dataSource:        datos,
-              xValueMapper:      (_PieData d, _) => d.label,
-              yValueMapper:      (_PieData d, _) => d.value.toDouble(),
-              pointColorMapper:  (_PieData d, _) => d.color,
-              innerRadius:       '55%',
-              // Al tocar, la sección explota hacia afuera
-              explode:           true,
-              explodeOffset:     '6%',
-              explodeGesture:    ActivationMode.singleTap,
-              animationDuration: 1500,   // 1.5 s de entrada suave (Linear)
-              strokeColor:       Colors.white,
-              strokeWidth:       2,
-            ),
-          ],
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  // Punto de color
+                  Container(
+                    width: 10, height: 10,
+                    decoration: BoxDecoration(
+                        color: d.color, shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: 6),
+                  Text('${d.label}  ',
+                      style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade700)),
+                  Text('${d.value}',
+                      style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                          color: d.color)),
+                  Text('  ($pct%)',
+                      style: GoogleFonts.poppins(
+                          fontSize: 10,
+                          color: Colors.grey.shade500)),
+                ]),
+              ),
+            );
+          }).toList(),
         ),
       ]),
     );
   }
 
-  // ── GRÁFICO DE BARRAS — Syncfusion ColumnSeries ───────────────────────────
+  // ── GRÁFICO DE BARRAS — fl_chart BarChart ────────────────────────────────
 
   Widget _buildBarChart(Color primary) {
     if (_courseRecords.isEmpty) return const SizedBox();
 
-    // Paletas de gradiente por barra: [color oscuro, color claro]
-    // onCreateShader itera sobre esta lista para asignar un gradiente distinto
-    // a cada barra sin necesidad de conocer el índice en ShaderDetails.
+    // Paletas de gradiente: [oscuro, claro] — un par por barra
     const paletasGradiente = [
-      [Color(0xFF1565C0), Color(0xFF90CAF9)], // azul oscuro → celeste
-      [Color(0xFF2E7D32), Color(0xFF81C784)], // verde oscuro → verde claro
-      [Color(0xFF6A1B9A), Color(0xFFCE93D8)], // morado oscuro → lila
-      [Color(0xFFBF360C), Color(0xFFFF8A65)], // naranja oscuro → salmón
-      [Color(0xFF00695C), Color(0xFF80CBC4)], // teal oscuro → teal claro
+      [Color(0xFF1565C0), Color(0xFF90CAF9)], // azul
+      [Color(0xFF2E7D32), Color(0xFF81C784)], // verde
+      [Color(0xFF6A1B9A), Color(0xFFCE93D8)], // morado
+      [Color(0xFFBF360C), Color(0xFFFF8A65)], // naranja
+      [Color(0xFF00695C), Color(0xFF80CBC4)], // teal
     ];
-    // Índice de barra reseteado antes de cada build para que el shader
-    // asigne el gradiente correcto a cada columna en orden.
-    var indiceBarra = 0;
 
-    // Mismo shell que antes — solo se reemplaza el contenido de la gráfica
+    // Valor máximo para calcular la altura del eje Y
+    final maxVal = _courseRecords.fold<double>(0, (m, r) {
+      final v = ((r['countUsers'] ?? r['COUNT(*)'] ?? 0) as num).toDouble();
+      return v > m ? v : m;
+    });
+
+    // Shell: misma tarjeta blanca con sombra que antes
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color:        Colors.white,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(color: Colors.black.withOpacity(0.07),
@@ -724,63 +785,144 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
                 style: GoogleFonts.poppins(
                     fontWeight: FontWeight.w700, fontSize: 15)),
           ]),
-          const SizedBox(height: 8),
+          const SizedBox(height: 20),
 
-          // Barras verticales con gradiente, animación y bordes redondeados
-          SfCartesianChart(
-            plotAreaBackgroundColor: Colors.transparent,
-            plotAreaBorderWidth:     0,
-            // Tooltip sin "Series 0": header vacío + formato personalizado
-            tooltipBehavior: TooltipBehavior(
-              enable:    true,
-              header:    '',   // elimina el encabezado "Series 0" por defecto
-              format:    'point.x\nEstudiantes: point.y',
-              textStyle: GoogleFonts.poppins(fontSize: 12, color: Colors.white),
-              color:     const Color(0xFF1A1A2E),
-            ),
-            // Eje X: nombres de los cursos sin línea de eje
-            primaryXAxis: CategoryAxis(
-              axisLine:       const AxisLine(width: 0),
-              majorGridLines: const MajorGridLines(width: 0),
-              labelStyle:     GoogleFonts.poppins(fontSize: 11),
-            ),
-            // Eje Y oculto para un look más limpio
-            primaryYAxis: NumericAxis(isVisible: false, minimum: 0),
-            series: <CartesianSeries>[
-              ColumnSeries<Map<String, dynamic>, String>(
-                dataSource:        _courseRecords,
-                xValueMapper:      (r, _) => (r['name'] as String?) ?? '',
-                yValueMapper:      (r, _) =>
-                    ((r['countUsers'] ?? r['COUNT(*)'] ?? 0) as num).toDouble(),
-                animationDuration: 1200,   // crece desde abajo en 1.2 s
-                // Barras más delgadas (60 % del ancho disponible)
-                width:             0.6,
-                // Bordes redondeados en la parte superior de cada barra
-                borderRadius:      const BorderRadius.vertical(
-                    top: Radius.circular(10)),
-                // Gradiente oscuro → claro por barra usando paleta indexada.
-                // onCreateShader se invoca una vez por barra; usamos indiceBarra
-                // como contador para asignar el gradiente correcto a cada columna.
-                onCreateShader: (ShaderDetails details) {
-                  final colores = paletasGradiente[
-                      indiceBarra++ % paletasGradiente.length];
-                  return LinearGradient(
-                    colors: colores,
-                    begin:  Alignment.bottomCenter,
-                    end:    Alignment.topCenter,
-                  ).createShader(details.rect);
-                },
-                // Etiqueta del número encima de cada barra
-                dataLabelSettings: DataLabelSettings(
-                  isVisible:      true,
-                  labelAlignment: ChartDataLabelAlignment.top,
-                  textStyle:      GoogleFonts.poppins(
-                      fontWeight: FontWeight.w800,
-                      fontSize:   12,
-                      color:      const Color(0xFF1A1A2E)),
+          // Barras verticales — fl_chart BarChart
+          // AnimatedBuilder usa _chartAnim para que las barras crezcan desde
+          // abajo (toY = valor * progreso de animación 0→1).
+          AnimatedBuilder(
+            animation: _chartAnim,
+            builder: (_, __) => SizedBox(
+              height: 220,
+              child: BarChart(
+                BarChartData(
+                  // Sin grid ni bordes para un look limpio
+                  gridData:   const FlGridData(show: false),
+                  borderData: FlBorderData(show: false),
+                  // Margen superior para que los valores encima no se corten
+                  maxY: (maxVal + 1) * 1.25,
+                  // Tooltip limpio: muestra "Nombre\nN estudiantes"
+                  barTouchData: BarTouchData(
+                    touchTooltipData: BarTouchTooltipData(
+                      getTooltipColor: (_) => const Color(0xFF1A1A2E),
+                      tooltipRoundedRadius: 10,
+                      getTooltipItem: (group, _, rod, __) {
+                        final nombre = (_courseRecords[group.x.toInt()]
+                                ['name'] as String?) ??
+                            '';
+                        final n = rod.toY.toInt();
+                        return BarTooltipItem(
+                          '$nombre\n',
+                          GoogleFonts.poppins(
+                              color:      Colors.white,
+                              fontSize:   12,
+                              fontWeight: FontWeight.w700),
+                          children: [
+                            TextSpan(
+                              text: '$n estudiante${n == 1 ? '' : 's'}',
+                              style: GoogleFonts.poppins(
+                                  color:    Colors.white70,
+                                  fontSize: 11),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                  // Ejes: solo etiqueta de cursos abajo; todo lo demás oculto
+                  titlesData: FlTitlesData(
+                    leftTitles:  const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false)),
+                    rightTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false)),
+                    // Valor del conteo encima de cada barra
+                    topTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles:   true,
+                        reservedSize: 28,
+                        getTitlesWidget: (value, meta) {
+                          final idx = value.toInt();
+                          if (idx >= _courseRecords.length) {
+                            return const SizedBox();
+                          }
+                          final n = ((_courseRecords[idx]['countUsers'] ??
+                                      _courseRecords[idx]['COUNT(*)'] ??
+                                      0) as num)
+                              .toInt();
+                          return Text('$n',
+                              style: GoogleFonts.poppins(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize:   13,
+                                  color: paletasGradiente[
+                                      idx % paletasGradiente.length][0]));
+                        },
+                      ),
+                    ),
+                    // Nombre del curso debajo
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles:   true,
+                        reservedSize: 32,
+                        getTitlesWidget: (value, meta) {
+                          final idx = value.toInt();
+                          if (idx >= _courseRecords.length) {
+                            return const SizedBox();
+                          }
+                          final nombre =
+                              (_courseRecords[idx]['name'] as String?) ?? '';
+                          // Truncar nombres largos
+                          final label = nombre.length > 8
+                              ? '${nombre.substring(0, 7)}…'
+                              : nombre;
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(label,
+                                style: GoogleFonts.poppins(
+                                    fontSize: 11,
+                                    color: Colors.grey.shade600)),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  // Grupos de barras: uno por curso
+                  barGroups: _courseRecords.asMap().entries.map((e) {
+                    final idx = e.key;
+                    final r   = e.value;
+                    final val = ((r['countUsers'] ?? r['COUNT(*)'] ?? 0)
+                            as num)
+                        .toDouble();
+                    final pal = paletasGradiente[idx % paletasGradiente.length];
+                    return BarChartGroupData(
+                      x: idx,
+                      barRods: [
+                        BarChartRodData(
+                          // Animación desde abajo: altura * progreso del controller
+                          toY:          val * _chartAnim.value,
+                          width:        38,
+                          borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(10)),
+                          // Gradiente oscuro → claro de abajo a arriba
+                          gradient: LinearGradient(
+                            colors: pal,
+                            begin:  Alignment.bottomCenter,
+                            end:    Alignment.topCenter,
+                          ),
+                          // Sombra sutil debajo de la barra (efecto glow)
+                          backDrawRodData: BackgroundBarChartRodData(
+                            show:  true,
+                            toY:   (maxVal + 1) * 1.25,
+                            color: Colors.grey.shade100,
+                          ),
+                        ),
+                      ],
+                    );
+                  }).toList(),
                 ),
+                // Animación de swap cuando cambian los datos
+                swapAnimationDuration: const Duration(milliseconds: 400),
               ),
-            ],
+            ),
           ),
         ],
       ),

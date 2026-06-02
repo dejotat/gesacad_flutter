@@ -25,13 +25,8 @@ dependencies:
   # Selección de archivos para entrega de tareas (CU-05)
   file_picker: ^8.0.0
 
-  # Gráficas del dashboard de estadísticas (CU-06/RF05)
+  # Gráficas del dashboard de estadísticas — 100% libre, sin licencias (CU-06/RF05)
   fl_chart: ^0.68.0
-
-  # Gráficas profesionales con animaciones fluidas para el dashboard Admin
-  syncfusion_flutter_charts: ^26.2.14
-  # Requerido para registro de licencia community (gratuita en proyectos < $1M)
-  syncfusion_flutter_core: ^26.2.14
 
   # Formateo de fechas para actividades (RF06, RF07)
   intl: ^0.19.0
