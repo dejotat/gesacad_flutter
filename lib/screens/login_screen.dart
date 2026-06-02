@@ -135,11 +135,15 @@ class _LoginScreenState extends State<LoginScreen>
       if (!mounted) return;
 
       if (res['response'] == 'LOGIN_SUCCESFULLY') {
+        final userId = res['id'] as int;
         await AuthService().saveSession(
-          res['id'] as int,
+          userId,
           res['name'] as String? ?? _userCtrl.text.trim(),
           res['rol'] as String,
         );
+        // Precarga foto y perfil en caché sin bloquear el login.
+        // El home la mostrará en cuanto llegue (~1-2s después de navegar).
+        unawaited(AuthService().fetchAndCachePhoto(userId));
         final rol = res['rol'] as String;
         final Widget home = rol == 'Admin'
             ? const AdminHome()

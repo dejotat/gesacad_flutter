@@ -102,14 +102,41 @@ class ActivityModel {
     );
   }
 
-  /// Indica si el plazo de entrega ya venció.
-  ///
-  /// Compara la fecha actual con [closingDate] para bloquear nuevas entregas (CU-05).
-  /// Si la fecha no puede parsearse, retorna `false` para no bloquear injustamente.
+  /// Convierte una fecha del backend (UTC con sufijo Z o sin él) a hora Colombia (UTC-5).
+  /// El backend guarda en UTC; para mostrar en Colombia restamos 5 horas.
+  static DateTime parseFecha(String s) {
+    final limpia = s.trim();
+    // Si tiene sufijo Z o +00:00 → es UTC explícito
+    if (limpia.endsWith('Z') || limpia.contains('+')) {
+      return DateTime.parse(limpia).toLocal().subtract(
+        DateTime.parse(limpia).toLocal().timeZoneOffset -
+        const Duration(hours: -5),  // UTC-5 Colombia
+      );
+    }
+    // Sin sufijo → Railway lo guardó en UTC sin indicarlo; tratarlo igual
+    return DateTime.parse('${limpia}Z').subtract(const Duration(hours: 0))
+        .toUtc().add(const Duration(hours: 0));
+  }
+
+  /// Convierte fecha del backend a Colombia restando offset del dispositivo y ajustando a UTC-5.
+  static DateTime toCol(String s) {
+    try {
+      final raw = s.trim();
+      // Parsear como UTC (con o sin Z)
+      final utc = raw.endsWith('Z') ? DateTime.parse(raw) : DateTime.parse('${raw}Z');
+      // Colombia es UTC-5
+      return utc.subtract(const Duration(hours: 5));
+    } catch (_) {
+      return DateTime.now();
+    }
+  }
+
+  /// Indica si el plazo de entrega ya venció (comparado en hora Colombia).
   bool get isPastDue {
     try {
-      final closing = DateTime.parse(closingDate);
-      return DateTime.now().isAfter(closing);
+      final closing = toCol(closingDate);
+      final nowCol  = DateTime.now().toUtc().subtract(const Duration(hours: 5));
+      return nowCol.isAfter(closing);
     } catch (_) {
       return false;
     }

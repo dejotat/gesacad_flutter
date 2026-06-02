@@ -43,6 +43,8 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
   int _week = 1;
   DateTime _startDate = DateTime.now();
   DateTime _closeDate = DateTime.now().add(const Duration(days: 7));
+  // Hora de apertura — por defecto 00:00 (disponible desde el inicio del día).
+  TimeOfDay _startTime = const TimeOfDay(hour: 0, minute: 0);
   // Hora de cierre — por defecto 11:59 PM para dar el día completo al estudiante.
   TimeOfDay _closeTime = const TimeOfDay(hour: 23, minute: 59);
   bool _loading = false;
@@ -124,6 +126,20 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
     }
   }
 
+  /// Abre el selector de hora para la fecha de inicio.
+  Future<void> _pickStartTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _startTime,
+      helpText: 'Hora de apertura de la actividad',
+      builder: (ctx, child) => MediaQuery(
+        data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: false),
+        child: child!,
+      ),
+    );
+    if (picked != null) setState(() => _startTime = picked);
+  }
+
   /// Abre el selector de hora para la fecha de cierre.
   Future<void> _pickCloseTime() async {
     final picked = await showTimePicker(
@@ -138,9 +154,10 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
     if (picked != null) setState(() => _closeTime = picked);
   }
 
-  /// Formatea fecha de inicio: 'YYYY-MM-DDTHH:mm' con hora 00:00.
-  String _formatStartDate(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}T00:00';
+  /// Formatea fecha de inicio con la hora elegida por el profesor.
+  String _formatStartDate(DateTime d, TimeOfDay t) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}'
+      'T${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
   /// Formatea fecha de cierre con la hora elegida por el profesor.
   String _formatCloseDate(DateTime d, TimeOfDay t) =>
@@ -180,11 +197,18 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
       return;
     }
 
-    // CA-06b: fecha de cierre debe ser posterior o igual a la de inicio.
-    if (_closeDate.isBefore(_startDate)) {
+    // CA-06b: el cierre completo (fecha+hora) debe ser posterior al inicio completo (fecha+hora).
+    final inicioCompleto = DateTime(
+      _startDate.year, _startDate.month, _startDate.day,
+      _startTime.hour, _startTime.minute,
+    );
+    final cierreCompleto = DateTime(
+      _closeDate.year, _closeDate.month, _closeDate.day,
+      _closeTime.hour, _closeTime.minute,
+    );
+    if (!cierreCompleto.isAfter(inicioCompleto)) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content:
-              Text('La fecha de cierre debe ser posterior a la de inicio'),
+          content: Text('La fecha y hora de cierre deben ser posteriores a las de inicio'),
           backgroundColor: Colors.red));
       return;
     }
@@ -197,7 +221,7 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
         tittle: _titleCtrl.text.trim(),
         description: _descCtrl.text.trim(),
         weighting: weight / 100,
-        startDate:   _formatStartDate(_startDate),
+        startDate:   _formatStartDate(_startDate, _startTime),
         closingDate: _formatCloseDate(_closeDate, _closeTime),
         courseId: widget.courseId,
         teacherId: widget.teacherId,
@@ -435,18 +459,35 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
               child: Column(
                 children: [
                   Semantics(
-                    label:
-                        'Fecha de inicio: ${_startDate.day.toString().padLeft(2, '0')}/${_startDate.month.toString().padLeft(2, '0')}/${_startDate.year}',
-                    hint: 'Toca dos veces para cambiar la fecha de inicio',
-                    button: true,
+                    label: 'Fecha de inicio con hora',
+                    hint: 'Toca fecha u hora para cambiarlas',
                     child: ListTile(
-                      leading: const Icon(Icons.event_available,
-                          color: Colors.green),
+                      leading: const Icon(Icons.event_available, color: Colors.green),
                       title: const Text('Fecha de inicio'),
                       subtitle: Text(
-                          '${_startDate.day.toString().padLeft(2, '0')}/${_startDate.month.toString().padLeft(2, '0')}/${_startDate.year}'),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () => _pickDate(true),
+                        '${_startDate.day.toString().padLeft(2, '0')}/'
+                        '${_startDate.month.toString().padLeft(2, '0')}/'
+                        '${_startDate.year}  —  '
+                        '${_startTime.hour.toString().padLeft(2, '0')}:'
+                        '${_startTime.minute.toString().padLeft(2, '0')}',
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            tooltip: 'Cambiar fecha',
+                            icon: const Icon(Icons.calendar_today_rounded,
+                                color: Colors.green, size: 20),
+                            onPressed: () => _pickDate(true),
+                          ),
+                          IconButton(
+                            tooltip: 'Cambiar hora',
+                            icon: const Icon(Icons.access_time_rounded,
+                                color: Colors.green, size: 20),
+                            onPressed: _pickStartTime,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   const Divider(height: 1),

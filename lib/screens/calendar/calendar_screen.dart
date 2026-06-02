@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -62,12 +63,16 @@ class CalendarEvent {
   final EventType type;
   final String? description;
   final String? course;
+  final String? hora;        // HH:mm — solo para recordatorios personales
+  final bool isReminder;     // true = recordatorio personal del usuario
 
   const CalendarEvent({
     required this.title,
     required this.type,
     this.description,
     this.course,
+    this.hora,
+    this.isReminder = false,
   });
 }
 
@@ -85,6 +90,7 @@ class _CalendarScreenState extends State<CalendarScreen>
   DateTime _selected = DateTime.now();
   CalendarFormat _format = CalendarFormat.month;
   bool _loading = false;
+  int _userId = 0;
 
   // Mapa de eventos: fecha → lista de eventos
   late Map<DateTime, List<CalendarEvent>> _events;
@@ -99,8 +105,8 @@ class _CalendarScreenState extends State<CalendarScreen>
     _cardAnim = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 400));
     _cardFade = CurvedAnimation(parent: _cardAnim, curve: Curves.easeOut);
-    _events   = _buildDefaultEvents();
-    _loadActivitiesFromBackend();
+    _events = _buildDefaultEvents();
+    _initCalendar();
     _cardAnim.forward();
   }
 
@@ -110,9 +116,255 @@ class _CalendarScreenState extends State<CalendarScreen>
     super.dispose();
   }
 
-  /// Punto de partida vacío: los eventos reales los carga
-  /// [_loadActivitiesFromBackend] desde el servidor.
-  Map<DateTime, List<CalendarEvent>> _buildDefaultEvents() => {};
+  /// Inicia el calendario: carga userId, recordatorios, festivos y actividades.
+  Future<void> _initCalendar() async {
+    final prefs = await SharedPreferences.getInstance();
+    _userId = prefs.getInt('userId') ?? 0;
+    // Festivos siempre visibles (sin red)
+    final base = _festivosColombia();
+    if (mounted) setState(() => _events = base);
+    // Recordatorios del usuario actual
+    await _loadRecordatorios();
+    // Actividades del backend
+    await _loadActivitiesFromBackend();
+  }
+
+  /// Festivos oficiales de Colombia 2026 — hardcoded, no requieren conexión.
+  Map<DateTime, List<CalendarEvent>> _festivosColombia() {
+    final lista = {
+      DateTime(2026,  1,  1): 'Año Nuevo',
+      DateTime(2026,  1, 12): 'Reyes Magos',
+      DateTime(2026,  3, 23): 'Día de San José',
+      DateTime(2026,  4,  2): 'Jueves Santo',
+      DateTime(2026,  4,  3): 'Viernes Santo',
+      DateTime(2026,  5,  1): 'Día del Trabajo',
+      DateTime(2026,  5, 18): 'Ascensión del Señor',
+      DateTime(2026,  6,  8): 'Corpus Christi',
+      DateTime(2026,  6, 29): 'San Pedro y San Pablo',
+      DateTime(2026,  7, 20): 'Independencia de Colombia',
+      DateTime(2026,  8,  7): 'Batalla de Boyacá',
+      DateTime(2026,  8, 17): 'Asunción de la Virgen',
+      DateTime(2026, 10, 12): 'Día de la Raza',
+      DateTime(2026, 11,  2): 'Todos los Santos',
+      DateTime(2026, 11, 16): 'Independencia de Cartagena',
+      DateTime(2026, 12,  8): 'Inmaculada Concepción',
+      DateTime(2026, 12, 25): 'Navidad',
+    };
+    return {
+      for (final e in lista.entries)
+        _norm(e.key): [CalendarEvent(
+          title: e.value,
+          type: EventType.holiday,
+          description: 'Festivo oficial Colombia 2026',
+        )],
+    };
+  }
+
+  // ── Recordatorios personales ──────────────────────────────────────────────
+
+  /// Carga los recordatorios del usuario actual desde SharedPreferences.
+  /// Clave aislada por userId → cada usuario ve solo los suyos.
+  Future<void> _loadRecordatorios() async {
+    if (_userId == 0) return;
+    final prefs = await SharedPreferences.getInstance();
+    final raw   = prefs.getString('recordatorios_$_userId') ?? '[]';
+    final lista = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
+    for (final r in lista) {
+      final fecha = _norm(DateTime.parse(r['fecha'] as String));
+      final ev = CalendarEvent(
+        title:      r['titulo'] as String,
+        type:       EventType.notification,
+        description: r['hora'] as String?,
+        hora:       r['hora'] as String?,
+        isReminder: true,
+      );
+      if (mounted) {
+        setState(() => _events.putIfAbsent(fecha, () => []).add(ev));
+      }
+    }
+  }
+
+  /// Guarda un recordatorio nuevo en SharedPreferences y lo agrega al mapa.
+  Future<void> _saveRecordatorio(String titulo, String hora) async {
+    if (_userId == 0 || titulo.trim().isEmpty) return;
+    final prefs  = await SharedPreferences.getInstance();
+    final clave  = 'recordatorios_$_userId';
+    final raw    = prefs.getString(clave) ?? '[]';
+    final lista  = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
+    final fechaStr = '${_selected.year}-'
+        '${_selected.month.toString().padLeft(2,'0')}-'
+        '${_selected.day.toString().padLeft(2,'0')}';
+    lista.add({'titulo': titulo.trim(), 'hora': hora, 'fecha': fechaStr});
+    await prefs.setString(clave, jsonEncode(lista));
+
+    final ev = CalendarEvent(
+      title:      titulo.trim(),
+      type:       EventType.notification,
+      description: hora,
+      hora:       hora,
+      isReminder: true,
+    );
+    if (mounted) {
+      setState(() => _events.putIfAbsent(_norm(_selected), () => []).add(ev));
+    }
+  }
+
+  /// Elimina un recordatorio por título y fecha desde SharedPreferences y el mapa.
+  Future<void> _eliminarRecordatorio(CalendarEvent ev) async {
+    if (_userId == 0) return;
+    final prefs  = await SharedPreferences.getInstance();
+    final clave  = 'recordatorios_$_userId';
+    final raw    = prefs.getString(clave) ?? '[]';
+    final lista  = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
+    final fechaStr = '${_selected.year}-'
+        '${_selected.month.toString().padLeft(2,'0')}-'
+        '${_selected.day.toString().padLeft(2,'0')}';
+    lista.removeWhere((r) =>
+        r['titulo'] == ev.title &&
+        r['fecha']  == fechaStr &&
+        r['hora']   == ev.hora);
+    await prefs.setString(clave, jsonEncode(lista));
+
+    if (mounted) {
+      setState(() {
+        final key = _norm(_selected);
+        _events[key]?.removeWhere((e) =>
+            e.isReminder && e.title == ev.title && e.hora == ev.hora);
+        if (_events[key]?.isEmpty == true) _events.remove(key);
+      });
+    }
+  }
+
+  /// Modal para agregar un recordatorio personal en la fecha seleccionada.
+  void _mostrarModalRecordatorio() {
+    final tituloCtrl = TextEditingController();
+    String horaSeleccionada = TimeOfDay.now().format(context);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModal) => Padding(
+          padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Handle
+                Center(child: Container(
+                  width: 40, height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                )),
+                Text('Nuevo recordatorio',
+                    style: GoogleFonts.poppins(
+                        fontSize: 17, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                Text(
+                  '${_selected.day.toString().padLeft(2,'0')}/'
+                  '${_selected.month.toString().padLeft(2,'0')}/'
+                  '${_selected.year}',
+                  style: GoogleFonts.poppins(
+                      fontSize: 12, color: Colors.grey.shade500)),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: tituloCtrl,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    hintText: 'Ej: Entregar tesis, Reunión, Examen...',
+                    hintStyle: GoogleFonts.poppins(fontSize: 13),
+                    prefixIcon: const Icon(Icons.notifications_rounded,
+                        color: Color(0xFF0097A7)),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(
+                          color: Color(0xFF0097A7), width: 2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                // Selector de hora
+                InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () async {
+                    final picked = await showTimePicker(
+                      context: ctx,
+                      initialTime: TimeOfDay.now(),
+                      helpText: 'Hora del recordatorio',
+                    );
+                    if (picked != null) {
+                      setModal(() {
+                        horaSeleccionada =
+                            '${picked.hour.toString().padLeft(2,'0')}:'
+                            '${picked.minute.toString().padLeft(2,'0')}';
+                      });
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(children: [
+                      const Icon(Icons.access_time_rounded,
+                          color: Color(0xFF0097A7), size: 20),
+                      const SizedBox(width: 10),
+                      Text('Hora: $horaSeleccionada',
+                          style: GoogleFonts.poppins(fontSize: 13)),
+                      const Spacer(),
+                      Icon(Icons.edit_rounded,
+                          size: 16, color: Colors.grey.shade400),
+                    ]),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      if (tituloCtrl.text.trim().isEmpty) return;
+                      Navigator.pop(ctx);
+                      _saveRecordatorio(tituloCtrl.text, horaSeleccionada);
+                    },
+                    icon: const Icon(Icons.save_rounded),
+                    label: Text('Guardar recordatorio',
+                        style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.w700)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF0097A7),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Punto de partida: festivos visibles desde el primer frame.
+  Map<DateTime, List<CalendarEvent>> _buildDefaultEvents() =>
+      _festivosColombia();
 
   // ── Mapa de tipo de actividad → EventType del calendario ─────────────────
 
@@ -202,16 +454,17 @@ class _CalendarScreenState extends State<CalendarScreen>
         }
       }
 
-      // Actualizar la interfaz con los eventos reales
+      // Mezclar actividades con festivos y recordatorios ya cargados
+      // (no reemplazar _events entero para no perder festivos ni recordatorios)
       if (mounted) {
         setState(() {
-          _events  = nuevosMapa;
+          for (final entry in nuevosMapa.entries) {
+            _events.putIfAbsent(entry.key, () => []).addAll(entry.value);
+          }
           _loading = false;
         });
       }
     } catch (_) {
-      // Si falla la carga (sin conexión, error del servidor, etc.)
-      // se muestra el calendario vacío sin bloquear la pantalla.
       if (mounted) setState(() => _loading = false);
     }
   }
@@ -546,6 +799,24 @@ class _CalendarScreenState extends State<CalendarScreen>
                   color: Colors.white, fontSize: 10,
                   fontWeight: FontWeight.w700)),
         ),
+      const SizedBox(width: 8),
+      // Botón para agregar recordatorio personal en el día seleccionado
+      Tooltip(
+        message: 'Agregar recordatorio',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: _mostrarModalRecordatorio,
+          child: Container(
+            padding: const EdgeInsets.all(7),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0097A7).withOpacity(0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.add_alert_rounded,
+                color: Color(0xFF0097A7), size: 20),
+          ),
+        ),
+      ),
     ]);
   }
 
@@ -641,7 +912,16 @@ class _CalendarScreenState extends State<CalendarScreen>
                 ],
               ),
             )),
-            const SizedBox(width: 14),
+            // Botón eliminar — solo visible en recordatorios personales
+            if (ev.isReminder)
+              IconButton(
+                tooltip: 'Eliminar recordatorio',
+                icon: Icon(Icons.delete_outline_rounded,
+                    color: Colors.red.shade300, size: 20),
+                onPressed: () => _eliminarRecordatorio(ev),
+              )
+            else
+              const SizedBox(width: 14),
           ]),
         ),
       ),

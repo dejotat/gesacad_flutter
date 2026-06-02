@@ -77,6 +77,14 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  Future<void> _reloadPhoto() async {
+    final prefs   = await SharedPreferences.getInstance();
+    final photoB64 = prefs.getString('profile_photo') ?? '';
+    if (photoB64.isNotEmpty && mounted) {
+      try { setState(() => _photoBytes = base64Decode(photoB64)); } catch (_) {}
+    }
+  }
+
   // ── Carga de datos ────────────────────────────────────────────────────────
 
   Future<void> _loadData() async {
@@ -91,9 +99,15 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
     }
 
     try {
-      final qty     = await ApiService().getQuantityUsers();
-      final records = await ApiService().getQuantityRecords();
+      // Llamadas en paralelo — reduce tiempo de carga a la más lenta (no la suma)
+      final results = await Future.wait([
+        ApiService().getQuantityUsers(),
+        ApiService().getQuantityRecords(),
+      ]);
       if (!mounted) return;
+
+      final qty     = results[0];
+      final records = results[1];
 
       _totalStudents = 0; _totalTeachers = 0; _totalAdmins = 0;
       for (final u in (qty['numberOfUsers'] as List)) {
@@ -103,8 +117,6 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
         if (rol == 'Teacher') _totalTeachers = count;
         if (rol == 'Admin')   _totalAdmins   = count;
       }
-
-      // El campo es 'countUsers' (no COUNT(*))
       _courseRecords = List<Map<String, dynamic>>.from(
           records['numberOfRecords'] ?? []);
     } catch (_) {}
@@ -113,6 +125,8 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
       setState(() => _loading = false);
       _entryCtrl.forward(from: 0);
       _chartAnim.forward(from: 0);
+      // Si fetchAndCachePhoto aún no terminó al llegar aquí, re-intentar en 2s
+      Future.delayed(const Duration(seconds: 2), _reloadPhoto);
     }
   }
 
@@ -237,7 +251,8 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
               ? CircleAvatar(backgroundImage: MemoryImage(_photoBytes!), radius: 14)
               : const Icon(Icons.account_circle_rounded, color: Colors.white),
           onPressed: () => Navigator.push(context,
-              MaterialPageRoute(builder: (_) => const ProfileScreen())),
+              MaterialPageRoute(builder: (_) => const ProfileScreen()))
+              .then((_) => _reloadPhoto()),
         ),
         PopupMenuButton<String>(
           icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
@@ -617,20 +632,26 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
                   // Al tocar una sección se expande hacia afuera
                   pieTouchData: PieTouchData(
                     touchCallback: (FlTouchEvent event, PieTouchResponse? res) {
+                      // Bug 2: responder a tap simple Y long press en móvil
+                      if (event is! FlTapUpEvent &&
+                          event is! FlTapDownEvent &&
+                          !event.isInterestedForInteractions) {
+                        return;
+                      }
                       setState(() {
-                        if (!event.isInterestedForInteractions ||
-                            res == null ||
-                            res.touchedSection == null) {
+                        if (res?.touchedSection == null) {
                           _touchedPieIndex = null;
                           return;
                         }
+                        final idx = res!.touchedSection!.touchedSectionIndex;
+                        // Toggle: tocar la misma sección la deselecciona
                         _touchedPieIndex =
-                            res.touchedSection!.touchedSectionIndex;
+                            _touchedPieIndex == idx ? null : idx;
                       });
                     },
                   ),
-                  centerSpaceRadius: 58,   // tamaño del hueco central
-                  sectionsSpace:     3,    // separador blanco entre secciones
+                  centerSpaceRadius: 58,
+                  sectionsSpace: 4, // Bug 1: solo sectionsSpace, sin borderSide
                   sections: datos.asMap().entries.map((e) {
                     final i      = e.key;
                     final d      = e.value;
@@ -642,14 +663,13 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
                       value:       d.value.toDouble(),
                       color:       d.color,
                       // Sección tocada: radio mayor para efecto "explode"
-                      radius:      tocada ? 72 : 60,
-                      // Mostrar porcentaje dentro de la sección tocada
-                      title:       tocada ? '$pct%' : '',
-                      titleStyle:  GoogleFonts.poppins(
+                      radius:     tocada ? 72 : 60,
+                      title:      tocada ? '$pct%' : '',
+                      titleStyle: GoogleFonts.poppins(
                           fontSize: 13, fontWeight: FontWeight.w700,
                           color: Colors.white),
-                      borderSide:  const BorderSide(
-                          color: Colors.white, width: 2),
+                      // Bug 1: sin borderSide — sectionsSpace:4 es suficiente
+                      // para separar secciones sin artefactos pixelados
                     );
                   }).toList(),
                 ),
@@ -790,11 +810,17 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
           // Barras verticales — fl_chart BarChart
           // AnimatedBuilder usa _chartAnim para que las barras crezcan desde
           // abajo (toY = valor * progreso de animación 0→1).
+          // Bug 3: scroll horizontal — cada curso ocupa mínimo 90px de ancho
           AnimatedBuilder(
             animation: _chartAnim,
-            builder: (_, __) => SizedBox(
-              height: 220,
-              child: BarChart(
+            builder: (_, __) => LayoutBuilder(
+              builder: (_, constraints) => SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: SizedBox(
+                  width: math.max(
+                      _courseRecords.length * 90.0, constraints.maxWidth),
+                  height: 260, // más alto para acomodar nombres en 2 líneas
+                  child: BarChart(
                 BarChartData(
                   // Sin grid ni bordes para un look limpio
                   gridData:   const FlGridData(show: false),
@@ -803,6 +829,9 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
                   maxY: (maxVal + 1) * 1.25,
                   // Tooltip limpio: muestra "Nombre\nN estudiantes"
                   barTouchData: BarTouchData(
+                    // Bug 2: habilitar tooltip en tap simple (no solo long press)
+                    handleBuiltInTouches: true,
+                    enabled: true,
                     touchTooltipData: BarTouchTooltipData(
                       getTooltipColor: (_) => const Color(0xFF1A1A2E),
                       tooltipRoundedRadius: 10,
@@ -858,11 +887,11 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
                         },
                       ),
                     ),
-                    // Nombre del curso debajo
+                    // Bug 3: nombre completo en 2 líneas, sin truncar
                     bottomTitles: AxisTitles(
                       sideTitles: SideTitles(
                         showTitles:   true,
-                        reservedSize: 32,
+                        reservedSize: 52,
                         getTitlesWidget: (value, meta) {
                           final idx = value.toInt();
                           if (idx >= _courseRecords.length) {
@@ -870,16 +899,17 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
                           }
                           final nombre =
                               (_courseRecords[idx]['name'] as String?) ?? '';
-                          // Truncar nombres largos
-                          final label = nombre.length > 8
-                              ? '${nombre.substring(0, 7)}…'
-                              : nombre;
                           return Padding(
-                            padding: const EdgeInsets.only(top: 6),
-                            child: Text(label,
-                                style: GoogleFonts.poppins(
-                                    fontSize: 11,
-                                    color: Colors.grey.shade600)),
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              nombre,
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.poppins(
+                                  fontSize: 10,
+                                  color: Colors.grey.shade600),
+                            ),
                           );
                         },
                       ),
@@ -899,7 +929,7 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
                         BarChartRodData(
                           // Animación desde abajo: altura * progreso del controller
                           toY:          val * _chartAnim.value,
-                          width:        38,
+                          width:        50, // Bug 3: barras más anchas y visibles
                           borderRadius: const BorderRadius.vertical(
                               top: Radius.circular(10)),
                           // Gradiente oscuro → claro de abajo a arriba
@@ -921,9 +951,11 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
                 ),
                 // Animación de swap cuando cambian los datos
                 swapAnimationDuration: const Duration(milliseconds: 400),
-              ),
-            ),
-          ),
+              ),             // cierra BarChart
+                ),           // cierra SizedBox
+              ),             // cierra SingleChildScrollView
+            ),               // cierra LayoutBuilder builder
+          ),                 // cierra AnimatedBuilder
         ],
       ),
     );

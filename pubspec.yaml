@@ -14,6 +14,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
   cupertino_icons: ^1.0.6
 
   # HTTP para llamadas REST al backend Node.js (RF01–RF15)
@@ -29,7 +31,7 @@ dependencies:
   fl_chart: ^0.68.0
 
   # Formateo de fechas para actividades (RF06, RF07)
-  intl: ^0.19.0
+  intl: 0.20.2
 
   # Tipografía institucional (Poppins, Nunito)
   google_fonts: ^6.2.1

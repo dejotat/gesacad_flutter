@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
 import '../models/user_model.dart';
 import '../models/course_model.dart';
@@ -28,8 +30,69 @@ class ApiService {
   /// URL base del backend leída desde [ApiConfig].
   final String _base = ApiConfig.baseUrl;
 
-  /// Timeout estándar para todas las peticiones al backend (10 segundos).
-  static const _timeout = Duration(seconds: 10);
+  // Mejora 2: timeout aumentado a 30s para soportar cold start de Railway
+  static const _timeout = Duration(seconds: 30);
+
+  // Caché en memoria (TTL 5 min) para datos que cambian poco.
+  static final Map<String, _CacheEntry> _cache = {};
+  static const _cacheTtl = Duration(minutes: 5);
+
+  // Mejora 4: wrapper genérico de retry para cualquier petición HTTP.
+  // Reintenta 1 vez tras 2s si falla por timeout o error de red.
+  // NO usar en mutaciones (POST/DELETE/PUT) para evitar duplicados.
+  Future<http.Response> _conRetry(Future<http.Response> Function() fn) async {
+    for (int i = 0; i < 2; i++) {
+      try {
+        return await fn();
+      } on TimeoutException {
+        if (i == 1) rethrow;
+        await Future.delayed(const Duration(seconds: 2));
+      } catch (e) {
+        if (i == 1) rethrow;
+        await Future.delayed(const Duration(seconds: 2));
+      }
+    }
+    throw Exception('Sin conexión al servidor');
+  }
+
+  /// Realiza un GET con retry (alias de _conRetry para compatibilidad).
+  Future<http.Response> _getConRetry(Uri uri) =>
+      _conRetry(() => http.get(uri).timeout(_timeout));
+
+  // Mejora 5: despierta el servidor Railway silenciosamente al abrir la app.
+  Future<void> ping() async {
+    try {
+      await http.get(Uri.parse('$_base/health'))
+          .timeout(const Duration(seconds: 8));
+    } catch (_) {} // silencioso — solo despierta el dyno
+  }
+
+  // Mejora 1: helpers para caché persistente en SharedPreferences.
+  Future<void> _guardarEnPrefs(String key, String json) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('apicache_$key', json);
+    } catch (_) {}
+  }
+
+  Future<String?> _leerDePrefs(String key) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString('apicache_$key');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Invalida todas las entradas de caché (memoria + SharedPreferences).
+  Future<void> invalidarCache() async {
+    _cache.clear();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final keys  = prefs.getKeys().where((k) => k.startsWith('apicache_'));
+      for (final k in keys) { await prefs.remove(k); }
+    } catch (_) {}
+  }
 
   // ---------------------------------------------------------------------------
   // RF01 — Autenticación
@@ -53,7 +116,8 @@ class ApiService {
       name: 'GESACAD.Auth',
     );
 
-    final res = await http.get(uri).timeout(_timeout);
+    // Mejora 4: retry en login — crítico para el primer cold start de Railway
+    final res = await _conRetry(() => http.get(uri).timeout(_timeout));
 
     developer.log(
       '[ApiService] login response → statusCode=${res.statusCode} '
@@ -156,19 +220,54 @@ class ApiService {
   /// Aplica deduplicación por courseId para evitar cursos repetidos cuando
   /// el backend retorna múltiples filas del mismo curso por un JOIN.
   Future<List<CourseModel>> getMyCourses(int userId) async {
-    final res = await http
-        .get(Uri.parse('$_base${ApiConfig.getMyCourses}/$userId'))
-        .timeout(_timeout);
-    final list = jsonDecode(res.body) as List;
-    final seen = <int>{};
-    final result = <CourseModel>[];
-    for (final c in list) {
-      final model = CourseModel.fromJson(c as Map<String, dynamic>);
-      if (seen.add(model.id)) {
-        result.add(model);
-      }
+    final key = 'courses_$userId';
+
+    // 1. Memoria (< 5 min) — más rápido
+    final mem = _cache[key];
+    if (mem != null && !mem.expired) return mem.data as List<CourseModel>;
+
+    // 2. Mejora 1: SharedPreferences (sesión anterior) — respuesta inmediata
+    List<CourseModel>? prefsData;
+    final prefsJson = await _leerDePrefs(key);
+    if (prefsJson != null) {
+      try {
+        final lista = jsonDecode(prefsJson) as List;
+        prefsData = lista
+            .map((c) => CourseModel.fromJson(c as Map<String, dynamic>))
+            .toList();
+        // Cargar en memoria para peticiones siguientes
+        _cache[key] = _CacheEntry(prefsData);
+      } catch (_) {}
     }
-    return result;
+
+    // 3. Backend en background — actualiza caché sin bloquear si ya hay datos
+    Future<List<CourseModel>> fetchFromBackend() async {
+      final res  = await _getConRetry(Uri.parse('$_base${ApiConfig.getMyCourses}/$userId'));
+      final list = jsonDecode(res.body) as List;
+      final seen = <int>{};
+      final result = <CourseModel>[];
+      for (final c in list) {
+        final model = CourseModel.fromJson(c as Map<String, dynamic>);
+        if (seen.add(model.id)) result.add(model);
+      }
+      _cache[key] = _CacheEntry(result);
+      // Persistir para próxima apertura de app
+      await _guardarEnPrefs(key,
+          jsonEncode(result.map((c) => {
+            'id': c.id, 'name': c.name, 'courseCode': c.courseCode,
+            'imgCourse': c.imgCourse,
+          }).toList()));
+      return result;
+    }
+
+    // Si hay datos en prefs, actualizar en background y retornar los cacheados
+    if (prefsData != null) {
+      unawaited(fetchFromBackend().catchError((_) => <CourseModel>[]));
+      return prefsData;
+    }
+
+    // Sin caché: esperar respuesta del backend
+    return fetchFromBackend();
   }
 
   /// Obtiene TODOS los cursos del sistema (solo Admin).
@@ -177,9 +276,9 @@ class ApiService {
   /// Si el endpoint no existe, retorna lista vacía sin lanzar excepción.
   Future<List<CourseModel>> getAllCourses() async {
     try {
-      final res = await http
+      final res = await _conRetry(() => http
           .get(Uri.parse('$_base${ApiConfig.getAllCourses}'))
-          .timeout(_timeout);
+          .timeout(_timeout));
       if (res.statusCode != 200) return [];
       final decoded = jsonDecode(res.body);
       if (decoded is! List) return [];
@@ -207,6 +306,7 @@ class ApiService {
     final uri = Uri.parse(
         '$_base${ApiConfig.addCourse}/${Uri.encodeComponent(name)}/${Uri.encodeComponent(courseCode)}/${Uri.encodeComponent(participantsStr)}/$teacherId');
     final res = await http.get(uri).timeout(_timeout);
+    invalidarCache(); // Los cursos cambiaron
     return jsonDecode(res.body).toString();
   }
 
@@ -215,6 +315,7 @@ class ApiService {
     final res = await http
         .delete(Uri.parse('$_base${ApiConfig.deleteCourse}/$courseId'))
         .timeout(_timeout);
+    invalidarCache(); // Los cursos cambiaron
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     return data['message']?.toString() ?? data.toString();
   }
@@ -226,6 +327,7 @@ class ApiService {
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'id': id, 'name': name, 'code': code}),
     );
+    invalidarCache(); // Los cursos cambiaron
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     return data['message']?.toString() ?? data.toString();
   }
@@ -236,13 +338,40 @@ class ApiService {
 
   /// Obtiene todas las actividades de un curso (CU-04 / RF06).
   Future<List<ActivityModel>> getActivities(int courseId) async {
-    final res = await http
-        .get(Uri.parse('$_base${ApiConfig.getActivities}/$courseId'))
-        .timeout(_timeout);
-    final list = jsonDecode(res.body) as List;
-    return list
-        .map((a) => ActivityModel.fromJson(a as Map<String, dynamic>))
-        .toList();
+    final key = 'acts_$courseId';
+
+    // 1. Memoria
+    final mem = _cache[key];
+    if (mem != null && !mem.expired) return mem.data as List<ActivityModel>;
+
+    // 2. Mejora 1: SharedPreferences — respuesta inmediata con datos anteriores
+    List<ActivityModel>? prefsData;
+    final prefsJson = await _leerDePrefs(key);
+    if (prefsJson != null) {
+      try {
+        final lista = jsonDecode(prefsJson) as List;
+        prefsData = lista
+            .map((a) => ActivityModel.fromJson(a as Map<String, dynamic>))
+            .toList();
+        _cache[key] = _CacheEntry(prefsData);
+      } catch (_) {}
+    }
+
+    Future<List<ActivityModel>> fetchFromBackend() async {
+      final res    = await _getConRetry(Uri.parse('$_base${ApiConfig.getActivities}/$courseId'));
+      final list   = jsonDecode(res.body) as List;
+      final result = list.map((a) => ActivityModel.fromJson(a as Map<String, dynamic>)).toList();
+      _cache[key]  = _CacheEntry(result);
+      await _guardarEnPrefs(key, res.body); // guardar JSON original del backend
+      return result;
+    }
+
+    if (prefsData != null) {
+      unawaited(fetchFromBackend().catchError((_) => <ActivityModel>[]));
+      return prefsData;
+    }
+
+    return fetchFromBackend();
   }
 
   /// Obtiene el detalle de una actividad con el estado de entrega del estudiante.
@@ -255,7 +384,8 @@ class ApiService {
     final path = userId != null
         ? '$_base${ApiConfig.getActivityContent}/$activityId/$userId/$userRol'
         : '$_base${ApiConfig.getActivityContent}/$activityId/$userRol';
-    final res = await http.get(Uri.parse(path)).timeout(_timeout);
+    // Mejora 4: retry — actividad es crítica para el flujo del estudiante
+    final res = await _conRetry(() => http.get(Uri.parse(path)).timeout(_timeout));
     final list = jsonDecode(res.body) as List;
     if (list.isEmpty) return null;
     return ActivityModel.fromJson(list[0] as Map<String, dynamic>);
@@ -307,12 +437,11 @@ class ApiService {
 
     final respuesta = await request.send().timeout(_timeout);
 
-    // Si el servidor rechaza la solicitud, lanzar excepción para que la UI
-    // muestre el error en lugar de mostrar éxito falso.
     if (respuesta.statusCode < 200 || respuesta.statusCode >= 300) {
       throw Exception(
           'El servidor rechazó la creación de la actividad (código ${respuesta.statusCode})');
     }
+    invalidarCache(); // Las actividades del curso cambiaron
   }
 
   /// Elimina una actividad existente.
@@ -322,6 +451,7 @@ class ApiService {
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'activityId': activityId, 'courseId': courseId}),
     );
+    _cache.remove('acts_$courseId'); // Solo invalida ese curso
   }
 
   // ---------------------------------------------------------------------------
@@ -394,9 +524,10 @@ class ApiService {
 
   /// Obtiene todas las entregas (resoluciones) de una actividad para calificar.
   Future<List<Map<String, dynamic>>> getResolutions(int activityId) async {
-    final res = await http
+    // Mejora 4: retry — crítico para que el profesor vea entregas
+    final res = await _conRetry(() => http
         .get(Uri.parse('$_base${ApiConfig.getResolutions}/$activityId'))
-        .timeout(_timeout);
+        .timeout(_timeout));
     return List<Map<String, dynamic>>.from(jsonDecode(res.body) as List);
   }
 
@@ -636,6 +767,7 @@ class ApiService {
     String? telefono,
     String? bio,
     String? emailPersonal,
+    String? emailInst,
     String? programa,
     String? semestre,
     String? photoUrl,
@@ -648,6 +780,7 @@ class ApiService {
           'telefono':       telefono       ?? '',
           'bio':            bio            ?? '',
           'email_personal': emailPersonal  ?? '',
+          'email_inst':     emailInst      ?? '',
           'programa':       programa       ?? '',
           'semestre':       semestre       ?? '',
           'photo_url':      photoUrl       ?? '',
@@ -677,4 +810,12 @@ class ApiService {
     return [];
   }
 
+}
+
+/// Entrada de caché con datos y timestamp para invalidación por TTL.
+class _CacheEntry {
+  final dynamic data;
+  final DateTime ts;
+  _CacheEntry(this.data) : ts = DateTime.now();
+  bool get expired => DateTime.now().difference(ts) > ApiService._cacheTtl;
 }

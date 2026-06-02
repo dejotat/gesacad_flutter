@@ -1051,10 +1051,10 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
       tiempoColor = Colors.red.shade700;
     } else if (yaEntrego) {
       try {
-        final cierre = DateTime.parse(a.closingDate);
+        final cierre  = ActivityModel.toCol(a.closingDate);
         final entrega = a.dateResolution != null
-            ? DateTime.parse(a.dateResolution!)
-            : DateTime.now();
+            ? ActivityModel.toCol(a.dateResolution!)
+            : DateTime.now().toUtc().subtract(const Duration(hours: 5));
         final diff = cierre.difference(entrega);
         final h = diff.inHours;
         final m = diff.inMinutes % 60;
@@ -1068,8 +1068,9 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
       }
     } else {
       try {
-        final cierre = DateTime.parse(a.closingDate);
-        final diff   = cierre.difference(DateTime.now());
+        final nowCol = DateTime.now().toUtc().subtract(const Duration(hours: 5));
+        final cierre = ActivityModel.toCol(a.closingDate);
+        final diff   = cierre.difference(nowCol);
         final dias   = diff.inDays;
         final horas  = diff.inHours % 24;
         final mins   = diff.inMinutes % 60;

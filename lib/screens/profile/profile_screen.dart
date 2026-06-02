@@ -25,6 +25,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   final _bioCtrl = TextEditingController();
 
   String _rol = '';
+  bool _photoNueva = false; // true cuando el usuario seleccionó una foto nueva en esta sesión
   bool _saving = false;
   bool _saved = false;
   Uint8List? _photoBytes;
@@ -55,7 +56,14 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     final prefs  = await SharedPreferences.getInstance();
     final userId = prefs.getInt('userId') ?? 0;
     _rol         = prefs.getString('userRol') ?? '';
-    _nameCtrl.text = prefs.getString('userName') ?? '';
+    final userName = prefs.getString('userName') ?? '';
+    _nameCtrl.text      = userName;
+    // Prellenar desde caché; si no hay, sugerir formato estándar
+    final cachedEmailInst = prefs.getString('profile_email_inst') ?? '';
+    _emailInstCtrl.text = cachedEmailInst.isNotEmpty
+        ? cachedEmailInst
+        : (userName.isNotEmpty ? '$userName@unicomfacauca.edu.co' : '');
+    if (mounted) setState(() {});
 
     // Foto desde caché local (no está en el backend aún)
     final photoB64 = prefs.getString('profile_photo');
@@ -84,17 +92,31 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         if (res.statusCode == 200 && mounted) {
           final perfil = jsonDecode(res.body) as Map<String, dynamic>;
 
-          // Asignar directamente sin condición de vacío para ver todos los valores
           _telefonoCtrl.text      = perfil['telefono']?.toString()       ?? '';
           _bioCtrl.text           = perfil['bio']?.toString()            ?? '';
           _emailPersonalCtrl.text = perfil['email_personal']?.toString() ?? '';
+          _emailInstCtrl.text     = perfil['email_inst']?.toString()     ?? _emailInstCtrl.text;
           _programaCtrl.text      = perfil['programa']?.toString()       ?? '';
           _semestreCtrl.text      = perfil['semestre']?.toString()       ?? '';
+
+          // Cargar foto desde Cloudinary si existe en el backend
+          final photoUrl = perfil['photo_url']?.toString() ?? '';
+          if (photoUrl.isNotEmpty && _photoBytes == null) {
+            try {
+              final imgRes = await http.get(Uri.parse(photoUrl))
+                  .timeout(const Duration(seconds: 10));
+              if (imgRes.statusCode == 200 && mounted) {
+                _photoBytes = imgRes.bodyBytes;
+                await prefs.setString('profile_photo', base64Encode(_photoBytes!));
+              }
+            } catch (_) {}
+          }
 
           // Actualizar caché local
           await prefs.setString('profile_telefono',       _telefonoCtrl.text);
           await prefs.setString('profile_bio',            _bioCtrl.text);
           await prefs.setString('profile_email_personal', _emailPersonalCtrl.text);
+          await prefs.setString('profile_email_inst',     _emailInstCtrl.text);
           await prefs.setString('profile_programa',       _programaCtrl.text);
           await prefs.setString('profile_semestre',       _semestreCtrl.text);
 
@@ -138,7 +160,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     // PlatformUtils selecciona automáticamente web (dart:html) o Android (image_picker)
     final bytes = await PlatformUtils.pickImage();
     if (bytes == null || !mounted) return;
-    setState(() => _photoBytes = Uint8List.fromList(bytes));
+    setState(() { _photoBytes = Uint8List.fromList(bytes); _photoNueva = true; });
   }
 
   /// Guarda el perfil: primero en el backend y luego actualiza la caché local.
@@ -157,15 +179,32 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         telefono:      _telefonoCtrl.text.trim(),
         bio:           _bioCtrl.text.trim(),
         emailPersonal: _emailPersonalCtrl.text.trim(),
+        emailInst:     _emailInstCtrl.text.trim(),
         programa:      _programaCtrl.text.trim(),
         semestre:      _semestreCtrl.text.trim(),
       );
+
+      // Subir foto al backend si el usuario cambió la foto en esta sesión
+      if (_photoBytes != null && _photoNueva) {
+        try {
+          final uri = Uri.parse(
+            'https://gesacad-backend-production.up.railway.app/users/uploadPhoto/$userId');
+          final request = http.MultipartRequest('POST', uri)
+            ..files.add(http.MultipartFile.fromBytes('photo', _photoBytes!,
+                filename: 'perfil_$userId.jpg'));
+          final streamed = await request.send().timeout(const Duration(seconds: 20));
+          if (streamed.statusCode == 200) {
+            final body = jsonDecode(await streamed.stream.bytesToString());
+            await prefs.setString('profile_photo_url', body['photo_url'] ?? '');
+            _photoNueva = false;
+          }
+        } catch (_) {}
+      }
     }
 
     // Actualizar la caché local de SharedPreferences (para acceso rápido sin red)
     await prefs.setString('userName',               _nameCtrl.text.trim());
     await prefs.setString('profile_email_personal', _emailPersonalCtrl.text.trim());
-    await prefs.setString('profile_email_inst',     _emailInstCtrl.text.trim());
     await prefs.setString('profile_telefono',       _telefonoCtrl.text.trim());
     await prefs.setString('profile_programa',       _programaCtrl.text.trim());
     await prefs.setString('profile_semestre',       _semestreCtrl.text.trim());
@@ -283,7 +322,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                     const SizedBox(height: 12),
                     _card(isDark, children: [
                       _field(_emailInstCtrl, 'Correo institucional', Icons.email_rounded, primary,
-                          keyboard: TextInputType.emailAddress, helper: 'usuario@unicomfacauca.edu.co'),
+                          keyboard: TextInputType.emailAddress),
                       const SizedBox(height: 14),
                       _field(_emailPersonalCtrl, 'Correo personal', Icons.alternate_email_rounded, primary,
                           keyboard: TextInputType.emailAddress),
@@ -413,9 +452,11 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   );
 
   Widget _field(TextEditingController ctrl, String label, IconData icon, Color primary, {
-    TextInputType keyboard = TextInputType.text, String? helper, String? Function(String?)? validator,
+    TextInputType keyboard = TextInputType.text, String? helper, bool readOnly = false,
+    String? Function(String?)? validator,
   }) => TextFormField(
     controller: ctrl,
+    readOnly: readOnly,
     keyboardType: keyboard,
     style: GoogleFonts.poppins(fontSize: 14),
     decoration: InputDecoration(

@@ -8,6 +8,7 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/settings_service.dart';
 import '../../models/course_model.dart';
+import '../../models/activity_model.dart';
 import '../../widgets/course_card.dart';
 import '../../widgets/tts_button.dart';
 import '../../widgets/talk_widget.dart';
@@ -53,6 +54,14 @@ class _TeacherHomeState extends State<TeacherHome> with TickerProviderStateMixin
     super.dispose();
   }
 
+  Future<void> _reloadPhoto() async {
+    final prefs    = await SharedPreferences.getInstance();
+    final photoB64 = prefs.getString('profile_photo') ?? '';
+    if (photoB64.isNotEmpty && mounted) {
+      try { setState(() => _photoBytes = base64Decode(photoB64)); } catch (_) {}
+    }
+  }
+
   Future<void> _load() async {
     setState(() => _loading = true);
     final prefs = await SharedPreferences.getInstance();
@@ -67,33 +76,43 @@ class _TeacherHomeState extends State<TeacherHome> with TickerProviderStateMixin
     // Calcular estadísticas reales en segundo plano
     _calcularEstadisticas();
 
-    if (mounted) { setState(() => _loading = false); _entryCtrl.forward(from: 0); }
+    if (mounted) {
+      setState(() => _loading = false);
+      _entryCtrl.forward(from: 0);
+      Future.delayed(const Duration(seconds: 2), _reloadPhoto);
+    }
   }
 
   Future<void> _calcularEstadisticas() async {
     try {
+      final ahoraCol = DateTime.now().toUtc().subtract(const Duration(hours: 5));
+
+      // Cargar actividades de todos los cursos en paralelo (Bug 5 — velocidad)
+      final listaActividades = await Future.wait(
+        _courses.map((c) => ApiService().getActivities(c.id).catchError((_) => <ActivityModel>[])),
+      );
+
       int pendientes = 0;
       int sinCalif   = 0;
-      final ahora = DateTime.now();
-      for (final c in _courses) {
-        List acts = [];
-        try { acts = await ApiService().getActivities(c.id); } catch (_) {}
+      final resolsFutures = <Future<List<Map<String, dynamic>>>>[];
+
+      for (final acts in listaActividades) {
         for (final a in acts) {
-          try {
-            if (ahora.isBefore(DateTime.parse(a.closingDate))) pendientes++;
-          } catch (_) {}
-        }
-        // Solo primeras 5 actividades por curso para no saturar el backend
-        for (final a in acts.take(5)) {
-          try {
-            final resols = await ApiService().getResolutions(a.id);
-            sinCalif += resols.where((r) =>
-                r['resolution'] != null &&
-                r['resolution'].toString().isNotEmpty &&
-                r['GPA'] == null).length;
-          } catch (_) {}
+          if (ahoraCol.isBefore(ActivityModel.toCol(a.closingDate))) pendientes++;
+          resolsFutures.add(ApiService().getResolutions(a.id)
+              .catchError((_) => <Map<String, dynamic>>[]));
         }
       }
+
+      // Obtener todas las resoluciones en paralelo de una sola vez
+      final todasResols = await Future.wait(resolsFutures);
+      for (final resols in todasResols) {
+        sinCalif += resols.where((r) =>
+            r['resolution'] != null &&
+            r['resolution'].toString().isNotEmpty &&
+            r['GPA'] == null).length;
+      }
+
       if (mounted) setState(() {
         _actsPendientes   = pendientes;
         _entregasSinCalif = sinCalif;
@@ -213,7 +232,8 @@ class _TeacherHomeState extends State<TeacherHome> with TickerProviderStateMixin
           icon: _photoBytes != null
               ? CircleAvatar(backgroundImage: MemoryImage(_photoBytes!), radius: 14)
               : const Icon(Icons.account_circle_rounded, color: Colors.white),
-          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen())),
+          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()))
+              .then((_) => _reloadPhoto()),
         ),
         PopupMenuButton<String>(
           icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
@@ -348,7 +368,8 @@ class _TeacherHomeState extends State<TeacherHome> with TickerProviderStateMixin
       _QuickItem('🔔', 'Avisos', const Color(0xFFDB2777),
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => NotificationsPanel(userId: _myId, userRol: 'Teacher')))),
       _QuickItem('👤', 'Perfil', const Color(0xFF059669),
-          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()))),
+          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()))
+              .then((_) => _reloadPhoto())),
       _QuickItem('⚙️', 'Ajustes', const Color(0xFFD97706),
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()))),
     ];

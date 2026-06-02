@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'config/app_themes.dart';
 import 'services/settings_service.dart';
+import 'services/api_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/admin/admin_home.dart';
 import 'screens/teacher/teacher_home.dart';
@@ -33,10 +36,15 @@ class GesacadApp extends StatelessWidget {
           theme: AppThemes.of(themeType),
           themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
           home: const SplashScreen(),
-          // Localización para reemplazar textos en inglés del framework
+          // Localización completa en español (menús Cut/Copy/Paste, fechas, etc.)
           localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
             _SpanishMaterialLocalizations.delegate,
           ],
+          supportedLocales: const [Locale('es', 'CO'), Locale('es'), Locale('en')],
+          locale: const Locale('es', 'CO'),
         );
       },
     );
@@ -65,6 +73,9 @@ class _SplashScreenState extends State<SplashScreen>
     _scale = Tween<double>(begin: 0.85, end: 1.0).animate(
         CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut));
     _ctrl.forward();
+    // Mejora 5: despertar Railway antes de que el usuario llegue a la pantalla
+    // con datos. El ping es silencioso y no bloquea la animación del splash.
+    unawaited(ApiService().ping());
     _checkSession();
   }
 

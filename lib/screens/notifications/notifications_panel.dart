@@ -2,6 +2,7 @@ import 'dart:async';
 // ignore: avoid_web_libraries_in_flutter
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/activity_model.dart';
 import '../../services/api_service.dart';
 import '../../services/settings_service.dart';
@@ -156,6 +157,11 @@ class _NotificationsPanelState extends State<NotificationsPanel>
                   final gpa  = nota['GPA'];
                   if (gpa != null) {
                     final gpaParsed = double.tryParse(gpa.toString()) ?? 0.0;
+                    // Usar dateResolution real para tiempo relativo correcto (Bug 2)
+                    final drStr = nota['dateResolution']?.toString() ?? '';
+                    final drTime = drStr.isNotEmpty
+                        ? (ActivityModel.toCol(drStr))
+                        : DateTime.now();
                     notifs.add(AppNotification(
                       id: 'grade_${curso.id}_$i',
                       title: 'Calificación publicada',
@@ -164,7 +170,7 @@ class _NotificationsPanelState extends State<NotificationsPanel>
                           '${gpaParsed.toStringAsFixed(2)} / 5.0 — '
                           '${gpaParsed >= 3.0 ? "Aprobado ✓" : "Reprobado"}',
                       type: NotifType.grade,
-                      time: DateTime.now(),
+                      time: drTime,
                     ));
                   }
                 }
@@ -176,49 +182,53 @@ class _NotificationsPanelState extends State<NotificationsPanel>
               for (final act in actividades) {
                 try {
                   final entregas = await ApiService().getResolutions(act.id);
-                  final sinCalificar = entregas.where((e) =>
+                  final pendientes = entregas.where((e) =>
                       e['resolution'] != null &&
                       (e['resolution'] as String).isNotEmpty &&
-                      e['GPA'] == null).length;
-                  if (sinCalificar > 0) {
+                      e['GPA'] == null).toList();
+                  if (pendientes.isNotEmpty) {
+                    // Usar la dateResolution más reciente como timestamp (Bug 2)
+                    DateTime notifTime = DateTime(2000);
+                    for (final p in pendientes) {
+                      final drStr = p['dateResolution']?.toString() ?? '';
+                      if (drStr.isNotEmpty) {
+                        final t = ActivityModel.toCol(drStr);
+                        if (t.isAfter(notifTime)) notifTime = t;
+                      }
+                    }
+                    if (notifTime.year == 2000) notifTime = DateTime.now();
                     notifs.add(AppNotification(
                       id: 'pending_${act.id}',
                       title: 'Entregas pendientes de calificar',
-                      body: '$sinCalificar '
-                          '${sinCalificar == 1 ? "estudiante entregó" : "estudiantes entregaron"} '
+                      body: '${pendientes.length} '
+                          '${pendientes.length == 1 ? "estudiante entregó" : "estudiantes entregaron"} '
                           '"${act.tittle}" en ${curso.name}.',
                       type: NotifType.activity,
-                      time: DateTime.now(),
+                      time: notifTime,
                     ));
                   }
                 } catch (_) {}
               }
             }
 
-            // ── Admin: vista global de entregas sin calificar en todo el sistema
-            // El Admin actúa como super-supervisor: ve todos los cursos y puede
-            // detectar actividades con entregas que ningún profesor ha calificado.
-            if (widget.userRol == 'Admin') {
-              for (final act in actividades) {
-                try {
-                  final entregas = await ApiService().getResolutions(act.id);
-                  final sinCalificar = entregas.where((e) =>
-                      e['resolution'] != null &&
-                      (e['resolution'] as String).isNotEmpty &&
-                      e['GPA'] == null).length;
-                  if (sinCalificar > 0) {
-                    notifs.add(AppNotification(
-                      id: 'admin_pending_${act.id}',
-                      title: 'Entregas sin calificar',
-                      body: '$sinCalificar '
-                          '${sinCalificar == 1 ? "entrega pendiente" : "entregas pendientes"} '
-                          'en "${act.tittle}" — ${curso.name}.',
-                      type: NotifType.activity,
-                      time: DateTime.now(),
-                    ));
-                  }
-                } catch (_) {}
-              }
+            // Admin no ve notificaciones académicas — solo eventos del sistema.
+            // Sus notificaciones se cargan por separado fuera del loop de cursos.
+          } catch (_) {}
+        }
+
+        // Admin: cargar eventos globales del sistema desde el backend
+        if (widget.userRol == 'Admin') {
+          try {
+            final adminNotifs = await ApiService()
+                .getNotifications(widget.userId, 'Admin');
+            for (final n in adminNotifs) {
+              notifs.add(AppNotification(
+                id:    'admin_${n['id'] ?? notifs.length}',
+                title: _tituloAdminLog(n['title'] as String? ?? ''),
+                body:  n['body']  as String? ?? '',
+                type:  NotifType.system,
+                time:  DateTime.tryParse(n['time'] as String? ?? '') ?? DateTime.now(),
+              ));
             }
           } catch (_) {}
         }
@@ -282,7 +292,7 @@ class _NotificationsPanelState extends State<NotificationsPanel>
       body: FadeTransition(
         opacity: _fade,
         child: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? _buildShimmer()
             : _error != null
                 ? _buildError()
                 : _notifs.isEmpty
@@ -475,6 +485,54 @@ class _NotificationsPanelState extends State<NotificationsPanel>
     );
   }
 
+  Widget _buildShimmer() {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.3, end: 0.7),
+      duration: const Duration(milliseconds: 800),
+      builder: (_, v, __) => ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: 5,
+        itemBuilder: (_, i) => Opacity(
+          opacity: v,
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 14),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade200,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(children: [
+              Container(
+                width: 44, height: 44,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(height: 12, width: double.infinity,
+                      decoration: BoxDecoration(color: Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(6))),
+                  const SizedBox(height: 8),
+                  Container(height: 10, width: 200,
+                      decoration: BoxDecoration(color: Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(6))),
+                  const SizedBox(height: 6),
+                  Container(height: 10, width: 140,
+                      decoration: BoxDecoration(color: Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(6))),
+                ],
+              )),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildEmpty() {
     return Center(
       child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -518,10 +576,13 @@ class _NotificationsPanelState extends State<NotificationsPanel>
 
   String _timeAgo(DateTime t) {
     final diff = DateTime.now().difference(t);
-    if (diff.inMinutes < 1)  return 'Ahora';
-    if (diff.inMinutes < 60) return 'Hace ${diff.inMinutes} min';
-    if (diff.inHours < 24)   return 'Hace ${diff.inHours} h';
-    return 'Hace ${diff.inDays} d';
+    if (diff.inSeconds < 60)  return 'Ahora';
+    if (diff.inMinutes < 60)  return 'Hace ${diff.inMinutes} min';
+    if (diff.inHours < 24)    return 'Hace ${diff.inHours} h';
+    if (diff.inDays == 1)     return 'Ayer';
+    if (diff.inDays < 7)      return 'Hace ${diff.inDays} días';
+    if (diff.inDays < 30)     return 'Hace ${(diff.inDays / 7).floor()} sem';
+    return 'Hace ${(diff.inDays / 30).floor()} mes';
   }
 
   String _tipoLabel(String tipo) {
@@ -531,6 +592,13 @@ class _NotificationsPanelState extends State<NotificationsPanel>
       case 'resource': return 'Recurso';
       default:         return 'Actividad';
     }
+  }
+
+  String _tituloAdminLog(String titulo) {
+    if (titulo.contains('Nuevo usuario'))    return 'Nuevo usuario registrado';
+    if (titulo.contains('eliminado'))        return 'Usuario eliminado del sistema';
+    if (titulo.contains('recuperaci'))       return 'Solicitud de recuperación de contraseña';
+    return titulo.isNotEmpty ? titulo : 'Evento del sistema';
   }
 }
 
@@ -551,13 +619,31 @@ class NotificationBell extends StatefulWidget {
   State<NotificationBell> createState() => _NotificationBellState();
 }
 
-class _NotificationBellState extends State<NotificationBell> {
-  /// Número de notificaciones no leídas (se actualiza al volver del panel).
+class _NotificationBellState extends State<NotificationBell>
+    with SingleTickerProviderStateMixin {
   int _count = 0;
+  Timer? _timer;
+
+  // Bug 5 — animación shake cuando llega una notificación nueva
+  late AnimationController _shakeCtrl;
+  late Animation<double> _shakeAnim;
+
+  // Clave SharedPreferences para persistir el conteo leído
+  String get _readKey => 'notif_last_read_count_${widget.userId}';
 
   @override
   void initState() {
     super.initState();
+    _shakeCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 500));
+    _shakeAnim = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0.0, end:  0.12), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: 0.12, end: -0.12), weight: 2),
+      TweenSequenceItem(tween: Tween(begin: -0.12, end: 0.09), weight: 2),
+      TweenSequenceItem(tween: Tween(begin: 0.09, end: -0.09), weight: 2),
+      TweenSequenceItem(tween: Tween(begin: -0.09, end: 0.0), weight: 1),
+    ]).animate(CurvedAnimation(parent: _shakeCtrl, curve: Curves.easeOut));
+
     if (widget.userId > 0) _calcularConteo();
     _timer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (widget.userId > 0 && mounted) _calcularConteo();
@@ -572,12 +658,18 @@ class _NotificationBellState extends State<NotificationBell> {
     }
   }
 
-  Timer? _timer;
-
   @override
   void dispose() {
     _timer?.cancel();
+    _shakeCtrl.dispose();
     super.dispose();
+  }
+
+  /// Marca las notificaciones como leídas guardando el conteo actual.
+  Future<void> _marcarLeidas() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_readKey, _count);
+    if (mounted) setState(() => _count = 0);
   }
 
   /// Calcula el número de notificaciones para el badge del ícono de campana.
@@ -598,57 +690,69 @@ class _NotificationBellState extends State<NotificationBell> {
         return;
       }
 
-      // Profesor y Admin comparten la misma lógica de badge:
-      // contar entregas que tienen archivo pero no tienen nota asignada.
-      if (widget.userRol == 'Teacher' || widget.userRol == 'Admin') {
+      // Calcular el conteo bruto según el rol
+      int conteoNuevo = 0;
+
+      if (widget.userRol == 'Admin') {
+        try {
+          final adminNotifs = await ApiService()
+              .getNotifications(widget.userId, 'Admin');
+          conteoNuevo = adminNotifs.length;
+        } catch (_) {}
+
+      } else if (widget.userRol == 'Teacher') {
         final listaActividades = await Future.wait(
           cursos.map((c) => ApiService().getActivities(c.id)
               .catchError((_) => <ActivityModel>[])),
         );
         final todasActs = listaActividades.expand((l) => l).toList();
-
-        // Limitar a las primeras 10 actividades para no saturar el backend
-        final actsAVerificar = todasActs.take(10).toList();
         final resoluciones = await Future.wait(
-          actsAVerificar.map((a) => ApiService().getResolutions(a.id)
+          todasActs.map((a) => ApiService().getResolutions(a.id)
               .catchError((_) => <Map<String, dynamic>>[])),
         );
-        int conteo = 0;
         for (final entregasList in resoluciones) {
-          conteo += entregasList.where((e) =>
+          conteoNuevo += entregasList.where((e) =>
               e['resolution'] != null &&
               (e['resolution'] as String).isNotEmpty &&
               e['GPA'] == null).length;
         }
-        if (mounted) setState(() { _count = conteo; });
 
       } else {
-        // Estudiante: actividades recientes + calificaciones recibidas
         final listaActividades = await Future.wait(
           cursos.map((c) => ApiService().getActivities(c.id)
               .catchError((_) => <ActivityModel>[])),
         );
-        int conteo = 0;
         final ahora = DateTime.now();
         for (final actividades in listaActividades) {
           for (final act in actividades) {
             try {
               final startDate = DateTime.parse(act.startDate);
               final dias = ahora.difference(startDate).inDays;
-              if (dias >= 0 && dias <= 7) conteo++;
+              if (dias >= 0 && dias <= 7) conteoNuevo++;
             } catch (_) {}
           }
         }
-        // Sumar calificaciones que el estudiante ya recibió
         final notas = await Future.wait(
           cursos.map((c) => ApiService().getGrades(c.id, widget.userId)
               .catchError((_) => <Map<String, dynamic>>[])),
         );
         for (final lista in notas) {
-          conteo += lista.where((n) => n['GPA'] != null).length;
+          conteoNuevo += lista.where((n) => n['GPA'] != null).length;
         }
-        if (mounted) setState(() { _count = conteo; });
       }
+
+      // Bug 3: restar lo que ya leyó el usuario (persistido en SharedPreferences)
+      final prefs    = await SharedPreferences.getInstance();
+      final leido    = prefs.getInt(_readKey) ?? 0;
+      final noLeidas = (conteoNuevo - leido).clamp(0, 999);
+
+      if (!mounted) return;
+
+      // Bug 5: shake si hay notificaciones nuevas que antes no había
+      if (noLeidas > _count && noLeidas > 0) {
+        _shakeCtrl.forward(from: 0);
+      }
+      setState(() => _count = noLeidas);
     } catch (_) {}
   }
 
@@ -658,10 +762,20 @@ class _NotificationBellState extends State<NotificationBell> {
       children: [
         IconButton(
           tooltip: 'Notificaciones',
-          icon: const Icon(Icons.notifications_rounded, color: Colors.white),
+          // Bug 5 — campana con animación shake al recibir notificación nueva
+          icon: AnimatedBuilder(
+            animation: _shakeAnim,
+            builder: (_, child) => Transform.rotate(
+              angle: _shakeAnim.value,
+              child: child,
+            ),
+            child: const Icon(Icons.notifications_rounded, color: Colors.white),
+          ),
           onPressed: () async {
-            await Navigator.push(
-              context,
+            // Capturar navigator antes de cualquier await
+            final nav = Navigator.of(context);
+            await _marcarLeidas();
+            await nav.push(
               MaterialPageRoute(
                 builder: (_) => NotificationsPanel(
                   userId: widget.userId,
@@ -669,9 +783,6 @@ class _NotificationBellState extends State<NotificationBell> {
                 ),
               ),
             );
-            // Al volver del panel el usuario ya leyó las notificaciones,
-            // se resetea el badge a 0 inmediatamente.
-            if (mounted) setState(() { _count = 0; });
           },
         ),
         if (_count > 0)

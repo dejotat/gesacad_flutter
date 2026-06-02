@@ -52,6 +52,14 @@ class _StudentHomeState extends State<StudentHome> with TickerProviderStateMixin
     super.dispose();
   }
 
+  Future<void> _reloadPhoto() async {
+    final prefs    = await SharedPreferences.getInstance();
+    final photoB64 = prefs.getString('profile_photo') ?? '';
+    if (photoB64.isNotEmpty && mounted) {
+      try { setState(() => _photoBytes = base64Decode(photoB64)); } catch (_) {}
+    }
+  }
+
   Future<void> _load() async {
     setState(() => _loading = true);
     final prefs = await SharedPreferences.getInstance();
@@ -62,7 +70,11 @@ class _StudentHomeState extends State<StudentHome> with TickerProviderStateMixin
       try { _photoBytes = base64Decode(photoB64); } catch (_) {}
     }
     try { _courses = await ApiService().getMyCourses(_myId); } catch (_) {}
-    if (mounted) { setState(() => _loading = false); _entryCtrl.forward(from: 0); }
+    if (mounted) {
+      setState(() => _loading = false);
+      _entryCtrl.forward(from: 0);
+      Future.delayed(const Duration(seconds: 2), _reloadPhoto);
+    }
   }
 
   Future<void> _logout() async {
@@ -179,7 +191,8 @@ class _StudentHomeState extends State<StudentHome> with TickerProviderStateMixin
           icon: _photoBytes != null
               ? CircleAvatar(backgroundImage: MemoryImage(_photoBytes!), radius: 14)
               : const Icon(Icons.account_circle_rounded, color: Colors.white),
-          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen())),
+          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()))
+              .then((_) => _reloadPhoto()),
         ),
         PopupMenuButton<String>(
           icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
@@ -299,7 +312,8 @@ class _StudentHomeState extends State<StudentHome> with TickerProviderStateMixin
       _QuickItem('🔔', 'Avisos', const Color(0xFFDB2777),
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => NotificationsPanel(userId: _myId, userRol: 'Student')))),
       _QuickItem('👤', 'Mi Perfil', const Color(0xFF059669),
-          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()))),
+          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()))
+              .then((_) => _reloadPhoto())),
       _QuickItem('⚙️', 'Ajustes', const Color(0xFFD97706),
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()))),
     ];
