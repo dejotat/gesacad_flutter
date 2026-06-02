@@ -70,25 +70,28 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           'gesacad-backend-production.up.railway.app',
           '/users/getProfile/$userId',
         );
+
+        // LOG: mostrar qué URL se está consultando
+        debugPrint('[Perfil] GET $uri  (userId=$userId)');
+
         final res = await http
             .get(uri)
             .timeout(const Duration(seconds: 15));
 
+        // LOG: mostrar el resultado HTTP
+        debugPrint('[Perfil] status=${res.statusCode}  body=${res.body}');
+
         if (res.statusCode == 200 && mounted) {
           final perfil = jsonDecode(res.body) as Map<String, dynamic>;
 
-          void setField(TextEditingController ctrl, String key) {
-            final val = perfil[key]?.toString() ?? '';
-            if (val.isNotEmpty) ctrl.text = val;
-          }
+          // Asignar directamente sin condición de vacío para ver todos los valores
+          _telefonoCtrl.text      = perfil['telefono']?.toString()       ?? '';
+          _bioCtrl.text           = perfil['bio']?.toString()            ?? '';
+          _emailPersonalCtrl.text = perfil['email_personal']?.toString() ?? '';
+          _programaCtrl.text      = perfil['programa']?.toString()       ?? '';
+          _semestreCtrl.text      = perfil['semestre']?.toString()       ?? '';
 
-          setField(_telefonoCtrl,      'telefono');
-          setField(_bioCtrl,           'bio');
-          setField(_emailPersonalCtrl, 'email_personal');
-          setField(_programaCtrl,      'programa');
-          setField(_semestreCtrl,      'semestre');
-
-          // Actualizar caché local con los valores del servidor
+          // Actualizar caché local
           await prefs.setString('profile_telefono',       _telefonoCtrl.text);
           await prefs.setString('profile_bio',            _bioCtrl.text);
           await prefs.setString('profile_email_personal', _emailPersonalCtrl.text);
@@ -97,9 +100,27 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
 
           if (mounted) setState(() {});
           return;
+        } else if (mounted) {
+          // Mostrar el error en pantalla para diagnóstico
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(
+              'Backend respondió ${res.statusCode}: ${res.body.substring(0, res.body.length.clamp(0, 120))}',
+              style: const TextStyle(fontSize: 11),
+            ),
+            backgroundColor: Colors.red.shade700,
+            duration: const Duration(seconds: 6),
+          ));
         }
-      } catch (_) {
-        // Si falla el backend se usa caché local (abajo)
+      } catch (e) {
+        debugPrint('[Perfil] ERROR al cargar desde backend: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Error de red: $e',
+                style: const TextStyle(fontSize: 11)),
+            backgroundColor: Colors.orange.shade700,
+            duration: const Duration(seconds: 6),
+          ));
+        }
       }
     }
 
