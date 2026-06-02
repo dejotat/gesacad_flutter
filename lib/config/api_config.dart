@@ -60,6 +60,10 @@ class ApiConfig {
   /// Ruta: POST /users/passwordRequest
   static const String passwordRequest = '/users/passwordRequest';
 
+  /// Devuelve los admins que tienen teléfono configurado en su perfil.
+  /// Ruta: GET /users/getAdminContacts
+  static const String getAdminContacts = '/users/getAdminContacts';
+
   /// Obtiene el perfil extendido de un usuario por su ID.
   /// Ruta: GET /users/getProfile/:id
   static const String getProfile = '/users/getProfile';

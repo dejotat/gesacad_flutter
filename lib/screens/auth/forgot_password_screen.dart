@@ -26,8 +26,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
   late AnimationController _anim;
   late Animation<double> _fade;
 
-  // Número de WhatsApp del administrador del sistema (formato internacional)
-  static const String _adminWhatsApp = '573205771845';
+  // Lista de admins con teléfono configurado, cargada dinámicamente desde el backend.
+  // Así cualquier admin puede editarlo desde su perfil y el cambio aplica de inmediato.
+  List<Map<String, dynamic>> _adminsConTelefono = [];
 
   @override
   void initState() {
@@ -36,6 +37,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
         vsync: this, duration: const Duration(milliseconds: 500));
     _fade = CurvedAnimation(parent: _anim, curve: Curves.easeOut);
     _anim.forward();
+    // Cargar admins con teléfono configurado al abrir la pantalla
+    _cargarAdmins();
   }
 
   @override
@@ -43,6 +46,26 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
     _anim.dispose();
     _emailCtrl.dispose();
     super.dispose();
+  }
+
+  /// Obtiene del backend la lista de admins que tienen teléfono en su perfil.
+  /// Así el número es editable desde el perfil de cada admin, sin tocar código.
+  Future<void> _cargarAdmins() async {
+    try {
+      final res = await http
+          .get(Uri.parse('${ApiConfig.baseUrl}${ApiConfig.getAdminContacts}'))
+          .timeout(const Duration(seconds: 8));
+      if (res.statusCode == 200 && mounted) {
+        final lista = jsonDecode(res.body) as List;
+        setState(() {
+          _adminsConTelefono = lista
+              .map((e) => e as Map<String, dynamic>)
+              .toList();
+        });
+      }
+    } catch (_) {
+      // Sin conexión: los botones de WhatsApp no se muestran
+    }
   }
 
   /// Envía la solicitud al backend (queda registrada para el admin)
@@ -59,21 +82,23 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
         body: jsonEncode({'username': _emailCtrl.text.trim()}),
       ).timeout(const Duration(seconds: 10));
     } catch (_) {
-      // Si no hay conexión, la solicitud continúa igual —
-      // el usuario puede contactar al admin directamente por WhatsApp.
+      // Sin conexión: el usuario puede contactar al admin por WhatsApp
     }
     if (mounted) setState(() { _loading = false; _sent = true; });
   }
 
-  /// Abre WhatsApp con un mensaje pre-llenado para el administrador.
-  Future<void> _abrirWhatsApp() async {
+  /// Abre WhatsApp para el admin indicado con un mensaje pre-llenado.
+  /// El número viene del perfil del admin (campo teléfono), no del código.
+  Future<void> _abrirWhatsApp(String telefono, String adminUsername) async {
     final usuario = _emailCtrl.text.trim();
-    final mensaje = Uri.encodeComponent(
-      '¡Hola! Soy el usuario "$usuario" de GESACAD '
-      '(Unicomfacauca) y necesito que el administrador '
-      'restablezca mi contraseña. ¡Gracias!',
+    // Limpiar el número: quitar +, espacios y guiones; agregar 57 si es colombiano
+    final numero  = telefono.replaceAll(RegExp(r'[\s\-+]'), '');
+    final numFinal = numero.startsWith('57') ? numero : '57$numero';
+    final mensaje  = Uri.encodeComponent(
+      '¡Hola $adminUsername! Soy el usuario "$usuario" de GESACAD '
+      '(Unicomfacauca) y necesito restablecer mi contraseña. ¡Gracias!',
     );
-    final uri = Uri.parse('https://wa.me/$_adminWhatsApp?text=$mensaje');
+    final uri = Uri.parse('https://wa.me/$numFinal?text=$mensaje');
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
@@ -320,24 +345,40 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
             ]),
           ),
           const SizedBox(height: 24),
-          // Botón WhatsApp — contacto directo con el administrador
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: ElevatedButton.icon(
-              onPressed: _abrirWhatsApp,
-              icon: const Icon(Icons.chat_rounded, size: 20),
-              label: Text('Contactar Admin por WhatsApp',
-                  style: GoogleFonts.poppins(fontWeight: FontWeight.w700)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF25D366), // verde WhatsApp
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
-                elevation: 3,
-              ),
-            ),
-          ),
+          // Botones WhatsApp — uno por cada admin que tenga teléfono configurado.
+          // Si ningún admin configuró su número, no se muestra nada.
+          if (_adminsConTelefono.isNotEmpty) ...[
+            Text('Contactar directamente al administrador:',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.poppins(
+                    fontSize: 12, color: Colors.grey.shade500)),
+            const SizedBox(height: 8),
+            ..._adminsConTelefono.map((admin) {
+              final nombre = admin['username'] as String? ?? 'Admin';
+              final tel    = admin['telefono'] as String? ?? '';
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton.icon(
+                    // Llamar _abrirWhatsApp con los datos del admin específico
+                    onPressed: () => _abrirWhatsApp(tel, nombre),
+                    icon: const Icon(Icons.chat_rounded, size: 20),
+                    label: Text('WhatsApp a $nombre',
+                        style: GoogleFonts.poppins(fontWeight: FontWeight.w700)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF25D366),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                      elevation: 3,
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ],
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
