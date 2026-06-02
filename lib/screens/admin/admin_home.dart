@@ -1,6 +1,7 @@
-import 'dart:convert';
-import 'dart:math' as math;
+﻿import 'dart:convert';
+import 'dart:math' as math;   // Necesario para _BubblePainter (sin animaciones del gráfico)
 import 'dart:typed_data';
+import 'package:syncfusion_flutter_charts/charts.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -40,7 +41,7 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
 
   // ── Estados UI ────────────────────────────────────────────────────────────
   bool _loading         = true;
-  int? _touchedPieIndex;
+  // _touchedPieIndex eliminado: Syncfusion maneja el explode internamente
 
   // ── Animaciones ───────────────────────────────────────────────────────────
   late AnimationController _entryCtrl;
@@ -545,21 +546,21 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
     );
   }
 
-  // ── GRÁFICO DE TORTA PREMIUM (Custom Paint) ───────────────────────────────
+  // ── GRÁFICO DE DONA — Syncfusion DoughnutSeries ──────────────────────────
 
   Widget _buildPieChart(Color primary) {
     final total = _totalStudents + _totalTeachers + _totalAdmins;
     if (total == 0) return const SizedBox();
 
+    // Modelo de datos para la serie de la dona
     final datos = [
-      _PieSec('Estudiantes', _totalStudents, '🎓',
-          const Color(0xFF1565C0), const Color(0xFF42A5F5)),
-      _PieSec('Profesores',  _totalTeachers, '📚',
-          const Color(0xFF2E7D32), const Color(0xFF66BB6A)),
-      _PieSec('Admins',      _totalAdmins,   '🛡️',
-          const Color(0xFF6A1B9A), const Color(0xFFAB47BC)),
+      _PieData('🎓 Estudiantes', _totalStudents, const Color(0xFF1E88E5)),
+      _PieData('📚 Profesores',  _totalTeachers, const Color(0xFF43A047)),
+      _PieData('🛡️ Admins',      _totalAdmins,   const Color(0xFF8E24AA)),
     ];
 
+    // ── Dona con Syncfusion ───────────────────────────────────────────────────
+    // Mismo shell (Card blanca con sombra) — solo se reemplaza la gráfica interior.
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -571,16 +572,16 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
         ],
       ),
       child: Column(children: [
-        // Cabecera
+        // Cabecera: icono + título + badge total
         Row(children: [
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                  colors: [Color(0xFF1565C0), Color(0xFF42A5F5)]),
+                  colors: [Color(0xFF1E88E5), Color(0xFF42A5F5)]),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.pie_chart_rounded,
+            child: const Icon(Icons.donut_large_rounded,
                 color: Colors.white, size: 18),
           ),
           const SizedBox(width: 10),
@@ -596,162 +597,94 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
             ),
             child: Text('$total usuarios',
                 style: GoogleFonts.poppins(
-                    fontSize: 11, color: primary, fontWeight: FontWeight.w600)),
+                    fontSize: 11, color: primary,
+                    fontWeight: FontWeight.w600)),
           ),
         ]),
-        const SizedBox(height: 24),
+        const SizedBox(height: 8),
 
-        // Gráfico + leyenda
-        SizedBox(
-          height: 260,
-          child: Row(children: [
-            // Gráfico Custom Paint HD con zoom al interactuar
-            Expanded(
-              flex: 5,
-              child: AnimatedBuilder(
-                animation: _chartAnim,
-                builder: (_, __) => Transform.scale(
-                  // Efecto zoom: parte en 0.9 y llega a 1.0 al animar
-                  scale: 0.90 + (_chartAnim.value * 0.10),
-                  child: CustomPaint(
-                    painter: _PieChartPainter(
-                      datos: datos,
-                      total: total,
-                      progress: _chartAnim.value,
-                      tocadoIdx: _touchedPieIndex,
-                    ),
-                    child: Center(
-                      child: Column(mainAxisSize: MainAxisSize.min, children: [
-                        Text('$total',
-                            style: GoogleFonts.poppins(
-                                fontSize: 26, fontWeight: FontWeight.w900,
-                                color: const Color(0xFF1A1A2E))),
-                        Text('usuarios',
-                            style: GoogleFonts.poppins(
-                                fontSize: 11, color: Colors.grey.shade400)),
-                      ]),
-                    ),
-                  ),
-                ),
-              ),
+        // Gráfica de dona con animación de explosión y tooltip elegante
+        SfCircularChart(
+          // Anotación central: muestra el total de usuarios en el hueco de la dona
+          annotations: <CircularChartAnnotation>[
+            CircularChartAnnotation(
+              widget: Column(mainAxisSize: MainAxisSize.min, children: [
+                Text('$total',
+                    style: GoogleFonts.poppins(
+                        fontSize: 26, fontWeight: FontWeight.w900,
+                        color: const Color(0xFF1A1A2E))),
+                Text('usuarios',
+                    style: GoogleFonts.poppins(
+                        fontSize: 11, color: Colors.grey.shade400)),
+              ]),
             ),
-            const SizedBox(width: 20),
-
-            // Leyenda interactiva
-            Expanded(
-              flex: 4,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: datos.asMap().entries.map((e) {
-                  final idx   = e.key;
-                  final d     = e.value;
-                  final sel   = _touchedPieIndex == idx;
-                  final pct   = total > 0
-                      ? (d.valor / total * 100).toStringAsFixed(0)
-                      : '0';
-                  return GestureDetector(
-                    onTap: () {
-                      setState(() =>
-                          _touchedPieIndex = sel ? null : idx);
-                      // Reiniciar animación para efecto de zoom/pulso
-                      _chartAnim.forward(from: 0.8);
-                    },
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      margin: const EdgeInsets.only(bottom: 5),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: sel
-                            ? d.c1.withOpacity(0.08)
-                            : Colors.grey.shade50,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: sel ? d.c1 : Colors.grey.shade200,
-                          width: sel ? 2 : 1,
-                        ),
-                        boxShadow: sel
-                            ? [BoxShadow(color: d.c1.withOpacity(0.15),
-                                blurRadius: 8, offset: const Offset(0, 3))]
-                            : [],
-                      ),
-                      child: Row(children: [
-                        // Punto de color con gradiente
-                        Container(
-                          width: 12, height: 12,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(colors: [d.c1, d.c2]),
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('${d.emoji} ${d.etiqueta}',
-                                style: GoogleFonts.poppins(
-                                    fontSize: 11, fontWeight: FontWeight.w600,
-                                    color: Colors.grey.shade700)),
-                          ],
-                        )),
-                        // Número y %
-                        Column(crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                          Text('${d.valor}', style: GoogleFonts.poppins(
-                              fontSize: 16, fontWeight: FontWeight.w900,
-                              color: d.c1)),
-                          Text('$pct%', style: GoogleFonts.poppins(
-                              fontSize: 9, color: Colors.grey.shade400)),
-                        ]),
-                      ]),
-                    ),
-                  );
-                }).toList(),
-              ),
+          ],
+          // Leyenda nativa de Syncfusion debajo de la dona
+          legend: Legend(
+            isVisible:       true,
+            position:        LegendPosition.bottom,
+            overflowMode:    LegendItemOverflowMode.wrap,
+            textStyle:       GoogleFonts.poppins(fontSize: 12),
+          ),
+          // Tooltip al tocar una sección: muestra nombre, número y porcentaje
+          tooltipBehavior: TooltipBehavior(
+            enable:           true,
+            format:           'point.x : point.y (point.percentage%)',
+            textStyle:        GoogleFonts.poppins(fontSize: 12,
+                                color: Colors.white),
+            color:            const Color(0xFF1A1A2E),
+            borderWidth:      10,
+          ),
+          series: <CircularSeries>[
+            DoughnutSeries<_PieData, String>(
+              dataSource:         datos,
+              xValueMapper:       (_PieData d, _) => d.label,
+              yValueMapper:       (_PieData d, _) => d.value.toDouble(),
+              pointColorMapper:   (_PieData d, _) => d.color,
+              innerRadius:        '55%',       // hueco central de la dona
+              // Al tocar una sección se desplaza hacia afuera (explode)
+              explode:            true,
+              explodeOffset:      '6%',
+              explodeGesture:     ActivationMode.singleTap,
+              animationDuration:  1200,        // 1.2 s de entrada suave
+              strokeColor:        Colors.white,
+              strokeWidth:        2,
             ),
-          ]),
+          ],
         ),
-        const SizedBox(height: 12),
-        Text('Toca una categoría para resaltar',
-            style: GoogleFonts.poppins(fontSize: 11, color: Colors.grey.shade400)),
       ]),
     );
   }
 
-  // ── GRÁFICO DE BARRAS PREMIUM (Custom Paint) ──────────────────────────────
+  // ── GRÁFICO DE BARRAS — Syncfusion ColumnSeries ───────────────────────────
 
   Widget _buildBarChart(Color primary) {
     if (_courseRecords.isEmpty) return const SizedBox();
 
-    // Leer el campo correcto: 'countUsers' (no 'COUNT(*)')
-    final valores = _courseRecords.map((r) {
-      final v = r['countUsers'] ?? r['COUNT(*)'] ?? 0;
-      return (v as num).toDouble();
-    }).toList();
-
-    final maxVal = valores.fold(0.0, math.max);
-
-    // Paleta de gradientes vibrantes por barra
-    final paletas = [
-      [const Color(0xFF1565C0), const Color(0xFF42A5F5)],
-      [const Color(0xFF2E7D32), const Color(0xFF66BB6A)],
-      [const Color(0xFF6A1B9A), const Color(0xFFAB47BC)],
-      [const Color(0xFFBF360C), const Color(0xFFFF7043)],
-      [const Color(0xFF004D40), const Color(0xFF26A69A)],
+    // Paleta de colores vibrantes (un color distinto por curso)
+    const paleta = [
+      Color(0xFF1E88E5), // azul eléctrico
+      Color(0xFF43A047), // verde esmeralda
+      Color(0xFF8E24AA), // morado
+      Color(0xFFE53935), // rojo
+      Color(0xFF00897B), // verde azulado
     ];
 
+    // Mismo shell que antes — solo se reemplaza el contenido de la gráfica
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.07),
-            blurRadius: 20, offset: const Offset(0, 6))],
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.07),
+              blurRadius: 20, offset: const Offset(0, 6)),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Cabecera
+          // Cabecera: icono + título
           Row(children: [
             Container(
               padding: const EdgeInsets.all(8),
@@ -768,52 +701,52 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
                 style: GoogleFonts.poppins(
                     fontWeight: FontWeight.w700, fontSize: 15)),
           ]),
-          const SizedBox(height: 24),
-
-          // Barras Custom Paint HD
-          AnimatedBuilder(
-            animation: _chartAnim,
-            builder: (_, __) => SizedBox(
-              height: 200,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: _courseRecords.asMap().entries.map((e) {
-                  final idx    = e.key;
-                  final r      = e.value;
-                  final nombre = (r['name'] as String?) ?? '';
-                  final val    = valores[idx];
-                  final pct    = maxVal > 0 ? (val / maxVal) * _chartAnim.value : 0.0;
-                  final pal    = paletas[idx % paletas.length];
-
-                  return Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 5),
-                      child: _BarConHover(
-                        nombre: nombre,
-                        valor: val,
-                        pct: pct,
-                        colores: pal,
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-          ),
-
-          // Línea base decorativa
           const SizedBox(height: 8),
-          Container(
-            height: 2,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(colors: [
-                primary.withOpacity(0.0),
-                primary.withOpacity(0.25),
-                primary.withOpacity(0.0),
-              ]),
-              borderRadius: BorderRadius.circular(1),
+
+          // Barras verticales con animación de crecimiento desde abajo
+          SfCartesianChart(
+            plotAreaBackgroundColor: Colors.transparent,
+            plotAreaBorderWidth:     0,
+            // Tooltip elegante al tocar una barra
+            tooltipBehavior: TooltipBehavior(
+              enable:       true,
+              format:       'point.x\nEstudiantes: point.y',
+              textStyle:    GoogleFonts.poppins(fontSize: 12,
+                              color: Colors.white),
+              color:        const Color(0xFF1A1A2E),
             ),
+            // Eje X: nombres de los cursos
+            primaryXAxis: CategoryAxis(
+              axisLine:    const AxisLine(width: 0),
+              majorGridLines: const MajorGridLines(width: 0),
+              labelStyle: GoogleFonts.poppins(fontSize: 11),
+            ),
+            // Eje Y: número de estudiantes (oculto para un look más limpio)
+            primaryYAxis: NumericAxis(
+              isVisible:   false,
+              minimum:     0,
+            ),
+            series: <CartesianSeries>[
+              ColumnSeries<Map<String, dynamic>, String>(
+                dataSource:         _courseRecords,
+                xValueMapper:       (r, _) =>
+                    (r['name'] as String?) ?? '',
+                yValueMapper:       (r, _) =>
+                    ((r['countUsers'] ?? r['COUNT(*)'] ?? 0) as num).toDouble(),
+                // Un color distinto por barra según la paleta
+                pointColorMapper:   (r, i) => paleta[i % paleta.length],
+                animationDuration:  1200,      // 1.2 s, crece desde abajo
+                // Etiqueta del número encima de cada barra
+                dataLabelSettings: DataLabelSettings(
+                  isVisible:       true,
+                  labelAlignment:  ChartDataLabelAlignment.top,
+                  textStyle:       GoogleFonts.poppins(
+                      fontWeight: FontWeight.w800,
+                      fontSize:   12,
+                      color:      const Color(0xFF1A1A2E)),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -855,118 +788,17 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
   );
 }
 
-// ── MODELOS DE DATOS ──────────────────────────────────────────────────────────
+// ── MODELO PARA LA GRÁFICA DE DONA (Syncfusion) ──────────────────────────────
 
-/// Datos de un segmento del gráfico de torta.
-class _PieSec {
-  final String etiqueta;
-  final int    valor;
-  final String emoji;
-  final Color  c1; // Color oscuro (base)
-  final Color  c2; // Color claro (gradiente)
-
-  const _PieSec(this.etiqueta, this.valor, this.emoji, this.c1, this.c2);
+/// Datos de un segmento del DoughnutSeries: etiqueta, valor numérico y color.
+class _PieData {
+  final String label;
+  final int    value;
+  final Color  color;
+  const _PieData(this.label, this.value, this.color);
 }
 
-// ── CUSTOM PAINTER DEL GRÁFICO DE TORTA ──────────────────────────────────────
-
-/// Pinta un gráfico de donut HD con sombra 3D, gradientes y animación de entrada.
-class _PieChartPainter extends CustomPainter {
-  final List<_PieSec> datos;
-  final int           total;
-  final double        progress; // 0.0 → 1.0 (animación de entrada)
-  final int?          tocadoIdx;
-
-  const _PieChartPainter({
-    required this.datos,
-    required this.total,
-    required this.progress,
-    this.tocadoIdx,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (total == 0) return;
-
-    final cx = size.width / 2;
-    final cy = size.height / 2;
-    final r  = math.min(cx, cy) * 0.88;
-
-    // Radio exterior e interior del donut
-    final rExt = r;
-    final rInt = r * 0.55;
-
-    // Ángulo inicial (12 en punto = -π/2)
-    double startAngle = -math.pi / 2;
-
-    for (int i = 0; i < datos.length; i++) {
-      final d   = datos[i];
-      final pct = d.valor / total;
-      final sw  = 2 * math.pi * pct * progress; // Barrido animado
-      final sel = tocadoIdx == i;
-
-      // Desplazar el segmento seleccionado hacia afuera
-      final despl = sel ? 8.0 : 0.0;
-      final midA  = startAngle + sw / 2;
-      final dx    = math.cos(midA) * despl;
-      final dy    = math.sin(midA) * despl;
-
-      final rect = Rect.fromCircle(
-          center: Offset(cx + dx, cy + dy), radius: rExt);
-
-      // ── Sombra 3D ────────────────────────────────────────────────────────
-      final shadowPaint = Paint()
-        ..color = d.c1.withOpacity(sel ? 0.35 : 0.2)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
-      canvas.drawArc(
-        Rect.fromCircle(center: Offset(cx + dx + 3, cy + dy + 4), radius: rExt),
-        startAngle, sw, true, shadowPaint,
-      );
-
-      // ── Relleno con color sólido ──────────────────────────────────────────
-      final fillPaint = Paint()
-        ..style = PaintingStyle.fill
-        ..color = sel ? d.c2 : d.c1;
-      canvas.drawArc(rect, startAngle, sw, true, fillPaint);
-
-      // ── Brillo en borde superior (efecto 3D luz) ──────────────────────────
-      final highlightPaint = Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 3
-        ..color = Colors.white.withOpacity(0.35);
-      canvas.drawArc(rect, startAngle, sw * 0.4, false, highlightPaint);
-
-      // ── Separador blanco entre segmentos ──────────────────────────────────
-      final sepPaint = Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 3
-        ..color = Colors.white;
-      canvas.drawArc(rect, startAngle, sw, true, sepPaint);
-
-      startAngle += sw;
-    }
-
-    // ── Hueco central del donut (blanco) ─────────────────────────────────────
-    final holePaint = Paint()
-      ..style = PaintingStyle.fill
-      ..color = Colors.white;
-    canvas.drawCircle(Offset(cx, cy), rInt, holePaint);
-
-    // ── Sombra interior del hueco (efecto profundidad) ────────────────────────
-    final innerShadow = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 6
-      ..color = Colors.black.withOpacity(0.06)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.inner, 4);
-    canvas.drawCircle(Offset(cx, cy), rInt, innerShadow);
-  }
-
-  @override
-  bool shouldRepaint(_PieChartPainter old) =>
-      old.progress != progress ||
-      old.tocadoIdx != tocadoIdx ||
-      old.total != total;
-}
+// _PieChartPainter eliminado — reemplazado por SfCircularChart (Syncfusion)
 
 // ── PAINTER DE BURBUJAS ANIMADAS ──────────────────────────────────────────────
 
@@ -1003,154 +835,4 @@ class _BubblePainter extends CustomPainter {
 }
 
 
-// ── BARRA CON EFECTO HOVER ANIMADO ────────────────────────────────────────────
-
-/// Barra individual del gráfico de barras con efecto hover.
-/// Al pasar el cursor: crece 15%, muestra tooltip, cambia gradiente.
-class _BarConHover extends StatefulWidget {
-  final String nombre;
-  final double valor;
-  final double pct;        // Porcentaje 0.0 a 1.0 relativo al máximo
-  final List<Color> colores; // [colorOscuro, colorClaro]
-
-  const _BarConHover({
-    required this.nombre,
-    required this.valor,
-    required this.pct,
-    required this.colores,
-  });
-
-  @override
-  State<_BarConHover> createState() => _BarConHoverState();
-}
-
-class _BarConHoverState extends State<_BarConHover>
-    with SingleTickerProviderStateMixin {
-  bool _hover = false;
-  late AnimationController _ctrl;
-  late Animation<double> _anim;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 200));
-    _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c1 = widget.colores[0];
-    final c2 = widget.colores[1];
-    // Máximo 120px: con el 18% de hover + textos + base cabe en los 200px del SizedBox.
-    final alturaBase = math.max(widget.pct * 120, 6.0);
-
-    return MouseRegion(
-      onEnter: (_) { setState(() => _hover = true); _ctrl.forward(); },
-      onExit: (_) { setState(() => _hover = false); _ctrl.reverse(); },
-      child: AnimatedBuilder(
-        animation: _anim,
-        builder: (_, __) {
-          // Al hacer hover la barra crece 18%
-          final altura = alturaBase * (1.0 + _anim.value * 0.18);
-          return Column(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              // Número encima de la barra
-              AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 180),
-                style: GoogleFonts.poppins(
-                  fontSize: _hover ? 14 : 11,
-                  fontWeight: FontWeight.w800,
-                  color: c1,
-                ),
-                child: Text(widget.valor.toInt().toString()),
-              ),
-              const SizedBox(height: 4),
-
-              // Barra con gradiente y efectos 3D
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                height: altura,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: _hover ? [c2, c1] : [c1, c2],
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                  ),
-                  borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(10)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: c1.withOpacity(_hover ? 0.6 : 0.3),
-                      blurRadius: _hover ? 16 : 8,
-                      offset: Offset(0, _hover ? 6.0 : 4.0),
-                    ),
-                  ],
-                ),
-                // Brillos 3D internos
-                child: Stack(children: [
-                  // Brillo lateral izquierdo
-                  Positioned(left: 0, top: 0, bottom: 0,
-                    child: Container(
-                      width: 5,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(_hover ? 0.35 : 0.2),
-                        borderRadius: const BorderRadius.only(
-                            topLeft: Radius.circular(10)),
-                      ),
-                    ),
-                  ),
-                  // Brillo superior
-                  Positioned(top: 0, left: 0, right: 0,
-                    child: Container(
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(_hover ? 0.4 : 0.25),
-                        borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(10)),
-                      ),
-                    ),
-                  ),
-                ]),
-              ),
-
-              // Base 3D
-              Container(
-                height: 5,
-                decoration: BoxDecoration(
-                  color: c1.withOpacity(0.25),
-                  borderRadius: const BorderRadius.vertical(
-                      bottom: Radius.circular(4)),
-                ),
-              ),
-              const SizedBox(height: 6),
-
-              // Nombre del curso
-              AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 180),
-                style: GoogleFonts.poppins(
-                  fontSize: _hover ? 10 : 9,
-                  color: _hover ? c1 : Colors.grey.shade600,
-                  fontWeight: _hover ? FontWeight.w700 : FontWeight.w500,
-                ),
-                child: Text(
-                  widget.nombre.length > 9
-                      ? '${widget.nombre.substring(0, 8)}\u2026'
-                      : widget.nombre,
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
+// _BarConHover/_BarConHoverState eliminados: reemplazados por SfCartesianChart.

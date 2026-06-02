@@ -13,6 +13,12 @@ void main() async {
   // Inicializar locale español para table_calendar y formatos de fecha
   await initializeDateFormatting('es', null);
   await AppSettings.load();
+
+  // NOTA: Syncfusion requiere licencia community (gratuita) para eliminar
+  // la advertencia de licencia. Para registrarla agregar aquí:
+  //   import 'package:syncfusion_flutter_core/syncfusion_flutter_core.dart';
+  //   SyncfusionLicense.registerLicense('TU_CLAVE');
+  // Obtener clave gratis en: https://www.syncfusion.com/products/communitylicense
   runApp(const GesacadApp());
 }
 
