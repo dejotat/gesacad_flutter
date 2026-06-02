@@ -111,15 +111,45 @@ class _AdminUsersState extends State<AdminUsers> {
     );
   }
 
-  // ── Validación de contraseña segura ───────────────────────────────────────
+  // ── Helpers de criterios de contraseña ───────────────────────────────────
+
+  /// Longitud entre 8 y 64 caracteres.
+  bool _adminPwLen(String p)    => p.length >= 8 && p.length <= 64;
+  /// Contiene al menos un número.
+  bool _adminPwNum(String p)    => p.contains(RegExp(r'[0-9]'));
+  /// Contiene al menos una minúscula.
+  bool _adminPwLower(String p)  => p.contains(RegExp(r'[a-z]'));
+  /// Contiene al menos una mayúscula.
+  bool _adminPwUpper(String p)  => p.contains(RegExp(r'[A-Z]'));
+  /// Contiene al menos un símbolo especial.
+  bool _adminPwSym(String p)    =>
+      p.contains(RegExp(r"""[!@#$%^&*()\-_=+\[\]{};:'",./<>?\\|`~]"""));
+  /// No incluye el nombre de usuario.
+  bool _adminPwNoUser(String p, String uname) {
+    final u = uname.trim().toLowerCase();
+    return u.isEmpty || !p.toLowerCase().contains(u);
+  }
+
+  /// Retorna el primer mensaje de error si la contraseña no cumple los 6
+  /// criterios. Retorna null si todo está bien.
+  String? _adminPwError(String p, String uname) {
+    if (!_adminPwLen(p))       return 'La contraseña debe tener entre 8 y 64 caracteres';
+    if (!_adminPwNum(p))       return 'La contraseña debe tener al menos un número';
+    if (!_adminPwLower(p))     return 'La contraseña debe tener al menos una letra minúscula';
+    if (!_adminPwUpper(p))     return 'La contraseña debe tener al menos una letra mayúscula';
+    if (!_adminPwSym(p))       return 'La contraseña debe tener al menos un símbolo (!@#\$%...)';
+    if (!_adminPwNoUser(p, uname)) return 'La contraseña no debe incluir el nombre de usuario';
+    return null;
+  }
+
+  // ── Validación de contraseña segura (usada por el formulario) ─────────────
   String? _validatePassword(String? v, {bool required = true}) {
     if (v == null || v.isEmpty) return required ? 'Requerido' : null;
-    if (v.length < 8) return 'Mínimo 8 caracteres';
-    if (!RegExp(r'[A-Z]').hasMatch(v)) return 'Debe incluir una mayúscula';
-    if (!RegExp(r'[a-z]').hasMatch(v)) return 'Debe incluir una minúscula';
-    if (!RegExp(r'[0-9]').hasMatch(v)) return 'Debe incluir un número';
-    if (!RegExp(r'[!@#\$%^&*(),.?":{}|<>_\-]').hasMatch(v))
-      return 'Debe incluir un símbolo (!@#\$%...)';
+    if (v.length < 8 || v.length > 64) return 'Entre 8 y 64 caracteres';
+    if (!RegExp(r'[A-Z]').hasMatch(v))  return 'Debe incluir una mayúscula';
+    if (!RegExp(r'[a-z]').hasMatch(v))  return 'Debe incluir una minúscula';
+    if (!RegExp(r'[0-9]').hasMatch(v))  return 'Debe incluir un número';
+    if (!_adminPwSym(v))                return 'Debe incluir un símbolo (!@#\$%...)';
     return null;
   }
 
@@ -134,7 +164,17 @@ class _AdminUsersState extends State<AdminUsers> {
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setS) => Dialog(
+        builder: (ctx, setS) {
+          // Calcular si todos los criterios están cumplidos en este frame.
+          // Se evalúa aquí (nivel StatefulBuilder) para que tanto el indicador
+          // visual como el botón Guardar lean el mismo valor actualizado.
+          final pass  = passCtrl.text;
+          final uname = nameCtrl.text;
+          final contrasenaIngresada = pass.isNotEmpty || user == null;
+          final criteriosOk = !contrasenaIngresada ||
+              _adminPwError(pass, uname) == null;
+
+          return Dialog(
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
           elevation: 0,
@@ -248,23 +288,36 @@ class _AdminUsersState extends State<AdminUsers> {
                           },
                         ),
                         const SizedBox(height: 16),
-                        // Campo contraseña
+                        // Campo contraseña con indicador de 6 criterios en tiempo real
                         Builder(builder: (_) {
-                          final pass = passCtrl.text;
-                          final uname = nameCtrl.text.trim().toLowerCase();
-                          final c1 = pass.length >= 8 && pass.length <= 64;
-                          final c2 = pass.contains(RegExp(r'\d'));
-                          final c3 = pass.contains(RegExp(r'[a-zA-Z]'));
-                          final c4 = uname.isEmpty ||
-                              !pass.toLowerCase().contains(uname);
-                          final passed = [c1, c2, c3, c4].where((x) => x).length;
-                          final barColor = passed <= 1
+                          final pass  = passCtrl.text;
+                          final uname = nameCtrl.text;
+
+                          // Evaluar los 6 criterios individualmente
+                          final c1 = _adminPwLen(pass);
+                          final c2 = _adminPwNum(pass);
+                          final c3 = _adminPwLower(pass);
+                          final c4 = _adminPwUpper(pass);
+                          final c5 = _adminPwSym(pass);
+                          final c6 = _adminPwNoUser(pass, uname);
+
+                          final passed = [c1, c2, c3, c4, c5, c6]
+                              .where((x) => x).length;
+
+                          // Color de las 6 barras según criterios cumplidos
+                          final barColor = passed <= 2
                               ? Colors.red
-                              : passed == 2
+                              : passed <= 3
                                   ? Colors.orange
-                                  : passed == 3
+                                  : passed <= 4
                                       ? Colors.yellow.shade700
-                                      : Colors.green;
+                                      : passed <= 5
+                                          ? Colors.lightGreen
+                                          : Colors.green;
+
+                          // criteriosOk se calcula a nivel StatefulBuilder para
+                          // que tanto este indicador como el botón Guardar lo lean.
+                          // No se redeclara aquí para evitar shadowing.
 
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -304,13 +357,17 @@ class _AdminUsersState extends State<AdminUsers> {
                                 validator: (v) =>
                                     _validatePassword(v, required: user == null),
                               ),
-                              // Indicador de fortaleza — visible al escribir
+
+                              // Indicador de fortaleza — aparece al escribir
                               if (pass.isNotEmpty) ...[
                                 const SizedBox(height: 8),
+
+                                // 6 barras de color según criterios cumplidos
                                 Row(
-                                  children: List.generate(4, (i) => Expanded(
+                                  children: List.generate(6, (i) => Expanded(
                                     child: Container(
-                                      margin: const EdgeInsets.symmetric(horizontal: 2),
+                                      margin: const EdgeInsets.symmetric(
+                                          horizontal: 2),
                                       height: 4,
                                       decoration: BoxDecoration(
                                         color: i < passed
@@ -322,11 +379,16 @@ class _AdminUsersState extends State<AdminUsers> {
                                   )),
                                 ),
                                 const SizedBox(height: 6),
+
+                                // Lista de los 6 criterios con check verde / círculo gris
                                 _adminPwCriterion(c1, '8-64 caracteres'),
                                 _adminPwCriterion(c2, 'Al menos un número'),
-                                _adminPwCriterion(c3, 'Al menos una letra'),
-                                _adminPwCriterion(c4, 'No incluir tu usuario'),
+                                _adminPwCriterion(c3, 'Al menos una letra minúscula'),
+                                _adminPwCriterion(c4, 'Al menos una letra mayúscula'),
+                                _adminPwCriterion(c5, 'Al menos un símbolo (!@#\$%...)'),
+                                _adminPwCriterion(c6, 'No incluir el nombre de usuario'),
                               ],
+
                             ],
                           );
                         }),
@@ -386,28 +448,31 @@ class _AdminUsersState extends State<AdminUsers> {
                             child: Container(
                               height: 48,
                               decoration: BoxDecoration(
+                                // Gradiente gris cuando los criterios no se cumplen;
+                                // gradiente de color cuando el botón está habilitado.
                                 gradient: LinearGradient(
-                                  colors: user == null
-                                      ? [
-                                          const Color(0xFF2563EB),
-                                          const Color(0xFF7C3AED)
-                                        ]
-                                      : [
-                                          const Color(0xFF059669),
-                                          const Color(0xFF0EA5E9)
-                                        ],
+                                  colors: criteriosOk
+                                      ? (user == null
+                                          ? [const Color(0xFF2563EB),
+                                             const Color(0xFF7C3AED)]
+                                          : [const Color(0xFF059669),
+                                             const Color(0xFF0EA5E9)])
+                                      : [Colors.grey.shade400,
+                                         Colors.grey.shade500],
                                 ),
                                 borderRadius: BorderRadius.circular(14),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: (user == null
-                                            ? const Color(0xFF2563EB)
-                                            : const Color(0xFF059669))
-                                        .withOpacity(0.35),
-                                    blurRadius: 12,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                ],
+                                boxShadow: criteriosOk
+                                    ? [
+                                        BoxShadow(
+                                          color: (user == null
+                                                  ? const Color(0xFF2563EB)
+                                                  : const Color(0xFF059669))
+                                              .withOpacity(0.35),
+                                          blurRadius: 12,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ]
+                                    : [],
                               ),
                               child: Material(
                                 color: Colors.transparent,
@@ -415,6 +480,31 @@ class _AdminUsersState extends State<AdminUsers> {
                                 child: InkWell(
                                   borderRadius: BorderRadius.circular(14),
                                   onTap: () async {
+                                    // Si los criterios de contraseña no se cumplen,
+                                    // mostrar mensaje específico y bloquear el guardado.
+                                    if (!criteriosOk) {
+                                      final error = _adminPwError(
+                                          passCtrl.text, nameCtrl.text);
+                                      if (error != null && mounted) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(SnackBar(
+                                          content: Text(error,
+                                              style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 13)),
+                                          backgroundColor: Colors.red.shade700,
+                                          duration:
+                                              const Duration(seconds: 3),
+                                          behavior: SnackBarBehavior.floating,
+                                          shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12)),
+                                          margin: const EdgeInsets.all(16),
+                                        ));
+                                      }
+                                      return;
+                                    }
+
                                     if (!formKey.currentState!.validate())
                                       return;
                                     final trimmed = nameCtrl.text.trim();
@@ -485,9 +575,10 @@ class _AdminUsersState extends State<AdminUsers> {
               ],
             ),
           ),
-        ),
-      ),
-    );
+        );       // cierra return Dialog(...)
+        },       // cierra el bloque body del builder de StatefulBuilder
+      ),         // cierra StatefulBuilder(
+    );           // cierra showDialog(
   }
 
   // ── Eliminar usuario ──────────────────────────────────────────────────────

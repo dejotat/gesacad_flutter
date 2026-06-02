@@ -97,6 +97,24 @@ class _LoginScreenState extends State<LoginScreen>
   Future<void> _login() async {
     setState(() => _serverError = null);
     if (!_formKey.currentState!.validate()) return;
+
+    // Verificar fortaleza de contraseña antes de enviar al servidor.
+    // Si no cumple algún criterio se muestra un SnackBar rojo informativo
+    // pero el login CONTINÚA — el backend valida las credenciales reales.
+    // Esto evita bloquear a usuarios con contraseñas antiguas.
+    final pwError = _getPwStrengthError(_passCtrl.text);
+    if (pwError != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(pwError,
+            style: const TextStyle(color: Colors.white, fontSize: 13)),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+      ));
+    }
+
     await _loginBtnCtrl.forward();
     await _loginBtnCtrl.reverse();
     setState(() => _loading = true);
@@ -450,32 +468,66 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  // ── Criterios de contraseña ────────────────────────────────────────────────
+  // ── Criterios de fortaleza de contraseña ─────────────────────────────────
 
+  /// Verifica que la contraseña tenga entre 8 y 64 caracteres.
   bool _pwHasLength(String p) => p.length >= 8 && p.length <= 64;
+
+  /// Verifica que la contraseña contenga al menos un número.
   bool _pwHasNumber(String p) => p.contains(RegExp(r'\d'));
-  bool _pwHasLetter(String p) => p.contains(RegExp(r'[a-zA-Z]'));
+
+  /// Verifica que la contraseña contenga al menos una letra minúscula.
+  bool _pwHasLower(String p) => p.contains(RegExp(r'[a-z]'));
+
+  /// Verifica que la contraseña contenga al menos una letra mayúscula.
+  bool _pwHasUpper(String p) => p.contains(RegExp(r'[A-Z]'));
+
+  /// Verifica que la contraseña contenga al menos un símbolo especial.
+  /// Se usa una cadena de doble comilla para evitar conflictos con la comilla simple.
+  bool _pwHasSymbol(String p) =>
+      p.contains(RegExp(r"""[!@#$%^&*()\-_=+\[\]{};:'",./<>?\\|`~]"""));
+
+  /// Verifica que la contraseña no incluya el nombre de usuario.
   bool _pwNoUser(String p) {
     final u = _userCtrl.text.trim().toLowerCase();
     return u.isEmpty || !p.toLowerCase().contains(u);
   }
 
+  /// Retorna el primer mensaje de error de fortaleza, o null si todo cumple.
+  /// Se usa para mostrar el SnackBar informativo al intentar iniciar sesión.
+  String? _getPwStrengthError(String p) {
+    if (!_pwHasLength(p))  return 'La contraseña debe tener mínimo 8 caracteres';
+    if (!_pwHasLower(p))   return 'La contraseña debe tener al menos una letra minúscula';
+    if (!_pwHasUpper(p))   return 'La contraseña debe tener al menos una letra mayúscula';
+    if (!_pwHasNumber(p))  return 'La contraseña debe tener al menos un número';
+    if (!_pwHasSymbol(p))  return 'La contraseña debe tener al menos un símbolo (!@#\$%...)';
+    if (!_pwNoUser(p))     return 'La contraseña no debe incluir tu nombre de usuario';
+    return null;
+  }
+
   Widget _buildPasswordField(Color primary) {
     final pass = _passCtrl.text;
-    final criteria = [
-      _pwHasLength(pass),
-      _pwHasNumber(pass),
-      _pwHasLetter(pass),
-      _pwNoUser(pass),
-    ];
-    final passed   = criteria.where((c) => c).length;
-    final barColor = passed <= 1
+
+    // Evaluar los 6 criterios de fortaleza
+    final c1 = _pwHasLength(pass);
+    final c2 = _pwHasNumber(pass);
+    final c3 = _pwHasLower(pass);
+    final c4 = _pwHasUpper(pass);
+    final c5 = _pwHasSymbol(pass);
+    final c6 = _pwNoUser(pass);
+
+    final passed = [c1, c2, c3, c4, c5, c6].where((c) => c).length;
+
+    // Color de las barras según cuántos criterios se cumplen
+    final barColor = passed <= 2
         ? Colors.red
-        : passed == 2
+        : passed <= 3
             ? Colors.orange
-            : passed == 3
+            : passed <= 4
                 ? Colors.yellow.shade700
-                : Colors.green;
+                : passed <= 5
+                    ? Colors.lightGreen
+                    : Colors.green;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -514,12 +566,13 @@ class _LoginScreenState extends State<LoginScreen>
           ),
         ),
 
-        // Indicador de fortaleza — aparece al escribir
+        // Indicador de fortaleza — aparece solo cuando el usuario escribe
         if (pass.isNotEmpty) ...[
           const SizedBox(height: 10),
-          // Barras de fortaleza
+
+          // 6 barras de color según criterios cumplidos
           Row(
-            children: List.generate(4, (i) => Expanded(
+            children: List.generate(6, (i) => Expanded(
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 2),
                 height: 4,
@@ -531,11 +584,14 @@ class _LoginScreenState extends State<LoginScreen>
             )),
           ),
           const SizedBox(height: 8),
-          // Lista de criterios
-          _pwCriterion(_pwHasLength(pass), '8-64 caracteres'),
-          _pwCriterion(_pwHasNumber(pass), 'Al menos un número'),
-          _pwCriterion(_pwHasLetter(pass), 'Al menos una letra'),
-          _pwCriterion(_pwNoUser(pass),    'No incluir tu usuario'),
+
+          // Lista de los 6 criterios con check verde / círculo gris
+          _pwCriterion(c1, '8-64 caracteres'),
+          _pwCriterion(c2, 'Al menos un número'),
+          _pwCriterion(c3, 'Al menos una letra minúscula'),
+          _pwCriterion(c4, 'Al menos una letra mayúscula'),
+          _pwCriterion(c5, 'Al menos un símbolo (!@#\$%...)'),
+          _pwCriterion(c6, 'No incluir tu usuario'),
         ],
       ],
     );
