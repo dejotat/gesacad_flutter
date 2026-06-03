@@ -345,7 +345,11 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                       child: Material(
                         color: Colors.transparent,
                         borderRadius: BorderRadius.circular(16),
-                        child: InkWell(
+                        child: Semantics(
+                          label: 'Guardar cambios del perfil',
+                          button: true,
+                          enabled: !_saving,
+                          child: InkWell(
                           borderRadius: BorderRadius.circular(16),
                           onTap: _saving ? null : _save,
                           child: Center(child: _saving
@@ -357,7 +361,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                                   Text('Guardar cambios', style: GoogleFonts.poppins(
                                       fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
                                 ])),
-                        ),
+                        )),      // cierra Semantics
                       ),
                     ),
                     const SizedBox(height: 40),
@@ -382,7 +386,10 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         ], begin: Alignment.topLeft, end: Alignment.bottomRight),
       ),
       child: Column(children: [
-        GestureDetector(
+        Semantics(
+          label: 'Foto de perfil. Toca para seleccionar una nueva foto desde tu galería.',
+          button: true,
+          child: GestureDetector(
           onTap: _pickPhoto,
           child: Stack(children: [
             Container(
@@ -394,11 +401,11 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                 border: Border.all(color: Colors.white, width: 4),
               ),
               child: _photoBytes != null
-                  ? ClipOval(child: Image.memory(_photoBytes!, fit: BoxFit.cover, width: 110, height: 110))
+                  ? ClipOval(child: ExcludeSemantics(child: Image.memory(_photoBytes!, fit: BoxFit.cover, width: 110, height: 110)))
                   : Center(child: Text(_initials, style: GoogleFonts.poppins(
                       color: Colors.white, fontSize: 38, fontWeight: FontWeight.w800))),
             ),
-            Positioned(bottom: 4, right: 4, child: Container(
+            Positioned(bottom: 4, right: 4, child: ExcludeSemantics(child: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 gradient: LinearGradient(colors: _rolGradient),
@@ -407,14 +414,16 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                 boxShadow: [BoxShadow(color: primary.withOpacity(0.3), blurRadius: 8)],
               ),
               child: const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 15),
-            )),
+            ))),
           ]),
-        ),
+        )),
         const SizedBox(height: 12),
         Text(_nameCtrl.text.isNotEmpty ? _nameCtrl.text : 'Tu nombre',
             style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w700, color: const Color(0xFF1E1B4B))),
         const SizedBox(height: 6),
-        Container(
+        Semantics(
+          label: 'Tu rol: $_rolLabel',
+          child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           decoration: BoxDecoration(
             gradient: LinearGradient(colors: _rolGradient),
@@ -422,11 +431,11 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
             boxShadow: [BoxShadow(color: primary.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 3))],
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(_rolIcon, color: Colors.white, size: 14),
+            ExcludeSemantics(child: Icon(_rolIcon, color: Colors.white, size: 14)),
             const SizedBox(width: 6),
             Text(_rolLabel, style: GoogleFonts.poppins(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
           ]),
-        ),
+        )),
         const SizedBox(height: 6),
         Text('Toca la foto para cambiarla', style: GoogleFonts.poppins(fontSize: 11, color: Colors.grey.shade400)),
       ]),

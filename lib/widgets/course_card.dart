@@ -11,6 +11,8 @@ class CourseCard extends StatefulWidget {
   final VoidCallback? onDelete;
   final VoidCallback? onEdit;
   final int index;
+  /// Si true, oculta el botón "Abrir curso" (usado en la vista Admin de gestión)
+  final bool hideOpenButton;
 
   const CourseCard({
     super.key,
@@ -19,6 +21,7 @@ class CourseCard extends StatefulWidget {
     this.onDelete,
     this.onEdit,
     this.index = 0,
+    this.hideOpenButton = false,
   });
 
   static const List<List<Color>> _gradients = [
@@ -262,8 +265,8 @@ class _CourseCardState extends State<CourseCard>
             overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 10),
-          // Botón Abrir
-          SizedBox(
+          // Botón Abrir — oculto cuando hideOpenButton = true (Admin)
+          if (!widget.hideOpenButton) SizedBox(
             width: double.infinity,
             height: 34,
             child: DecoratedBox(

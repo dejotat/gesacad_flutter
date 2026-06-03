@@ -131,20 +131,34 @@ class ActivityCard extends StatelessWidget {
                 const Text('⏰ Plazo vencido',
                     style: TextStyle(color: Colors.red, fontSize: 11)),
               ],
-              if (activity.isDelivered) ...[
+              if (activity.gpa != null) ...[
+                // Calificado: badge azul/morado con la nota visible
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF6A1B9A), Color(0xFF1565C0)],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.grade_rounded, color: Colors.white, size: 12),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Calificado · ${activity.gpa!.toStringAsFixed(1)} / 5.0',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700),
+                    ),
+                  ]),
+                ),
+              ] else if (activity.isDelivered) ...[
+                // Entregado pero aún sin calificar
                 const SizedBox(height: 4),
                 const Text('✅ Entregado',
                     style: TextStyle(color: Colors.green, fontSize: 11)),
-              ],
-              if (activity.gpa != null) ...[
-                const SizedBox(height: 4),
-                Text(
-                  'Nota: ${activity.gpa!.toStringAsFixed(1)}',
-                  style: const TextStyle(
-                      color: Colors.indigo,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold),
-                ),
               ],
             ],
           ),

@@ -259,7 +259,7 @@ class _AdminCoursesState extends State<AdminCourses> {
                     ),
                   ),
                 ),
-                // Botones
+                // Botones — cada uno en Expanded para ser responsive
                 Padding(
                   padding:
                       const EdgeInsets.fromLTRB(22, 0, 22, 22),
@@ -267,7 +267,14 @@ class _AdminCoursesState extends State<AdminCourses> {
                     Expanded(
                       child: TextButton(
                         onPressed: () => Navigator.pop(ctx),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          minimumSize: const Size(0, 48),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
                         child: Text('Cancelar',
+                            softWrap: false,
+                            overflow: TextOverflow.ellipsis,
                             style: GoogleFonts.poppins(
                                 fontWeight: FontWeight.w600)),
                       ),
@@ -880,6 +887,7 @@ class _AdminCoursesState extends State<AdminCourses> {
                       onEdit: () => _showEditCourse(_courses[i]),
                       onDelete: () => _deleteCourse(_courses[i]),
                       index: i,
+                      hideOpenButton: true, // Admin no necesita abrir el curso
                     ),
                   );
                 }),

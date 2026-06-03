@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../utils/route_transitions.dart';
 import '../services/settings_service.dart';
 import '../widgets/animated_logo.dart';
 import 'admin/admin_home.dart';
@@ -36,18 +37,36 @@ class _LoginScreenState extends State<LoginScreen>
   late AnimationController _loginBtnCtrl;
   late Animation<double> _loginBtnScale;
 
-  // Controlador del gradiente animado del fondo (azul/morado en movimiento suave)
+  // Controlador del gradiente animado del fondo
   late AnimationController _bgAnim;
+
+  // Animación 2: logo cae desde arriba con rebote suave
+  late AnimationController _logoCtrl;
+  late Animation<Offset>   _logoSlide;
+  late Animation<double>   _logoFade;
 
   @override
   void initState() {
     super.initState();
+
+    // Logo: cae desde arriba con rebote. Arranca primero.
+    _logoCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 900));
+    _logoSlide = Tween<Offset>(
+            begin: const Offset(0, -1.6), end: Offset.zero)
+        .animate(CurvedAnimation(parent: _logoCtrl, curve: Curves.easeOutBack));
+    _logoFade = Tween<double>(begin: 0.0, end: 1.0).animate(
+        CurvedAnimation(parent: _logoCtrl, curve: const Interval(0.0, 0.5, curve: Curves.easeIn)));
+    _logoCtrl.forward();
+
+    // Formulario: sube desde abajo 200ms después del logo
     _anim = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 750));
-    _fade = CurvedAnimation(parent: _anim, curve: Curves.easeIn);
-    _slide = Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero)
-        .animate(CurvedAnimation(parent: _anim, curve: Curves.easeOut));
-    _anim.forward();
+        vsync: this, duration: const Duration(milliseconds: 700));
+    _fade = Tween<double>(begin: 0.0, end: 1.0).animate(
+        CurvedAnimation(parent: _anim, curve: const Interval(0.0, 0.7, curve: Curves.easeIn)));
+    _slide = Tween<Offset>(begin: const Offset(0, 0.4), end: Offset.zero)
+        .animate(CurvedAnimation(parent: _anim, curve: Curves.easeOutCubic));
+    Future.delayed(const Duration(milliseconds: 200), () { if (mounted) _anim.forward(); });
 
     _loginBtnCtrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 120));
@@ -63,6 +82,7 @@ class _LoginScreenState extends State<LoginScreen>
   @override
   void dispose() {
     _anim.dispose();
+    _logoCtrl.dispose();
     _loginBtnCtrl.dispose();
     _bgAnim.dispose();
     _userCtrl.dispose();
@@ -151,8 +171,7 @@ class _LoginScreenState extends State<LoginScreen>
                 ? const TeacherHome()
                 : const StudentHome();
         if (!mounted) return;
-        Navigator.pushReplacement(
-            context, MaterialPageRoute(builder: (_) => home));
+        Navigator.pushReplacement(context, slideRoute(home));
       } else {
         setState(() => _serverError = _mapLoginError(res));
       }
@@ -233,54 +252,60 @@ class _LoginScreenState extends State<LoginScreen>
                   child: ConstrainedBox(
                     // Máximo 480px en pantallas grandes (web desktop)
                     constraints: const BoxConstraints(maxWidth: 480),
-                    child: FadeTransition(
-                      opacity: _fade,
-                      child: SlideTransition(
-                        position: _slide,
-                        child: Column(
+                    child: Column(
                           children: [
-                            // ── Logo y título ──────────────────────────────
-                            Semantics(
-                              label: 'GESACAD, Sistema de Gestión Académica',
-                              child: Column(children: [
-                                AnimatedLogo(size: logoTam),
-                                SizedBox(height: esMobil ? 10 : 16),
-                                Text(
-                                  'GESACAD',
-                                  style: GoogleFonts.poppins(
-                                    color: Colors.white,
-                                    fontSize: esMobil ? 26 : 36,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 5,
-                                    shadows: [
-                                      Shadow(
-                                        color: Colors.black.withOpacity(0.3),
-                                        blurRadius: 12,
-                                        offset: const Offset(0, 4),
+                            // ── Logo: cae desde arriba (animación independiente) ──
+                            SlideTransition(
+                              position: _logoSlide,
+                              child: FadeTransition(
+                                opacity: _logoFade,
+                                child: Semantics(
+                                  label: 'GESACAD, Sistema de Gestión Académica',
+                                  child: Column(children: [
+                                    AnimatedLogo(size: logoTam),
+                                    SizedBox(height: esMobil ? 10 : 16),
+                                    Text(
+                                      'GESACAD',
+                                      style: GoogleFonts.poppins(
+                                        color: Colors.white,
+                                        fontSize: esMobil ? 26 : 36,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: 5,
+                                        shadows: [
+                                          Shadow(
+                                            color: Colors.black.withOpacity(0.3),
+                                            blurRadius: 12,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
                                       ),
-                                    ],
-                                  ),
+                                    ),
+                                    Text(
+                                      'Campus Virtual',
+                                      style: GoogleFonts.poppins(
+                                          color: Colors.white70,
+                                          fontSize: esMobil ? 11 : 13,
+                                          letterSpacing: 2),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Unicomfacauca · v 1.1.2',
+                                      style: GoogleFonts.poppins(
+                                          color: Colors.white38,
+                                          fontSize: esMobil ? 9 : 11),
+                                    ),
+                                  ]),
                                 ),
-                                Text(
-                                  'Campus Virtual',
-                                  style: GoogleFonts.poppins(
-                                      color: Colors.white70,
-                                      fontSize: esMobil ? 11 : 13,
-                                      letterSpacing: 2),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Unicomfacauca · v 1.1.2',
-                                  style: GoogleFonts.poppins(
-                                      color: Colors.white38,
-                                      fontSize: esMobil ? 9 : 11),
-                                ),
-                              ]),
+                              ),
                             ),
                             SizedBox(height: esMobil ? 18 : 28),
 
-                            // ── Card de login ──────────────────────────────
-                            Container(
+                            // ── Formulario: sube desde abajo (animación independiente) ──
+                            SlideTransition(
+                              position: _slide,
+                              child: FadeTransition(
+                                opacity: _fade,
+                                child: Container(
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 borderRadius: BorderRadius.circular(28),
@@ -361,8 +386,7 @@ class _LoginScreenState extends State<LoginScreen>
                                         child: TextButton(
                                           onPressed: () => Navigator.push(
                                               context,
-                                              MaterialPageRoute(
-                                                  builder: (_) => const ForgotPasswordScreen())),
+                                              slideRoute(const ForgotPasswordScreen())),
                                           style: TextButton.styleFrom(
                                               padding: const EdgeInsets.symmetric(vertical: 4)),
                                           child: Text(
@@ -441,7 +465,9 @@ class _LoginScreenState extends State<LoginScreen>
                                   ),
                                 ),
                               ),
-                            ),
+                            ),      // cierra Container
+                              ),    // cierra FadeTransition del formulario
+                            ),      // cierra SlideTransition del formulario
                             const SizedBox(height: 22),
 
                             // ── Pie de página ──────────────────────────────
@@ -460,18 +486,16 @@ class _LoginScreenState extends State<LoginScreen>
                                   fontSize: esMobil ? 8 : 10),
                               textAlign: TextAlign.center,
                             ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ),
-    );
+                          ],        // cierra children del Column principal
+                        ),          // cierra Column (hijo de ConstrainedBox)
+                      ),            // cierra ConstrainedBox
+                    ),              // cierra SingleChildScrollView
+                  );                // cierra Center + return
+                },                  // cierra LayoutBuilder builder
+              ),                    // cierra LayoutBuilder
+            ),                      // cierra SafeArea
+          ),                        // cierra AnimatedBuilder
+        );                          // cierra Scaffold
   }
 
 

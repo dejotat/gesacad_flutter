@@ -6,6 +6,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'config/app_themes.dart';
 import 'services/settings_service.dart';
 import 'services/api_service.dart';
+import 'utils/route_transitions.dart';
 import 'screens/login_screen.dart';
 import 'screens/admin/admin_home.dart';
 import 'screens/teacher/teacher_home.dart';
@@ -59,34 +60,55 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _ctrl;
-  late Animation<double> _fade;
-  late Animation<double> _scale;
+    with TickerProviderStateMixin {
+  // Controller del logo: escala 0.3→1.0 con rebote + fade in
+  late AnimationController _logoCtrl;
+  late Animation<double>   _logoScale;
+  late Animation<double>   _logoFade;
+
+  // Controller del texto inferior: desliza desde abajo + fade in
+  late AnimationController _textCtrl;
+  late Animation<Offset>   _textSlide;
+  late Animation<double>   _textFade;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
+
+    // Logo: aparece en 900ms con rebote elástico
+    _logoCtrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 900));
-    _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeIn);
-    _scale = Tween<double>(begin: 0.85, end: 1.0).animate(
-        CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut));
-    _ctrl.forward();
-    // Mejora 5: despertar Railway antes de que el usuario llegue a la pantalla
-    // con datos. El ping es silencioso y no bloquea la animación del splash.
+    _logoScale = Tween<double>(begin: 0.2, end: 1.0).animate(
+        CurvedAnimation(parent: _logoCtrl, curve: Curves.easeOutBack));
+    _logoFade = Tween<double>(begin: 0.0, end: 1.0).animate(
+        CurvedAnimation(parent: _logoCtrl, curve: const Interval(0.0, 0.6, curve: Curves.easeIn)));
+
+    // Texto "Campus Virtual": desliza 80px desde abajo usando FractionalOffset
+    _textCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 700));
+    _textSlide = Tween<Offset>(
+            begin: const Offset(0, 4.0), end: Offset.zero)
+        .animate(CurvedAnimation(parent: _textCtrl, curve: Curves.easeOutCubic));
+    _textFade = CurvedAnimation(parent: _textCtrl, curve: Curves.easeIn);
+
+    // Logo arranca inmediatamente; texto arranca a los 600ms
+    _logoCtrl.forward();
+    Future.delayed(const Duration(milliseconds: 600),
+        () { if (mounted) _textCtrl.forward(); });
+
     unawaited(ApiService().ping());
     _checkSession();
   }
 
   @override
   void dispose() {
-    _ctrl.dispose();
+    _logoCtrl.dispose();
+    _textCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _checkSession() async {
-    await Future.delayed(const Duration(milliseconds: 2200));
+    await Future.delayed(const Duration(milliseconds: 2500));
     final prefs = await SharedPreferences.getInstance();
     final rol = prefs.getString('userRol');
     if (!mounted) return;
@@ -101,8 +123,7 @@ class _SplashScreenState extends State<SplashScreen>
     } else {
       dest = const StudentHome();
     }
-    Navigator.pushReplacement(
-        context, MaterialPageRoute(builder: (_) => dest));
+    Navigator.pushReplacement(context, slideRoute(dest));
   }
 
   @override
@@ -120,14 +141,15 @@ class _SplashScreenState extends State<SplashScreen>
             ),
           ),
           child: Center(
-            child: FadeTransition(
-              opacity: _fade,
-              child: ScaleTransition(
-                scale: _scale,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // ── Logo: escala desde pequeño + fade in con rebote ──────────
+                ScaleTransition(
+                  scale: _logoScale,
+                  child: FadeTransition(
+                    opacity: _logoFade,
+                    child: Container(
                       padding: const EdgeInsets.all(28),
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.12),
@@ -145,36 +167,55 @@ class _SplashScreenState extends State<SplashScreen>
                       child: const Icon(Icons.school_rounded,
                           size: 80, color: Colors.white),
                     ),
-                    const SizedBox(height: 28),
-                    const Text(
-                      'GESACAD',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 42,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 6,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'Sistema de Gestión Académica',
-                      style: TextStyle(color: Colors.white70, fontSize: 14),
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'Unicomfacauca · v 1.1.2',
-                      style: TextStyle(color: Colors.white54, fontSize: 12),
-                    ),
-                    const SizedBox(height: 48),
-                    const SizedBox(
-                      width: 34,
-                      height: 34,
-                      child: CircularProgressIndicator(
-                          color: Colors.white, strokeWidth: 3),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
+                const SizedBox(height: 28),
+
+                // ── Nombre GESACAD: fade in junto con el logo ────────────────
+                FadeTransition(
+                  opacity: _logoFade,
+                  child: const Text(
+                    'GESACAD',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 42,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 6,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+
+                // ── Subtítulos: deslizan desde abajo 600ms después ───────────
+                SlideTransition(
+                  position: _textSlide,
+                  child: FadeTransition(
+                    opacity: _textFade,
+                    child: Column(children: [
+                      const Text(
+                        'Campus Virtual',
+                        style: TextStyle(color: Colors.white70, fontSize: 14),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Unicomfacauca · v 1.1.2',
+                        style: TextStyle(color: Colors.white54, fontSize: 12),
+                      ),
+                    ]),
+                  ),
+                ),
+
+                const SizedBox(height: 48),
+                FadeTransition(
+                  opacity: _logoFade,
+                  child: const SizedBox(
+                    width: 34,
+                    height: 34,
+                    child: CircularProgressIndicator(
+                        color: Colors.white, strokeWidth: 3),
+                  ),
+                ),
+              ],
             ),
           ),
         ),

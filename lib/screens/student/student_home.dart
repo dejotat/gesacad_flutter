@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -12,6 +12,7 @@ import '../../widgets/course_card.dart';
 import '../../widgets/tts_button.dart';
 import '../../widgets/talk_widget.dart';
 import '../login_screen.dart';
+import '../../utils/route_transitions.dart';
 import '../settings_screen.dart';
 import '../notifications/notifications_panel.dart';
 import '../profile/profile_screen.dart';
@@ -100,7 +101,7 @@ class _StudentHomeState extends State<StudentHome> with TickerProviderStateMixin
   Future<void> _logout() async {
     await AuthService().clearSession();
     if (!mounted) return;
-    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+    Navigator.pushReplacement(context, slideRoute(const LoginScreen()));
   }
 
   String get _ttsText => _courses.isEmpty
@@ -141,14 +142,25 @@ class _StudentHomeState extends State<StudentHome> with TickerProviderStateMixin
                             mainAxisSpacing: 14,
                           ),
                           delegate: SliverChildBuilderDelegate(
-                            (_, i) => CourseCard(
-                              course: _courses[i],
-                              index: i,
-                              onTap: () async {
-                                await Navigator.push(context, MaterialPageRoute(
-                                  builder: (_) => StudentCourseContent(course: _courses[i], userId: _myId),
-                                ));
-                              },
+                            (_, i) => TweenAnimationBuilder<double>(
+                              tween: Tween(begin: 0.0, end: 1.0),
+                              duration: Duration(milliseconds: 250 + i * 90),
+                              curve: Curves.easeOut,
+                              builder: (_, v, child) => Opacity(
+                                opacity: v,
+                                child: Transform.translate(
+                                  offset: Offset(0, 18 * (1 - v)),
+                                  child: child,
+                                ),
+                              ),
+                              child: CourseCard(
+                                course: _courses[i],
+                                index: i,
+                                onTap: () async {
+                                  await Navigator.push(context,
+                                    slideRoute(StudentCourseContent(course: _courses[i], userId: _myId)));
+                                },
+                              ),
                             ),
                             childCount: _courses.length,
                           ),
@@ -204,20 +216,21 @@ class _StudentHomeState extends State<StudentHome> with TickerProviderStateMixin
         IconButton(
           tooltip: 'Calendario',
           icon: const Icon(Icons.calendar_month_rounded, color: Colors.white),
-          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CalendarScreen())),
+          onPressed: () => Navigator.push(context, slideRoute(const CalendarScreen())),
         ),
         IconButton(
           tooltip: 'Mi Perfil',
           icon: _photoBytes != null
               ? CircleAvatar(backgroundImage: MemoryImage(_photoBytes!), radius: 14)
               : const Icon(Icons.account_circle_rounded, color: Colors.white),
-          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()))
+          onPressed: () => Navigator.push(context, slideRoute(const ProfileScreen()))
               .then((_) => _reloadPhoto()),
         ),
         PopupMenuButton<String>(
+          tooltip: 'Más opciones',
           icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
           onSelected: (v) {
-            if (v == 'settings') Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
+            if (v == 'settings') Navigator.push(context, slideRoute(const SettingsScreen()));
             if (v == 'logout') _logout();
           },
           itemBuilder: (_) => [
@@ -258,21 +271,24 @@ class _StudentHomeState extends State<StudentHome> with TickerProviderStateMixin
         child: ClipRRect(
           borderRadius: BorderRadius.circular(28),
           child: Stack(children: [
-            Positioned.fill(child: CustomPaint(painter: _BubblePainter(_cardAnim.value))),
-            // Línea brillo superior
-            Positioned(top: 0, left: 0, right: 0, child: Container(
+            Positioned.fill(
+                child: ExcludeSemantics(
+                    child: CustomPaint(painter: _BubblePainter(_cardAnim.value)))),
+            // Línea brillo superior — decorativa, ignorar en TalkBack
+            Positioned(top: 0, left: 0, right: 0, child: ExcludeSemantics(child: Container(
               height: 1.5,
               decoration: BoxDecoration(gradient: LinearGradient(colors: [
                 Colors.white.withOpacity(0.0),
                 Colors.white.withOpacity(0.35),
                 Colors.white.withOpacity(0.0),
               ])),
-            )),
+            ))),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
               child: Row(children: [
-                // Avatar
-                Container(
+                // Avatar — decorativo (el nombre ya se anuncia por TalkWidget)
+                ExcludeSemantics(
+                  child: Container(
                   width: 70, height: 70,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
@@ -283,7 +299,7 @@ class _StudentHomeState extends State<StudentHome> with TickerProviderStateMixin
                   child: ClipOval(child: _photoBytes != null
                       ? Image.memory(_photoBytes!, fit: BoxFit.cover, width: 70, height: 70)
                       : const Icon(Icons.person_rounded, color: Colors.white, size: 32)),
-                ),
+                )),
                 const SizedBox(width: 18),
                 Expanded(child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -324,18 +340,17 @@ class _StudentHomeState extends State<StudentHome> with TickerProviderStateMixin
   Widget _buildQuickAccess(Color primary) {
     final items = [
       _QuickItem('📊', 'Mis Notas', const Color(0xFF1D4ED8),
-          () => Navigator.push(context, MaterialPageRoute(
-            builder: (_) => _AllGradesScreen(userId: _myId, courses: _courses),
-          ))),
+          () => Navigator.push(context,
+              slideRoute(_AllGradesScreen(userId: _myId, courses: _courses)))),
       _QuickItem('📅', 'Calendario', const Color(0xFF7C3AED),
-          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CalendarScreen()))),
+          () => Navigator.push(context, slideRoute(const CalendarScreen()))),
       _QuickItem('🔔', 'Avisos', const Color(0xFFDB2777),
-          () => Navigator.push(context, MaterialPageRoute(builder: (_) => NotificationsPanel(userId: _myId, userRol: 'Student')))),
+          () => Navigator.push(context, slideRoute(NotificationsPanel(userId: _myId, userRol: 'Student')))),
       _QuickItem('👤', 'Mi Perfil', const Color(0xFF059669),
-          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()))
+          () => Navigator.push(context, slideRoute(const ProfileScreen()))
               .then((_) => _reloadPhoto())),
       _QuickItem('⚙️', 'Ajustes', const Color(0xFFD97706),
-          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()))),
+          () => Navigator.push(context, slideRoute(const SettingsScreen()))),
     ];
 
     return Container(
@@ -589,8 +604,9 @@ class _AllGradesScreenState extends State<_AllGradesScreen> {
                       elevation: 3,
                       child: InkWell(
                         borderRadius: BorderRadius.circular(18),
-                        onTap: () => Navigator.push(context, MaterialPageRoute(
-                          builder: (_) => Scaffold(
+                        onTap: () => Navigator.push(
+                          context,
+                          slideRoute(Scaffold(
                             appBar: AppBar(
                               title: Text(c.name,
                                   style: GoogleFonts.poppins(
@@ -613,8 +629,8 @@ class _AllGradesScreenState extends State<_AllGradesScreen> {
                               userId:     widget.userId,
                               courseName: c.name,
                             ),
-                          ),
-                        )).then((_) => _load()),
+                          )),
+                        ).then((_) => _load()),
                         child: Padding(
                           padding: const EdgeInsets.all(18),
                           child: Column(

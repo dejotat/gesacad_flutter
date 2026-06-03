@@ -11,6 +11,7 @@ import '../../services/settings_service.dart';
 import '../../widgets/tts_button.dart';
 import '../../widgets/chatbot_widget.dart';
 import '../login_screen.dart';
+import '../../utils/route_transitions.dart';
 import '../settings_screen.dart';
 import '../notifications/notifications_panel.dart';
 import '../profile/profile_screen.dart';
@@ -163,7 +164,7 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
     await AuthService().clearSession();
     if (!mounted) return;
     Navigator.pushReplacement(context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()));
+        slideRoute(const LoginScreen()));
   }
 
   String get _ttsText =>
@@ -213,14 +214,23 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
                             _secTitle('Distribución de Usuarios',
                                 Icons.donut_large_rounded, primary),
                             const SizedBox(height: 14),
-                            _buildPieChart(primary),
+                            // Label describe el chart; la leyenda interactiva queda accesible
+                            Semantics(
+                              label: 'Gráfica de distribución de usuarios por rol. '
+                                  '$_totalStudents estudiantes, $_totalTeachers profesores, $_totalAdmins administradores.',
+                              child: _buildPieChart(primary),
+                            ),
                           ],
                           if (_courseRecords.isNotEmpty) ...[
                             const SizedBox(height: 28),
                             _secTitle('Estudiantes por Curso',
                                 Icons.analytics_rounded, primary),
                             const SizedBox(height: 14),
-                            _buildBarChart(primary),
+                            Semantics(
+                              label: 'Gráfica de estudiantes por curso. '
+                                  '${_courseRecords.map((r) => "${r['name']}: ${r['countUsers'] ?? 0} estudiantes").join(", ")}.',
+                              child: _buildBarChart(primary),
+                            ),
                           ],
                           const SizedBox(height: 100),
                         ],
@@ -259,6 +269,7 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
         ),
       ),
       leading: Builder(builder: (ctx) => IconButton(
+        tooltip: 'Abrir menú de navegación',
         icon: const Icon(Icons.menu_rounded, color: Colors.white),
         onPressed: () => Scaffold.of(ctx).openDrawer(),
       )),
@@ -272,7 +283,7 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
           tooltip: 'Calendario',
           icon: const Icon(Icons.calendar_month_rounded, color: Colors.white),
           onPressed: () => Navigator.push(context,
-              MaterialPageRoute(builder: (_) => const CalendarScreen())),
+              slideRoute(const CalendarScreen())),
         ),
         IconButton(
           tooltip: 'Mi Perfil',
@@ -280,14 +291,15 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
               ? CircleAvatar(backgroundImage: MemoryImage(_photoBytes!), radius: 14)
               : const Icon(Icons.account_circle_rounded, color: Colors.white),
           onPressed: () => Navigator.push(context,
-              MaterialPageRoute(builder: (_) => const ProfileScreen()))
+              slideRoute(const ProfileScreen()))
               .then((_) => _reloadPhoto()),
         ),
         PopupMenuButton<String>(
+          tooltip: 'Más opciones',
           icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
           onSelected: (v) {
             if (v == 'settings') Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const SettingsScreen()));
+                slideRoute(const SettingsScreen()));
             if (v == 'logout') _logout();
           },
           itemBuilder: (_) => [
@@ -325,9 +337,13 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
             ),
             child: Stack(children: [
               Positioned.fill(
-                  child: CustomPaint(painter: _BubblePainter(_cardAnim.value))),
+                  // Decorativo — TalkBack debe ignorar las burbujas animadas
+                  child: ExcludeSemantics(
+                      child: CustomPaint(painter: _BubblePainter(_cardAnim.value)))),
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Container(
+                Semantics(
+                  label: 'Foto de perfil de $_name',
+                  child: Container(
                   width: 64, height: 64,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
@@ -335,10 +351,10 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
                     color: Colors.white.withOpacity(0.15),
                   ),
                   child: ClipOval(child: _photoBytes != null
-                      ? Image.memory(_photoBytes!, fit: BoxFit.cover)
+                      ? ExcludeSemantics(child: Image.memory(_photoBytes!, fit: BoxFit.cover))
                       : const Icon(Icons.admin_panel_settings_rounded,
                           color: Colors.white, size: 34)),
-                ),
+                )),
                 const SizedBox(height: 14),
                 Text(_name, style: GoogleFonts.poppins(
                     color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
@@ -360,17 +376,17 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
             () => Navigator.pop(context)),
         _drawerItem(Icons.manage_accounts_rounded, 'Gestionar Usuarios', primary, () {
           Navigator.pop(context);
-          Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminUsers()))
+          Navigator.push(context, slideRoute(const AdminUsers()))
               .then((_) { if (mounted) _loadData(); });
         }),
         _drawerItem(Icons.menu_book_rounded, 'Gestionar Cursos', primary, () {
           Navigator.pop(context);
-          Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminCourses()))
+          Navigator.push(context, slideRoute(const AdminCourses()))
               .then((_) { if (mounted) _loadData(); });
         }),
         _drawerItem(Icons.settings_rounded, 'Ajustes y Acerca de', primary, () {
           Navigator.pop(context);
-          Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
+          Navigator.push(context, slideRoute(const SettingsScreen()));
         }),
         const Divider(height: 1),
         _drawerItem(Icons.logout_rounded, 'Cerrar Sesión', Colors.red, _logout),
@@ -421,11 +437,14 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(28),
           child: Stack(children: [
-            Positioned.fill(child: CustomPaint(painter: _BubblePainter(_cardAnim.value))),
+            Positioned.fill(
+                child: ExcludeSemantics(
+                    child: CustomPaint(painter: _BubblePainter(_cardAnim.value)))),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 22),
               child: Row(children: [
-                Container(
+                ExcludeSemantics(
+                  child: Container(
                   width: 72, height: 72,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
@@ -436,7 +455,7 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
                       ? Image.memory(_photoBytes!, fit: BoxFit.cover)
                       : const Icon(Icons.admin_panel_settings_rounded,
                           color: Colors.white, size: 36)),
-                ),
+                )),
                 const SizedBox(width: 20),
                 Expanded(child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -498,6 +517,8 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
   Widget _statCard(String label, int value, String emoji,
       Color color, Color bgColor) {
     return Expanded(
+      child: Semantics(
+      label: '$value $label en el sistema',
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 12),
         decoration: BoxDecoration(
@@ -516,20 +537,26 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
             child: Text(emoji, style: const TextStyle(fontSize: 24)),
           ),
           const SizedBox(height: 10),
-          TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0, end: value.toDouble()),
-            duration: const Duration(milliseconds: 1200),
-            curve: Curves.easeOut,
-            builder: (_, v, __) => Text('${v.toInt()}',
-                style: GoogleFonts.poppins(
-                    fontSize: 32, fontWeight: FontWeight.w900, color: color)),
+          // ExcludeSemantics: TalkBack lee el label del Semantics padre ('12 Estudiantes')
+          // en vez de anunciar cada número intermedio de la animación (0,1,2...12)
+          ExcludeSemantics(
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: value.toDouble()),
+              duration: const Duration(milliseconds: 1200),
+              curve: Curves.easeOut,
+              builder: (_, v, __) => Text('${v.toInt()}',
+                  style: GoogleFonts.poppins(
+                      fontSize: 32, fontWeight: FontWeight.w900, color: color)),
+            ),
           ),
-          Text(label, style: GoogleFonts.poppins(
-              fontSize: 12, color: Colors.grey.shade500,
-              fontWeight: FontWeight.w600)),
+          ExcludeSemantics(
+            child: Text(label, style: GoogleFonts.poppins(
+                fontSize: 12, color: Colors.grey.shade500,
+                fontWeight: FontWeight.w600)),
+          ),
         ]),
       ),
-    );
+    ));
   }
 
   // ── ACCIONES RÁPIDAS ──────────────────────────────────────────────────────
@@ -539,14 +566,14 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
         'Crear, editar y eliminar',
         const Color(0xFF283593), const Color(0xFF3949AB), () =>
         Navigator.push(context,
-            MaterialPageRoute(builder: (_) => const AdminUsers()))
+            slideRoute(const AdminUsers()))
             .then((_) { if (mounted) _loadData(); }))),
     const SizedBox(width: 14),
     Expanded(child: _actionCard('📚', 'Gestionar\nCursos',
         'Administrar catálogo',
         const Color(0xFF004D40), const Color(0xFF00796B), () =>
         Navigator.push(context,
-            MaterialPageRoute(builder: (_) => const AdminCourses()))
+            slideRoute(const AdminCourses()))
             .then((_) { if (mounted) _loadData(); }))),
   ]);
 
@@ -741,7 +768,11 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
                 ? (d.value / total * 100).toStringAsFixed(0)
                 : '0';
             final sel = _touchedPieIndex == i;
-            return GestureDetector(
+            return Semantics(
+              label: '${d.label}: ${d.value} usuarios, $pct%. '
+                  '${sel ? "Seleccionado" : "Toca para resaltar en la gráfica"}.',
+              button: true,
+              child: GestureDetector(
               onTap: () => setState(
                   () => _touchedPieIndex = sel ? null : i),
               child: AnimatedContainer(
@@ -781,7 +812,7 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
                           color: Colors.grey.shade500)),
                 ]),
               ),
-            );
+            ));    // cierra GestureDetector + Semantics
           }).toList(),
         ),
       ]),
@@ -929,11 +960,11 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
                         },
                       ),
                     ),
-                    // Bug 3: nombre completo en 2 líneas, sin truncar
+                    // Eje X: truncar a 8 caracteres + "…" para evitar solapamiento
                     bottomTitles: AxisTitles(
                       sideTitles: SideTitles(
                         showTitles:   true,
-                        reservedSize: 52,
+                        reservedSize: 40,
                         getTitlesWidget: (value, meta) {
                           final idx = value.toInt();
                           if (idx >= _courseRecords.length) {
@@ -941,13 +972,15 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
                           }
                           final nombre =
                               (_courseRecords[idx]['name'] as String?) ?? '';
+                          final label = nombre.length > 8
+                              ? '${nombre.substring(0, 8)}…'
+                              : nombre;
                           return Padding(
                             padding: const EdgeInsets.only(top: 4),
                             child: Text(
-                              nombre,
+                              label,
                               textAlign: TextAlign.center,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
                               style: GoogleFonts.poppins(
                                   fontSize: 10,
                                   color: Colors.grey.shade600),
@@ -1084,3 +1117,4 @@ class _BubblePainter extends CustomPainter {
   @override
   bool shouldRepaint(_BubblePainter old) => old.t != t;
 }
+

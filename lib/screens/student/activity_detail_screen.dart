@@ -566,8 +566,11 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
           ),
           const SizedBox(height: 12),
 
-          // Cuadro de comentario
-          TextField(
+          // Cuadro de comentario — envuelto en Semantics para TalkBack
+          Semantics(
+            label: 'Comentario opcional para el profesor. Campo de texto.',
+            textField: true,
+            child: TextField(
             controller: _commentCtrl,
             maxLines: 3,
             decoration: InputDecoration(
@@ -587,7 +590,7 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
               contentPadding: const EdgeInsets.all(14),
               prefixIcon: const Icon(Icons.comment_rounded, size: 20),
             ),
-          ),
+          )),          // cierra TextField + Semantics
           const SizedBox(height: 14),
 
           // Botón "Enviar entrega"
@@ -1051,19 +1054,24 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
       tiempoColor = Colors.red.shade700;
     } else if (yaEntrego) {
       try {
-        final cierre  = ActivityModel.toCol(a.closingDate);
+        final nowCol  = DateTime.now().toUtc().subtract(const Duration(hours: 5));
         final entrega = a.dateResolution != null
             ? ActivityModel.toCol(a.dateResolution!)
-            : DateTime.now().toUtc().subtract(const Duration(hours: 5));
-        final diff = cierre.difference(entrega);
-        final h = diff.inHours;
-        final m = diff.inMinutes % 60;
-        tiempoRestante =
-            'Enviado $h hora${h == 1 ? '' : 's'} y '
-            '$m minuto${m == 1 ? '' : 's'} antes del cierre';
+            : nowCol;
+        final diff = nowCol.difference(entrega); // tiempo desde la entrega
+        final dias  = diff.inDays;
+        final horas = diff.inHours % 24;
+        final mins  = diff.inMinutes % 60;
+        if (dias > 0) {
+          tiempoRestante = 'Entregado hace $dias día${dias == 1 ? '' : 's'}';
+        } else if (horas > 0) {
+          tiempoRestante = 'Entregado hace $horas hora${horas == 1 ? '' : 's'} y $mins min';
+        } else {
+          tiempoRestante = 'Entregado hace $mins minuto${mins == 1 ? '' : 's'}';
+        }
         tiempoColor = Colors.green.shade700;
       } catch (_) {
-        tiempoRestante = 'Entregado a tiempo';
+        tiempoRestante = 'Entregado';
         tiempoColor = Colors.green.shade700;
       }
     } else {
