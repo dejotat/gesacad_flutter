@@ -20,6 +20,13 @@ import 'student_course_content.dart';
 import 'grades_screen.dart';
 import '../../widgets/chatbot_widget.dart';
 
+/// Panel principal del Estudiante.
+///
+/// Muestra los cursos en los que el estudiante está matriculado en forma
+/// de tarjetas en un grid. El estudiante puede navegar a cada curso para
+/// ver actividades, entregar tareas y consultar sus calificaciones.
+///
+/// También incluye acceso rápido a: Ver notas, Calendario, Avisos, Perfil, Ajustes.
 class StudentHome extends StatefulWidget {
   const StudentHome({super.key});
   @override
@@ -27,14 +34,15 @@ class StudentHome extends StatefulWidget {
 }
 
 class _StudentHomeState extends State<StudentHome> with TickerProviderStateMixin {
-  List<CourseModel> _courses = [];
-  bool _loading = true;
-  String _name = '';
-  Uint8List? _photoBytes;
-  int _myId = 0;
-  late AnimationController _entryCtrl;
-  late Animation<double> _entryFade;
-  late AnimationController _cardAnim;
+  List<CourseModel> _courses  = []; // cursos donde el estudiante está matriculado
+  bool      _loading          = true;
+  String    _name             = '';
+  Uint8List? _photoBytes;           // foto de perfil decodificada en memoria
+  int       _myId             = 0;
+
+  late AnimationController _entryCtrl; // fade-in al terminar la carga
+  late Animation<double>   _entryFade;
+  late AnimationController _cardAnim;  // animación continua de burbujas del header
 
   @override
   void initState() {
@@ -52,6 +60,8 @@ class _StudentHomeState extends State<StudentHome> with TickerProviderStateMixin
     super.dispose();
   }
 
+  /// Recarga la foto desde SharedPreferences sin refrescar los cursos.
+  /// Llamado 2s después de [_load] y al regresar de Mi Perfil.
   Future<void> _reloadPhoto() async {
     final prefs    = await SharedPreferences.getInstance();
     final photoB64 = prefs.getString('profile_photo') ?? '';
@@ -60,6 +70,15 @@ class _StudentHomeState extends State<StudentHome> with TickerProviderStateMixin
     }
   }
 
+  /// Carga la sesión y los cursos del estudiante.
+  ///
+  /// [getMyCourses] implementa caché en dos niveles:
+  ///   1. Memoria (TTL 5 min): retorna en <1ms si los datos están frescos.
+  ///   2. SharedPreferences: retorna datos de la sesión anterior en <50ms
+  ///      mientras actualiza en background desde el backend.
+  ///
+  /// El pull-to-refresh del [RefreshIndicator] llama a este mismo método
+  /// para forzar actualización cuando el estudiante desliza hacia abajo.
   Future<void> _load() async {
     setState(() => _loading = true);
     final prefs = await SharedPreferences.getInstance();
@@ -77,6 +96,7 @@ class _StudentHomeState extends State<StudentHome> with TickerProviderStateMixin
     }
   }
 
+  /// Cierra la sesión del estudiante: limpia SharedPreferences y navega al login.
   Future<void> _logout() async {
     await AuthService().clearSession();
     if (!mounted) return;
@@ -460,7 +480,11 @@ class _QuickItem {
   const _QuickItem(this.emoji, this.label, this.color, this.onTap);
 }
 
-// ── Pantalla resumen de todas las notas del estudiante ────────────────────────
+// ── Pantalla de resumen de notas ──────────────────────────────────────────────
+// Muestra todas las calificaciones del estudiante agrupadas por curso.
+// Para cada curso calcula: promedio ponderado, actividades calificadas vs totales.
+// Se navega desde el acceso rápido "Ver notas" del dashboard del estudiante.
+// Llama a [ApiService().getGrades(courseId, userId)] por cada curso del estudiante.
 
 class _AllGradesScreen extends StatefulWidget {
   final int userId;

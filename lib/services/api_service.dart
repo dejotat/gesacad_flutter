@@ -23,23 +23,27 @@ import '../models/activity_model.dart';
 ///
 /// Versión: 1.0.0 — Unicomfacauca 2024
 class ApiService {
+  // Patrón Singleton: una sola instancia en toda la app para compartir el caché.
   static final ApiService _instance = ApiService._internal();
   factory ApiService() => _instance;
   ApiService._internal();
 
-  /// URL base del backend leída desde [ApiConfig].
+  /// URL base del backend Railway. Cambia en [ApiConfig] según el entorno.
   final String _base = ApiConfig.baseUrl;
 
-  // Mejora 2: timeout aumentado a 30s para soportar cold start de Railway
+  // Timeout de 30s para tolerar el "cold start" de Railway: el dyno puede tardar
+  // hasta 30s en despertar después de estar inactivo. Con 10s siempre falla.
   static const _timeout = Duration(seconds: 30);
 
-  // Caché en memoria (TTL 5 min) para datos que cambian poco.
+  // Caché en memoria con TTL de 5 minutos para datos que cambian poco.
+  // Clave: 'courses_$userId' o 'acts_$courseId' — valor: lista de modelos.
+  // Se invalida en addCourse/deleteCourse/addActivity/deleteActivity.
   static final Map<String, _CacheEntry> _cache = {};
   static const _cacheTtl = Duration(minutes: 5);
 
-  // Mejora 4: wrapper genérico de retry para cualquier petición HTTP.
-  // Reintenta 1 vez tras 2s si falla por timeout o error de red.
-  // NO usar en mutaciones (POST/DELETE/PUT) para evitar duplicados.
+  // Wrapper de retry para peticiones de SOLO LECTURA (GET).
+  // Reintenta automáticamente 1 vez tras 2s si falla por TimeoutException o red.
+  // ⚠️  NO aplicar a mutaciones (POST/DELETE/PUT): reintentar un INSERT duplica datos.
   Future<http.Response> _conRetry(Future<http.Response> Function() fn) async {
     for (int i = 0; i < 2; i++) {
       try {
@@ -59,15 +63,18 @@ class ApiService {
   Future<http.Response> _getConRetry(Uri uri) =>
       _conRetry(() => http.get(uri).timeout(_timeout));
 
-  // Mejora 5: despierta el servidor Railway silenciosamente al abrir la app.
+  /// Hace un GET silencioso a /health para despertar el dyno de Railway.
+  /// Se llama con [unawaited] en [SplashScreen.initState] para que el servidor
+  /// tenga 2+ segundos de ventana para arrancar antes de que lleguen peticiones reales.
   Future<void> ping() async {
     try {
       await http.get(Uri.parse('$_base/health'))
           .timeout(const Duration(seconds: 8));
-    } catch (_) {} // silencioso — solo despierta el dyno
+    } catch (_) {} // silencioso — el error no interesa, solo queremos despertar el dyno
   }
 
-  // Mejora 1: helpers para caché persistente en SharedPreferences.
+  /// Guarda datos en SharedPreferences bajo la clave 'apicache_$key'.
+  /// Permite que la app muestre datos de la sesión anterior mientras carga del backend.
   Future<void> _guardarEnPrefs(String key, String json) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -75,6 +82,8 @@ class ApiService {
     } catch (_) {}
   }
 
+  /// Lee datos del caché persistente en SharedPreferences.
+  /// Retorna null si no hay datos guardados o si falló la lectura.
   Future<String?> _leerDePrefs(String key) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -84,7 +93,10 @@ class ApiService {
     }
   }
 
-  /// Invalida todas las entradas de caché (memoria + SharedPreferences).
+  /// Invalida todo el caché — tanto en memoria como en SharedPreferences.
+  /// Se llama automáticamente cuando el admin crea/edita/elimina cursos o actividades,
+  /// garantizando que la próxima llamada a [getMyCourses] o [getActivities]
+  /// obtenga datos frescos del backend en lugar de servir datos obsoletos.
   Future<void> invalidarCache() async {
     _cache.clear();
     try {

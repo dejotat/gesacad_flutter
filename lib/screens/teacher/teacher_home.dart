@@ -20,6 +20,11 @@ import '../profile/profile_screen.dart';
 import '../calendar/calendar_screen.dart';
 import 'teacher_course_content.dart';
 
+/// Panel principal del Profesor.
+///
+/// Muestra los cursos asignados al docente, estadísticas de actividades
+/// pendientes y entregas sin calificar. El profesor puede navegar a cada
+/// curso para gestionar actividades y calificar entregas.
 class TeacherHome extends StatefulWidget {
   const TeacherHome({super.key});
   @override
@@ -27,16 +32,20 @@ class TeacherHome extends StatefulWidget {
 }
 
 class _TeacherHomeState extends State<TeacherHome> with TickerProviderStateMixin {
-  List<CourseModel> _courses = [];
-  bool _loading = true;
-  String _name = '';
-  Uint8List? _photoBytes;
-  int _myId = 0;
-  int _actsPendientes  = 0;
-  int _entregasSinCalif = 0;
-  late AnimationController _entryCtrl;
-  late Animation<double> _entryFade;
-  late AnimationController _cardAnim;
+  List<CourseModel> _courses  = []; // cursos donde el profesor está matriculado
+  bool      _loading          = true;
+  String    _name             = '';
+  Uint8List? _photoBytes;           // foto de perfil en memoria
+  int       _myId             = 0;
+
+  // Estadísticas calculadas en background por [_calcularEstadisticas].
+  // Se muestran en la barra de stats del header.
+  int _actsPendientes   = 0; // actividades aún abiertas (cierre > ahora Colombia)
+  int _entregasSinCalif = 0; // entregas con archivo enviado pero sin nota
+
+  late AnimationController _entryCtrl; // fade-in al cargar contenido
+  late Animation<double>   _entryFade;
+  late AnimationController _cardAnim;  // burbujas decorativas del header (loop)
 
   @override
   void initState() {
@@ -54,6 +63,8 @@ class _TeacherHomeState extends State<TeacherHome> with TickerProviderStateMixin
     super.dispose();
   }
 
+  /// Recarga solo la foto desde SharedPreferences, sin refrescar los cursos.
+  /// Llamado 2s tras [_load] y al regresar de Mi Perfil.
   Future<void> _reloadPhoto() async {
     final prefs    = await SharedPreferences.getInstance();
     final photoB64 = prefs.getString('profile_photo') ?? '';
@@ -62,6 +73,14 @@ class _TeacherHomeState extends State<TeacherHome> with TickerProviderStateMixin
     }
   }
 
+  /// Carga cursos del profesor e inicia el cálculo de estadísticas en background.
+  ///
+  /// Flujo:
+  /// 1. Leer datos de sesión de SharedPreferences (instantáneo).
+  /// 2. Obtener lista de cursos del profesor desde el backend (con caché).
+  /// 3. Llamar [_calcularEstadisticas] sin await — se ejecuta en paralelo
+  ///    mientras el UI ya muestra los cursos.
+  /// 4. Animar la entrada del contenido.
   Future<void> _load() async {
     setState(() => _loading = true);
     final prefs = await SharedPreferences.getInstance();
@@ -73,7 +92,8 @@ class _TeacherHomeState extends State<TeacherHome> with TickerProviderStateMixin
     }
     try { _courses = await ApiService().getMyCourses(_myId); } catch (_) {}
 
-    // Calcular estadísticas reales en segundo plano
+    // Estadísticas se calculan en segundo plano para no bloquear la pantalla.
+    // Se actualizarán solos cuando terminen de calcular.
     _calcularEstadisticas();
 
     if (mounted) {
@@ -83,11 +103,21 @@ class _TeacherHomeState extends State<TeacherHome> with TickerProviderStateMixin
     }
   }
 
+  /// Calcula actividades pendientes y entregas sin calificar para el badge de stats.
+  ///
+  /// Estrategia de rendimiento: usa [Future.wait] para cargar actividades de
+  /// todos los cursos en PARALELO, y luego otra ronda paralela para obtener
+  /// resoluciones. Esto reduce el tiempo de N*M peticiones secuenciales a
+  /// max(peticiones_cursos) + max(peticiones_actividades).
+  ///
+  /// Zona horaria: compara con hora Colombia (UTC-5) para que el cálculo
+  /// de "actividades aún abiertas" sea correcto para usuarios colombianos.
   Future<void> _calcularEstadisticas() async {
     try {
+      // Hora actual en Colombia (UTC-5) — las fechas de cierre se guardan en UTC
       final ahoraCol = DateTime.now().toUtc().subtract(const Duration(hours: 5));
 
-      // Cargar actividades de todos los cursos en paralelo (Bug 5 — velocidad)
+      // Cargar actividades de TODOS los cursos en paralelo
       final listaActividades = await Future.wait(
         _courses.map((c) => ApiService().getActivities(c.id).catchError((_) => <ActivityModel>[])),
       );

@@ -5,19 +5,35 @@ import '../config/api_config.dart';
 
 /// Servicio de autenticación y gestión de sesión de usuario.
 ///
-/// Implementa el requisito RF02 (Redirección por rol) almacenando localmente
-/// los datos del usuario autenticado usando [SharedPreferences].
-/// La sesión persiste aunque el usuario cierre la aplicación.
+/// Flujo completo de autenticación en GESACAD:
+/// ```
+///   login_screen → ApiService().login()       → respuesta backend
+///                → AuthService().saveSession() → guarda en SharedPreferences
+///                → unawaited(fetchAndCachePhoto()) → foto en background
+///                → Navigator → AdminHome / TeacherHome / StudentHome
 ///
-/// Claves almacenadas:
-/// - `userId`: ID numérico del usuario en la base de datos.
-/// - `userName`: Nombre de usuario (para saludos en la UI).
-/// - `userRol`: Rol del usuario ('Admin', 'Teacher' o 'Student').
+///   SplashScreen → AuthService().getSession() → hay sesión → ir a home
+///                                             → sin sesión → ir a login
+///
+///   logout       → AuthService().clearSession() → borra SharedPreferences
+///                → Navigator → LoginScreen
+/// ```
+///
+/// Claves guardadas en SharedPreferences:
+/// - `userId`   → ID numérico del usuario en MySQL
+/// - `userName` → username para saludos en la interfaz
+/// - `userRol`  → rol: 'Admin', 'Teacher' o 'Student' (controla qué home se muestra)
+///
+/// Claves de perfil extendido (cargadas por [fetchAndCachePhoto]):
+/// - `profile_telefono`, `profile_bio`, `profile_email_personal`,
+///   `profile_email_inst`, `profile_programa`, `profile_semestre`,
+///   `profile_photo` (base64), `profile_photo_url`
 class AuthService {
-  // Claves privadas para SharedPreferences — no exponer al exterior.
-  static const _keyId = 'userId';
+  // Claves privadas para SharedPreferences — centralizadas aquí para evitar
+  // strings dispersos en el código que pueden causar errores de tipeo.
+  static const _keyId   = 'userId';
   static const _keyName = 'userName';
-  static const _keyRol = 'userRol';
+  static const _keyRol  = 'userRol';
 
   /// Guarda los datos del usuario en la sesión local tras un login exitoso.
   ///
@@ -49,9 +65,15 @@ class AuthService {
     };
   }
 
-  /// Descarga el perfil del backend y guarda la foto en caché local.
-  /// Se llama al hacer login para que el dashboard la muestre sin abrir el perfil.
-  /// No lanza excepciones — si falla, el dashboard muestra el ícono gris.
+  /// Descarga perfil y foto del backend y los guarda en SharedPreferences.
+  ///
+  /// Se llama con [unawaited] inmediatamente tras [saveSession] en el login,
+  /// de forma que no bloquea la navegación al home. La foto llega ~1-2s después
+  /// y los homes la muestran automáticamente mediante [Future.delayed(_reloadPhoto)].
+  ///
+  /// Estrategia: si Cloudinary o el backend no responden, el error se silencia
+  /// y el dashboard muestra el ícono de rol por defecto hasta que el usuario
+  /// abra Mi Perfil manualmente (que también descarga la foto).
   Future<void> fetchAndCachePhoto(int userId) async {
     try {
       final res = await http.get(
@@ -83,10 +105,12 @@ class AuthService {
     }
   }
 
-  /// Elimina todos los datos de sesión del dispositivo (cierre de sesión).
+  /// Elimina todos los datos de sesión y caché del dispositivo (cierre de sesión).
   ///
-  /// Debe llamarse antes de navegar al [LoginScreen] para garantizar
-  /// que el splash no redirija automáticamente al home anterior.
+  /// Llama a [prefs.clear()] que borra TODAS las claves de SharedPreferences,
+  /// incluyendo el perfil extendido y la foto. Esto garantiza que:
+  /// 1. El [SplashScreen] redirigirá al login en la próxima apertura.
+  /// 2. Si otro usuario inicia sesión, no verá datos del usuario anterior.
   Future<void> clearSession() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();

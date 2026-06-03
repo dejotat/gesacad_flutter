@@ -18,7 +18,17 @@ import '../calendar/calendar_screen.dart';
 import 'admin_users.dart';
 import 'admin_courses.dart';
 
-/// Panel principal del Administrador con estadísticas y gráficos premium.
+/// Panel principal del Administrador.
+///
+/// Muestra estadísticas globales del sistema (usuarios por rol y matriculados
+/// por curso) usando gráficas interactivas de fl_chart.
+///
+/// Secciones principales:
+///   - AppBar con menú de navegación (perfil, ajustes, calendario, logout)
+///   - Tarjetas de estadísticas (total estudiantes, profesores, admins)
+///   - Gráfica dona: distribución de usuarios por rol
+///   - Gráfica de barras: estudiantes por curso
+///   - Accesos rápidos a gestión de usuarios y cursos
 class AdminHome extends StatefulWidget {
   const AdminHome({super.key});
   @override
@@ -26,22 +36,26 @@ class AdminHome extends StatefulWidget {
 }
 
 class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
-  // ── Datos del usuario ─────────────────────────────────────────────────────
-  String    _name      = 'Admin';
-  int       _myId      = 0;
-  Uint8List? _photoBytes;
+  // ── Datos del usuario autenticado ─────────────────────────────────────────
+  String     _name      = 'Admin';
+  int        _myId      = 0;
+  Uint8List? _photoBytes; // foto de perfil en memoria (base64 decodificado)
 
-  // ── Estadísticas ──────────────────────────────────────────────────────────
+  // ── Estadísticas de usuarios ──────────────────────────────────────────────
   int _totalStudents = 0;
   int _totalTeachers = 0;
   int _totalAdmins   = 0;
 
-  /// Registros por curso: [{name: String, countUsers: int}]
+  // Lista de cursos con su cantidad de estudiantes matriculados.
+  // Formato: [{ 'name': 'Cálculo Diferencial', 'countUsers': 12 }, ...]
+  // Solo cuenta estudiantes (rol = 'Student'), no profesores ni admins.
   List<Map<String, dynamic>> _courseRecords = [];
 
   // ── Estados UI ────────────────────────────────────────────────────────────
-  bool _loading         = true;
-  // Índice de la sección de la dona actualmente expandida (explode al tocar)
+  bool _loading = true;
+
+  // Índice de la sección de la dona tocada → se expande (efecto "explode").
+  // null = ninguna sección expandida.
   int? _touchedPieIndex;
 
   // ── Animaciones ───────────────────────────────────────────────────────────
@@ -77,6 +91,10 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  /// Recarga la foto de perfil desde SharedPreferences sin recargar todos los datos.
+  /// Se llama automáticamente 2s después de [_loadData] (para dar tiempo a
+  /// [AuthService.fetchAndCachePhoto] de terminar la descarga en background)
+  /// y también al regresar de la pantalla Mi Perfil.
   Future<void> _reloadPhoto() async {
     final prefs   = await SharedPreferences.getInstance();
     final photoB64 = prefs.getString('profile_photo') ?? '';
@@ -85,8 +103,16 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
     }
   }
 
-  // ── Carga de datos ────────────────────────────────────────────────────────
+  // ── Carga de datos del dashboard ──────────────────────────────────────────
 
+  /// Carga datos del usuario y estadísticas del sistema desde el backend.
+  ///
+  /// Estrategia:
+  /// 1. Leer nombre y foto desde SharedPreferences (instantáneo).
+  /// 2. Llamar [getQuantityUsers] y [getQuantityRecords] en PARALELO con
+  ///    [Future.wait] para reducir el tiempo de espera a la petición más lenta.
+  /// 3. Animar la entrada de tarjetas y gráficos al terminar.
+  /// 4. Programar [_reloadPhoto] a los 2s para mostrar la foto si aún no llegó.
   Future<void> _loadData() async {
     setState(() => _loading = true);
     final prefs = await SharedPreferences.getInstance();
@@ -99,7 +125,8 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
     }
 
     try {
-      // Llamadas en paralelo — reduce tiempo de carga a la más lenta (no la suma)
+      // Future.wait ejecuta ambas peticiones en paralelo — el tiempo total
+      // es el máximo de los dos, no la suma (ahorra ~1s por carga).
       final results = await Future.wait([
         ApiService().getQuantityUsers(),
         ApiService().getQuantityRecords(),
@@ -130,6 +157,8 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
     }
   }
 
+  /// Cierra la sesión del Admin: borra SharedPreferences y navega al login.
+  /// [clearSession] elimina userId, userName, userRol y toda la caché de perfil.
   Future<void> _logout() async {
     await AuthService().clearSession();
     if (!mounted) return;
@@ -562,7 +591,12 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
     );
   }
 
-  // ── GRÁFICO DE DONA — Syncfusion DoughnutSeries ──────────────────────────
+  // ── GRÁFICO DE DONA ───────────────────────────────────────────────────────
+  // Implementado con fl_chart (PieChart) — 100% libre, sin licencias.
+  // Muestra la distribución de roles: Estudiantes / Profesores / Admins.
+  // Interacción: tap en una sección → se expande (efecto explode) y muestra %.
+  // Leyenda manual debajo: punto de color + etiqueta + cantidad + porcentaje.
+  // Animación: swapAnimationDuration 1500ms al cargar o cambiar datos.
 
   Widget _buildPieChart(Color primary) {
     final total = _totalStudents + _totalTeachers + _totalAdmins;
@@ -756,6 +790,14 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
 
   // ── GRÁFICO DE BARRAS — fl_chart BarChart ────────────────────────────────
 
+  // ── GRÁFICO DE BARRAS ─────────────────────────────────────────────────────
+  // Implementado con fl_chart (BarChart). Muestra el número de estudiantes
+  // matriculados por curso. Solo cuenta rol='Student' (no Teacher ni Admin).
+  //
+  // Interacción: tap en una barra → tooltip con nombre del curso y cantidad.
+  // Animación: las barras crecen desde abajo usando [_chartAnim] (0→1).
+  // Scroll horizontal si hay más cursos de los que caben en pantalla.
+  // Cada barra tiene su propio gradiente de color del array [paletasGradiente].
   Widget _buildBarChart(Color primary) {
     if (_courseRecords.isEmpty) return const SizedBox();
 
@@ -961,7 +1003,10 @@ class _AdminHomeState extends State<AdminHome> with TickerProviderStateMixin {
     );
   }
 
-  // ── SHIMMER ───────────────────────────────────────────────────────────────
+  // ── SKELETON LOADER ───────────────────────────────────────────────────────
+  // Se muestra mientras [_loadData] espera respuesta del backend.
+  // Usa TweenAnimationBuilder para pulsar la opacidad entre 0.3 y 0.7,
+  // simulando el efecto shimmer sin dependencias externas.
 
   Widget _buildShimmer() {
     return Padding(
@@ -1006,8 +1051,6 @@ class _PieData {
   const _PieData(this.label, this.value, this.color);
 }
 
-// _PieChartPainter eliminado — reemplazado por SfCircularChart (Syncfusion)
-
 // ── PAINTER DE BURBUJAS ANIMADAS ──────────────────────────────────────────────
 
 /// Burbujas decorativas animadas para fondos de tarjetas.
@@ -1041,6 +1084,3 @@ class _BubblePainter extends CustomPainter {
   @override
   bool shouldRepaint(_BubblePainter old) => old.t != t;
 }
-
-
-// _BarConHover/_BarConHoverState eliminados: reemplazados por SfCartesianChart.
