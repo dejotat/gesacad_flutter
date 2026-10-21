@@ -1,3 +1,4 @@
+import '../../config/api_config.dart';
 import '../../config/app_tokens.dart';
 import '../../widgets/ui/ui.dart';
 import 'package:gesacad/utils/platform_utils.dart';
@@ -76,10 +77,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     if (userId > 0) {
       // Intentar cargar desde el backend (fuente de verdad)
       try {
-        final uri = Uri.https(
-          'gesacad-backend-production.up.railway.app',
-          '/users/getProfile/$userId',
-        );
+        final uri = Uri.parse('${ApiConfig.baseUrl}/users/getProfile/$userId');
 
         // LOG: mostrar qué URL se está consultando
         debugPrint('[Perfil] GET $uri  (userId=$userId)');
@@ -189,8 +187,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
       // Subir foto al backend si el usuario cambió la foto en esta sesión
       if (_photoBytes != null && _photoNueva) {
         try {
-          final uri = Uri.parse(
-            'https://gesacad-backend-production.up.railway.app/users/uploadPhoto/$userId');
+          final uri = Uri.parse('${ApiConfig.baseUrl}/users/uploadPhoto/$userId');
           final request = http.MultipartRequest('POST', uri)
             ..files.add(http.MultipartFile.fromBytes('photo', _photoBytes!,
                 filename: 'perfil_$userId.jpg'));

@@ -40,7 +40,8 @@ Release APK on Windows: the Flutter SDK path contains spaces, so use the junctio
 
 - Login is `POST /auth/login` `{username, password}` → `{token, user, …, response: 'LOGIN_SUCCESFULLY'}` (single L — server typo, keep it). The old `GET /users/:username/:password` still exists only as a fallback for servers without the new route and is switched off with `ALLOW_LEGACY_LOGIN=false`.
 - Activity dates are stored in UTC; convert for display with `ActivityModel.toCol()` (Colombia, UTC-5).
-- Submissions are limited to 5 MB and restricted extensions (enforced client-side in the file picker flow).
+- Submissions are limited to 5 MB and to pdf/doc/docx/png/jpg/jpeg/zip/xlsx/pptx — enforced in the app AND in the server (`addResource`: 413 `ARCHIVO_MUY_GRANDE`, 415 `TIPO_NO_PERMITIDO`). Teacher attachments: 10 MB, up to 5 files. Profile photo: image only, 5 MB. Limits are overridable with `MAX_SUBMISSION_MB`, `MAX_ATTACHMENT_MB`, `MAX_PHOTO_MB`.
+- **Subida de archivos** (`server.js`): multer escribe a disco temporal (`os.tmpdir()/gesacad-uploads`, nombre aleatorio, nunca el del cliente) y se transmite a Cloudinary con `subirACloudinary(RUTA, …)`; `limpiarTemporales` (va ANTES de multer en cada ruta con archivos) borra el temporal al cerrar la respuesta, incluso en salidas anticipadas. Nunca volver a `memoryStorage`. El nombre original se guarda dentro de la URL con `::name::` y `|||`: pasa siempre por `nombreSeguro()`. Pruebas sin Cloudinary: `CLOUDINARY_FAKE=true` (ignorado si `NODE_ENV=production`).
 - Activity weightings (ponderado) per course must not exceed 100%; check via `ApiConfig.weightingMax` before creating.
 
 ## Modo sin conexión (offline)
