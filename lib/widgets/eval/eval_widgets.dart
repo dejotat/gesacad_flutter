@@ -312,9 +312,15 @@ class _Orb extends StatefulWidget {
 }
 
 class _OrbState extends State<_Orb> with SingleTickerProviderStateMixin {
-  late final AnimationController _ring = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 1500));
+  late final AnimationController _ring;
   bool _hover = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Se crea aquí (no perezoso): si nunca se selecciona, dispose() no debe crearlo.
+    _ring = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500));
+  }
 
   @override
   void didUpdateWidget(covariant _Orb old) {

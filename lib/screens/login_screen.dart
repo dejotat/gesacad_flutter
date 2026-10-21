@@ -18,6 +18,7 @@ import 'admin/admin_home.dart';
 import 'teacher/teacher_home.dart';
 import 'student/student_home.dart';
 import 'auth/forgot_password_screen.dart';
+import 'guest/guest_home.dart';
 
 class LoginScreen extends StatefulWidget {
   /// Aviso inicial (p. ej. "Tu sesión expiró").
@@ -471,6 +472,43 @@ class _LoginScreenState extends State<LoginScreen>
                                                         ),
                                                 ),
                                               ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+
+                                      // ── Modo invitado: explorar sin cuenta ──
+                                      const SizedBox(height: 14),
+                                      Row(children: [
+                                        Expanded(child: Divider(color: themeType.isDark ? Colors.white24 : Colors.black26)),
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                                          child: Text('o',
+                                              style: GoogleFonts.poppins(
+                                                  fontSize: 12,
+                                                  color: themeType.isDark ? Colors.white60 : Colors.black54)),
+                                        ),
+                                        Expanded(child: Divider(color: themeType.isDark ? Colors.white24 : Colors.black26)),
+                                      ]),
+                                      const SizedBox(height: 14),
+                                      Semantics(
+                                        button: true,
+                                        label: 'Explorar como invitado, sin iniciar sesión',
+                                        child: SizedBox(
+                                          height: 48,
+                                          child: OutlinedButton.icon(
+                                            onPressed: _loading
+                                                ? null
+                                                : () => Navigator.push(context, slideRoute(const GuestHome())),
+                                            icon: Icon(PhosphorIconsFill.compass, size: 20, color: themeType.primaryColor),
+                                            label: Text('Explorar como invitado',
+                                                style: GoogleFonts.poppins(
+                                                    color: themeType.primaryColor,
+                                                    fontSize: 14.5,
+                                                    fontWeight: FontWeight.w700)),
+                                            style: OutlinedButton.styleFrom(
+                                              side: BorderSide(color: themeType.primaryColor.withValues(alpha: 0.6), width: 1.4),
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                                             ),
                                           ),
                                         ),

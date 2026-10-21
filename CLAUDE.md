@@ -92,6 +92,13 @@ Release APK on Windows: the Flutter SDK path contains spaces, so use the junctio
 - **Backend** (`Backend/meetings.js`, tabla `course_meetings` creada al arrancar): `GET /courses/:id/meeting` (miembros del curso), `POST /courses/:id/meeting` y `POST /courses/:id/meeting/end` (solo el docente del curso). Una reunión vigente por curso; las olvidadas dejan de verse a las 6 h. Sin `url` crea una sala de Jitsi (`JITSI_BASE_URL`, por defecto `https://meet.jit.si`) con nombre aleatorio; con `url` solo acepta **https** de Google Meet, Zoom o Teams (anti-phishing). Pruebas en `test/auth.server.test.js`.
 - **App**: `models/meeting_model.dart`, `services/meeting_service.dart`, `widgets/meeting/meeting_widgets.dart` (`CourseMeetingCard`, se inserta sobre las pestañas de `student_course_content` y `teacher_course_content`; sondea cada 30 s). "Unirse" usa `url_launcher` (sin dependencias nuevas). Tests: `test/meeting_test.dart`.
 
+## Modo invitado (CU-10)
+
+- **Entrada**: botón "Explorar como invitado" en `LoginScreen` → `screens/guest/guest_home.dart`. No hay sesión ni token (no se llama a `saveSession`); solo se usa `GET /public/university`, público.
+- **Pestañas**: Inicio (perfiles y funciones), Universidad (presentación, programas, "Mi ruta de matrícula" con requisitos que el visitante marca —se guardan solo en su equipo— y contacto) y Probar la app (`guest_demo.dart`: demo de Estudiante/Docente/Admin con **datos de ejemplo**, reutilizando `CourseCard`, `ActivityCard`, `RatingOrbs`, `CourseMeetingCard` con un `MeetingService` simulado en memoria; nada toca el servidor).
+- **Contenido editable**: el Admin lo edita en `screens/admin/admin_university_info.dart` (menú lateral "Información para invitados"). Backend `Backend/publicinfo.js`: `GET/PUT /public/university` (tabla `public_content`); el PUT es solo Admin, valida longitudes, exige `https://` en el sitio web y descarta campos desconocidos. Mientras no se edite se sirve contenido de EJEMPLO con `isSample: true` y la app lo avisa. **No inventar datos reales de la universidad.**
+- Sin conexión se muestra la última copia (`guest_university_v1` en SharedPreferences). Tests: `test/guest_test.dart` y la sección "Información pública" de `Backend/test/auth.server.test.js`.
+
 ## Accessibility
 
 CU-07 requires `Semantics` labels on all icon-only buttons, `ExcludeSemantics` on decorative images/animated counters (with a `Semantics(label)` on the parent), and `liveRegion: true` on error messages. Keep this when adding widgets.

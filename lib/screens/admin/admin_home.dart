@@ -20,6 +20,7 @@ import '../settings_screen.dart';
 import '../notifications/notifications_panel.dart';
 import '../profile/profile_screen.dart';
 import '../calendar/calendar_screen.dart';
+import 'admin_university_info.dart';
 import 'admin_users.dart';
 import 'admin_courses.dart';
 
@@ -352,6 +353,10 @@ class _AdminHomeState extends State<AdminHome> {
         _drawerItem(PhosphorIconsRegular.chartPolar, 'Evaluación Docente', () {
           Navigator.pop(context);
           Navigator.push(context, slideRoute(AdminEvaluationsScreen(adminId: _myId)));
+        }),
+        _drawerItem(PhosphorIconsRegular.buildings, 'Información para invitados', () {
+          Navigator.pop(context);
+          Navigator.push(context, slideRoute(const AdminUniversityInfo()));
         }),
         _drawerItem(PhosphorIconsRegular.gear, 'Ajustes y Acerca de', () {
           Navigator.pop(context);
