@@ -8,17 +8,20 @@ class AppSettings {
 
   static final ValueNotifier<bool> talkBackEnabled = ValueNotifier(false);
   static final ValueNotifier<AppThemeType> currentTheme =
-      ValueNotifier(AppThemeType.oceanBlue);
+      ValueNotifier(AppThemeType.aurora);
 
   static const _keyTalkBack = 'gesacad_talkback';
-  static const _keyTheme    = 'gesacad_theme';
+  // v3: el conjunto de temas cambió (paletas nuevas); las claves viejas
+  // guardaban índices de otro conjunto.
+  static const _keyTheme    = 'gesacad_theme_v3';
 
   static Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     talkBackEnabled.value = prefs.getBool(_keyTalkBack) ?? false;
     final idx = prefs.getInt(_keyTheme) ?? 0;
-    currentTheme.value =
-        AppThemeType.values[idx.clamp(0, AppThemeType.values.length - 1)];
+    currentTheme.value = (idx >= 0 && idx < AppThemeType.values.length)
+        ? AppThemeType.values[idx]
+        : AppThemeType.aurora;
   }
 
   static Future<void> setTalkBack(bool enabled) async {
@@ -35,115 +38,77 @@ class AppSettings {
   }
 }
 
-enum AppThemeType {
-  oceanBlue, purpleNeon, sunsetFire, emeraldForest,
-  midnightGold, cosmicPurple, roseGarden, arcticTeal,
-  volcanicRed, darkCarbon,
-}
+/// Temas: 4 claros y 2 oscuros. Cada uno define color primario (legible sobre
+/// vidrio), secundario y un degradado vivo para encabezados.
+enum AppThemeType { aurora, oceano, atardecer, selva, medianoche, neon }
 
 extension AppThemeTypeExt on AppThemeType {
+  bool get isDark =>
+      this == AppThemeType.medianoche || this == AppThemeType.neon;
+
   String get label {
     switch (this) {
-      case AppThemeType.oceanBlue:     return 'Océano Azul';
-      case AppThemeType.purpleNeon:    return 'Violeta Neón';
-      case AppThemeType.sunsetFire:    return 'Atardecer';
-      case AppThemeType.emeraldForest: return 'Bosque Esmeralda';
-      case AppThemeType.midnightGold:  return 'Medianoche Dorado';
-      case AppThemeType.cosmicPurple:  return 'Cósmico';
-      case AppThemeType.roseGarden:    return 'Jardín Rosa';
-      case AppThemeType.arcticTeal:    return 'Ártico Teal';
-      case AppThemeType.volcanicRed:   return 'Volcánico';
-      case AppThemeType.darkCarbon:    return 'Carbón Oscuro';
+      case AppThemeType.aurora:     return 'Aurora';
+      case AppThemeType.oceano:     return 'Océano';
+      case AppThemeType.atardecer:  return 'Atardecer';
+      case AppThemeType.selva:      return 'Selva';
+      case AppThemeType.medianoche: return 'Medianoche';
+      case AppThemeType.neon:       return 'Neón';
     }
   }
 
   Color get primaryColor {
     switch (this) {
-      case AppThemeType.oceanBlue:     return const Color(0xFF1565C0);
-      case AppThemeType.purpleNeon:    return const Color(0xFF7C3AED);
-      case AppThemeType.sunsetFire:    return const Color(0xFFEA580C);
-      case AppThemeType.emeraldForest: return const Color(0xFF059669);
-      case AppThemeType.midnightGold:  return const Color(0xFF1E3A8A);
-      case AppThemeType.cosmicPurple:  return const Color(0xFF4F46E5);
-      case AppThemeType.roseGarden:    return const Color(0xFFBE185D);
-      case AppThemeType.arcticTeal:    return const Color(0xFF0369A1);
-      case AppThemeType.volcanicRed:   return const Color(0xFFB91C1C);
-      case AppThemeType.darkCarbon:    return const Color(0xFF374151);
+      case AppThemeType.aurora:     return const Color(0xFF6D28D9);
+      case AppThemeType.oceano:     return const Color(0xFF1D4ED8);
+      case AppThemeType.atardecer:  return const Color(0xFFBE123C);
+      case AppThemeType.selva:      return const Color(0xFF047857);
+      case AppThemeType.medianoche: return const Color(0xFFA78BFA);
+      case AppThemeType.neon:       return const Color(0xFF22D3EE);
     }
   }
 
   Color get secondaryColor {
     switch (this) {
-      case AppThemeType.oceanBlue:     return const Color(0xFF0891B2);
-      case AppThemeType.purpleNeon:    return const Color(0xFFDB2777);
-      case AppThemeType.sunsetFire:    return const Color(0xFFDC2626);
-      case AppThemeType.emeraldForest: return const Color(0xFF0EA5E9);
-      case AppThemeType.midnightGold:  return const Color(0xFFB45309);
-      case AppThemeType.cosmicPurple:  return const Color(0xFF7C3AED);
-      case AppThemeType.roseGarden:    return const Color(0xFFEA580C);
-      case AppThemeType.arcticTeal:    return const Color(0xFF059669);
-      case AppThemeType.volcanicRed:   return const Color(0xFFEA580C);
-      case AppThemeType.darkCarbon:    return const Color(0xFF6B7280);
+      case AppThemeType.aurora:     return const Color(0xFF06B6D4);
+      case AppThemeType.oceano:     return const Color(0xFF14B8A6);
+      case AppThemeType.atardecer:  return const Color(0xFFF59E0B);
+      case AppThemeType.selva:      return const Color(0xFF84CC16);
+      case AppThemeType.medianoche: return const Color(0xFFF472B6);
+      case AppThemeType.neon:       return const Color(0xFFA3E635);
     }
   }
 
+  /// Degradado vivo de encabezados y botones destacados.
   List<Color> get gradient {
     switch (this) {
-      case AppThemeType.oceanBlue:
-        return [const Color(0xFF1565C0), const Color(0xFF06B6D4)];
-      case AppThemeType.purpleNeon:
-        return [const Color(0xFF7C3AED), const Color(0xFFDB2777)];
-      case AppThemeType.sunsetFire:
-        return [const Color(0xFFEA580C), const Color(0xFFDC2626)];
-      case AppThemeType.emeraldForest:
-        return [const Color(0xFF059669), const Color(0xFF0EA5E9)];
-      case AppThemeType.midnightGold:
-        return [const Color(0xFF1E3A8A), const Color(0xFFB45309)];
-      case AppThemeType.cosmicPurple:
-        return [const Color(0xFF4F46E5), const Color(0xFF7C3AED)];
-      case AppThemeType.roseGarden:
-        return [const Color(0xFFBE185D), const Color(0xFFEA580C)];
-      case AppThemeType.arcticTeal:
-        return [const Color(0xFF0369A1), const Color(0xFF059669)];
-      case AppThemeType.volcanicRed:
-        return [const Color(0xFFB91C1C), const Color(0xFFEA580C)];
-      case AppThemeType.darkCarbon:
-        return [const Color(0xFF111827), const Color(0xFF374151)];
+      case AppThemeType.aurora:
+        return [const Color(0xFF7C3AED), const Color(0xFF06B6D4)];
+      case AppThemeType.oceano:
+        return [const Color(0xFF2563EB), const Color(0xFF14B8A6)];
+      case AppThemeType.atardecer:
+        return [const Color(0xFFE11D48), const Color(0xFFF59E0B)];
+      case AppThemeType.selva:
+        return [const Color(0xFF059669), const Color(0xFF65A30D)];
+      case AppThemeType.medianoche:
+        return [const Color(0xFF6D28D9), const Color(0xFFDB2777)];
+      case AppThemeType.neon:
+        return [const Color(0xFF0891B2), const Color(0xFF7C3AED)];
     }
   }
 
   IconData get icon {
     switch (this) {
-      case AppThemeType.oceanBlue:     return Icons.waves_rounded;
-      case AppThemeType.purpleNeon:    return Icons.auto_awesome_rounded;
-      case AppThemeType.sunsetFire:    return Icons.wb_sunny_rounded;
-      case AppThemeType.emeraldForest: return Icons.forest_rounded;
-      case AppThemeType.midnightGold:  return Icons.nights_stay_rounded;
-      case AppThemeType.cosmicPurple:  return Icons.blur_on_rounded;
-      case AppThemeType.roseGarden:    return Icons.local_florist_rounded;
-      case AppThemeType.arcticTeal:    return Icons.ac_unit_rounded;
-      case AppThemeType.volcanicRed:   return Icons.local_fire_department_rounded;
-      case AppThemeType.darkCarbon:    return Icons.dark_mode_rounded;
+      case AppThemeType.aurora:     return Icons.auto_awesome_rounded;
+      case AppThemeType.oceano:     return Icons.waves_rounded;
+      case AppThemeType.atardecer:  return Icons.wb_twilight_rounded;
+      case AppThemeType.selva:      return Icons.eco_rounded;
+      case AppThemeType.medianoche: return Icons.nights_stay_rounded;
+      case AppThemeType.neon:       return Icons.bolt_rounded;
     }
   }
 
-  String get emoji {
-    switch (this) {
-      case AppThemeType.oceanBlue:     return '🌊';
-      case AppThemeType.purpleNeon:    return '✨';
-      case AppThemeType.sunsetFire:    return '🌅';
-      case AppThemeType.emeraldForest: return '🌿';
-      case AppThemeType.midnightGold:  return '🌙';
-      case AppThemeType.cosmicPurple:  return '🌌';
-      case AppThemeType.roseGarden:    return '🌹';
-      case AppThemeType.arcticTeal:    return '❄️';
-      case AppThemeType.volcanicRed:   return '🌋';
-      case AppThemeType.darkCarbon:    return '⚫';
-    }
-  }
-
-  Color get backgroundColor {
-    if (this == AppThemeType.darkCarbon) return const Color(0xFF0D1117);
-    return const Color(0xFFF0F4FF);
-  }
+  /// Color base del fondo (la app pinta un degradado sobre él).
+  Color get backgroundColor =>
+      isDark ? const Color(0xFF0B0B1A) : const Color(0xFFF5F3FF);
 }

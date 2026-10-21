@@ -1,24 +1,58 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'widgets/ui/app_background.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'config/app_themes.dart';
 import 'services/settings_service.dart';
 import 'services/api_service.dart';
+import 'services/auth_client.dart';
+import 'services/auth_service.dart';
+import 'services/connectivity_service.dart';
+import 'services/offline_queue.dart';
+import 'utils/app_keys.dart';
+import 'widgets/offline_banner.dart';
 import 'utils/route_transitions.dart';
 import 'screens/login_screen.dart';
 import 'screens/admin/admin_home.dart';
 import 'screens/teacher/teacher_home.dart';
 import 'screens/student/student_home.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  // Inicializar locale español para table_calendar y formatos de fecha
-  await initializeDateFormatting('es', null);
-  await AppSettings.load();
+void main() {
+  // TODAS las llamadas HTTP de la app pasan por AuthClient: añade el token de sesión
+  // (solo al servidor de GESACAD) y detecta sesiones vencidas, sin tocar cada llamada.
+  // La inicialización y runApp deben ocurrir dentro de la misma zona.
+  http.runWithClient(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    // Inicializar locale español para table_calendar y formatos de fecha
+    await initializeDateFormatting('es', null);
+    await AppSettings.load();
+    await AuthService.loadToken();
+    // Sesión vencida o revocada → al login con el motivo (sin perder lo pendiente).
+    SessionGuard.instance.alInvalidarse = (mensaje) {
+      appNavigatorKey.currentState?.pushAndRemoveUntil(
+          slideRoute(LoginScreen(mensaje: mensaje)), (_) => false);
+    };
+    // Modo sin conexión: detector de red y cola de cambios pendientes.
+    ConnectivityService.instance.start();
+    _RenovadorDeSesion().iniciar();
+    await OfflineQueue.instance.init();
 
-  runApp(const GesacadApp());
+    runApp(const GesacadApp());
+  }, () => AuthClient());
+}
+
+/// Renueva el token al volver a la app (sesión deslizante: quien usa la app no
+/// debe tener que iniciar sesión cada semana, pero un token robado sí caduca).
+class _RenovadorDeSesion with WidgetsBindingObserver {
+  void iniciar() => WidgetsBinding.instance.addObserver(this);
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(AuthService().refreshIfNeeded());
+  }
 }
 
 /// Aplicación raíz de GESACAD con soporte de temas dinámicos.
@@ -30,12 +64,19 @@ class GesacadApp extends StatelessWidget {
     return ValueListenableBuilder<AppThemeType>(
       valueListenable: AppSettings.currentTheme,
       builder: (_, themeType, __) {
-        final isDark = themeType == AppThemeType.darkCarbon;
+        final isDark = themeType.isDark;
         return MaterialApp(
           title: 'GESACAD',
           debugShowCheckedModeBanner: false,
+          navigatorKey: appNavigatorKey,
+          scaffoldMessengerKey: appMessengerKey,
           theme: AppThemes.of(themeType),
           themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
+          // Fondo con degradado detrás de todas las pantallas (paneles de vidrio).
+          // El banner de conexión vive encima del Navigator: se ve en todas las pantallas.
+          builder: (context, child) => AppBackground(
+              type: themeType,
+              child: OfflineShell(child: child ?? const SizedBox())),
           home: const SplashScreen(),
           // Localización completa en español (menús Cut/Copy/Paste, fechas, etc.)
           localizationsDelegates: const [
@@ -116,6 +157,9 @@ class _SplashScreenState extends State<SplashScreen>
     Widget dest;
     if (rol == null) {
       dest = const LoginScreen();
+    } else if (AuthService.currentToken == null && !AuthService.legacySession) {
+      // Sesión de una versión anterior (sin token): se pide iniciar sesión una vez.
+      dest = const LoginScreen(mensaje: 'Por seguridad, inicia sesión de nuevo.');
     } else if (rol == 'Admin') {
       dest = const AdminHome();
     } else if (rol == 'Teacher') {
@@ -123,6 +167,7 @@ class _SplashScreenState extends State<SplashScreen>
     } else {
       dest = const StudentHome();
     }
+    unawaited(AuthService().refreshIfNeeded());
     Navigator.pushReplacement(context, slideRoute(dest));
   }
 

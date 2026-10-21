@@ -15,9 +15,8 @@ class UserModel {
   /// Rol del usuario: 'Admin', 'Teacher' o 'Student' (RF02 — redirección por rol).
   final String rol;
 
-  /// Contraseña del usuario. Solo se incluye en algunas respuestas del backend.
-  /// NOTA: El backend actual almacena contraseñas en texto plano.
-  /// Para producción, se recomienda implementar bcrypt (RNF01).
+  /// Obsoleto: el backend ya no devuelve contraseñas (se guardan cifradas con
+  /// scrypt y no se pueden recuperar). Queda nulo; se conserva por compatibilidad.
   final String? pass;
 
   const UserModel({

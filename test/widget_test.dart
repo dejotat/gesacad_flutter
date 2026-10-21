@@ -1,30 +1,39 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:gesacad/config/app_themes.dart';
+import 'package:gesacad/config/app_tokens.dart';
+import 'package:gesacad/services/settings_service.dart';
 
-import 'package:gesacad/main.dart';
+/// Construye el tema sin red: google_fonts falla de forma asíncrona al no
+/// encontrar Poppins en los assets del test; esos errores no son lo que se prueba.
+ThemeData _buildQuiet(AppThemeType type) {
+  late ThemeData theme;
+  runZonedGuarded(() => theme = AppThemes.of(type), (_, __) {});
+  return theme;
+}
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  TestWidgetsFlutterBinding.ensureInitialized();
+  GoogleFonts.config.allowRuntimeFetching = false;
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+  test('cada tema construye un ThemeData con tokens de diseño', () async {
+    for (final type in AppThemeType.values) {
+      final theme = _buildQuiet(type);
+      expect(theme.extension<AppTokens>(), isNotNull, reason: type.name);
+      expect(theme.colorScheme.primary, type.primaryColor, reason: type.name);
+    }
+    await Future<void>.delayed(Duration.zero);
+  });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  test('solo Carbón Oscuro usa brillo oscuro', () async {
+    for (final type in AppThemeType.values) {
+      final expected = type.isDark
+          ? Brightness.dark
+          : Brightness.light;
+      expect(_buildQuiet(type).brightness, expected, reason: type.name);
+    }
+    await Future<void>.delayed(Duration.zero);
   });
 }

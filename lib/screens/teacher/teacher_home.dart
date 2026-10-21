@@ -1,18 +1,21 @@
 ﻿import 'dart:convert';
-import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../config/app_tokens.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
-import '../../services/settings_service.dart';
 import '../../models/course_model.dart';
 import '../../models/activity_model.dart';
+import '../../utils/activity_type.dart';
 import '../../widgets/course_card.dart';
 import '../../widgets/tts_button.dart';
-import '../../widgets/talk_widget.dart';
 import '../../widgets/chatbot_widget.dart';
+import '../../widgets/ui/ui.dart';
+import '../../widgets/eval/evaluation_entry_card.dart';
+import '../../widgets/offline_banner.dart';
 import '../login_screen.dart';
 import '../../utils/route_transitions.dart';
 import '../settings_screen.dart';
@@ -23,49 +26,50 @@ import 'teacher_course_content.dart';
 
 /// Panel principal del Profesor.
 ///
-/// Muestra los cursos asignados al docente, estadísticas de actividades
-/// pendientes y entregas sin calificar. El profesor puede navegar a cada
-/// curso para gestionar actividades y calificar entregas.
+/// Muestra indicadores y gráficos calculados con datos reales (actividades y
+/// entregas de sus cursos) y la lista de cursos asignados. Desde cada curso el
+/// profesor gestiona actividades y califica entregas.
 class TeacherHome extends StatefulWidget {
   const TeacherHome({super.key});
   @override
   State<TeacherHome> createState() => _TeacherHomeState();
 }
 
-class _TeacherHomeState extends State<TeacherHome> with TickerProviderStateMixin {
-  List<CourseModel> _courses  = []; // cursos donde el profesor está matriculado
-  bool      _loading          = true;
-  String    _name             = '';
-  Uint8List? _photoBytes;           // foto de perfil en memoria
-  int       _myId             = 0;
+/// Resumen por curso para los gráficos del dashboard.
+class _CourseStat {
+  _CourseStat(this.course);
+  final CourseModel course;
+  int open = 0;      // actividades aún abiertas
+  int graded = 0;    // entregas calificadas
+  int ungraded = 0;  // entregas enviadas sin nota
+}
+
+class _TeacherHomeState extends State<TeacherHome> {
+  List<CourseModel> _courses  = []; // cursos del profesor
+  bool       _loading         = true;
+  bool       _error           = false;
+  String     _name            = '';
+  Uint8List? _photoBytes;
+  int        _myId            = 0;
 
   // Estadísticas calculadas en background por [_calcularEstadisticas].
-  // Se muestran en la barra de stats del header.
-  int _actsPendientes   = 0; // actividades aún abiertas (cierre > ahora Colombia)
-  int _entregasSinCalif = 0; // entregas con archivo enviado pero sin nota
+  bool _statsLoading = true;
+  final List<_CourseStat> _stats = [];
+  final Map<String, int> _byType = {};          // actividades por tipo
+  final List<int> _gradeBuckets = [0, 0, 0, 0, 0]; // notas 0-1, 1-2, 2-3, 3-4, 4-5
 
-  late AnimationController _entryCtrl; // fade-in al cargar contenido
-  late Animation<double>   _entryFade;
-  late AnimationController _cardAnim;  // burbujas decorativas del header (loop)
+  int get _actsOpen   => _stats.fold(0, (s, c) => s + c.open);
+  int get _graded     => _stats.fold(0, (s, c) => s + c.graded);
+  int get _ungraded   => _stats.fold(0, (s, c) => s + c.ungraded);
+  int get _totalActs  => _byType.values.fold(0, (s, v) => s + v);
 
   @override
   void initState() {
     super.initState();
-    _entryCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
-    _entryFade = CurvedAnimation(parent: _entryCtrl, curve: Curves.easeOut);
-    _cardAnim = AnimationController(vsync: this, duration: const Duration(seconds: 7))..repeat();
     _load();
   }
 
-  @override
-  void dispose() {
-    _entryCtrl.dispose();
-    _cardAnim.dispose();
-    super.dispose();
-  }
-
   /// Recarga solo la foto desde SharedPreferences, sin refrescar los cursos.
-  /// Llamado 2s tras [_load] y al regresar de Mi Perfil.
   Future<void> _reloadPhoto() async {
     final prefs    = await SharedPreferences.getInstance();
     final photoB64 = prefs.getString('profile_photo') ?? '';
@@ -75,15 +79,8 @@ class _TeacherHomeState extends State<TeacherHome> with TickerProviderStateMixin
   }
 
   /// Carga cursos del profesor e inicia el cálculo de estadísticas en background.
-  ///
-  /// Flujo:
-  /// 1. Leer datos de sesión de SharedPreferences (instantáneo).
-  /// 2. Obtener lista de cursos del profesor desde el backend (con caché).
-  /// 3. Llamar [_calcularEstadisticas] sin await — se ejecuta en paralelo
-  ///    mientras el UI ya muestra los cursos.
-  /// 4. Animar la entrada del contenido.
   Future<void> _load() async {
-    setState(() => _loading = true);
+    setState(() { _loading = true; _error = false; });
     final prefs = await SharedPreferences.getInstance();
     _name = prefs.getString('userName') ?? 'Profesor';
     _myId = prefs.getInt('userId') ?? 0;
@@ -91,67 +88,94 @@ class _TeacherHomeState extends State<TeacherHome> with TickerProviderStateMixin
     if (photoB64 != null && photoB64.isNotEmpty) {
       try { _photoBytes = base64Decode(photoB64); } catch (_) {}
     }
-    try { _courses = await ApiService().getMyCourses(_myId); } catch (_) {}
+    try {
+      _courses = await ApiService().getMyCourses(_myId);
+    } catch (_) {
+      // Distinguir "no se pudo cargar" de "no tiene cursos".
+      if (_courses.isEmpty) _error = true;
+    }
 
-    // Estadísticas se calculan en segundo plano para no bloquear la pantalla.
-    // Se actualizarán solos cuando terminen de calcular.
+    // Se calculan en segundo plano para no bloquear la pantalla.
     _calcularEstadisticas();
 
     if (mounted) {
       setState(() => _loading = false);
-      _entryCtrl.forward(from: 0);
-      Future.delayed(const Duration(seconds: 2), _reloadPhoto);
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) _reloadPhoto();
+      });
     }
   }
 
-  /// Calcula actividades pendientes y entregas sin calificar para el badge de stats.
+  double? _gpa(dynamic v) => v == null ? null : double.tryParse(v.toString());
+
+  /// Calcula, por curso, actividades abiertas y entregas calificadas / sin
+  /// calificar, además de la distribución de notas y actividades por tipo.
   ///
-  /// Estrategia de rendimiento: usa [Future.wait] para cargar actividades de
-  /// todos los cursos en PARALELO, y luego otra ronda paralela para obtener
-  /// resoluciones. Esto reduce el tiempo de N*M peticiones secuenciales a
-  /// max(peticiones_cursos) + max(peticiones_actividades).
-  ///
-  /// Zona horaria: compara con hora Colombia (UTC-5) para que el cálculo
-  /// de "actividades aún abiertas" sea correcto para usuarios colombianos.
+  /// [Future.wait] carga las actividades de todos los cursos en paralelo y luego
+  /// las entregas de todas las actividades en otra ronda paralela.
+  /// Compara con hora Colombia (UTC-5) para decidir si una actividad sigue abierta.
   Future<void> _calcularEstadisticas() async {
+    if (mounted) setState(() => _statsLoading = true);
     try {
-      // Hora actual en Colombia (UTC-5) — las fechas de cierre se guardan en UTC
       final ahoraCol = DateTime.now().toUtc().subtract(const Duration(hours: 5));
 
-      // Cargar actividades de TODOS los cursos en paralelo
       final listaActividades = await Future.wait(
-        _courses.map((c) => ApiService().getActivities(c.id).catchError((_) => <ActivityModel>[])),
+        _courses.map((c) =>
+            ApiService().getActivities(c.id).catchError((_) => <ActivityModel>[])),
       );
 
-      int pendientes = 0;
-      int sinCalif   = 0;
-      final resolsFutures = <Future<List<Map<String, dynamic>>>>[];
+      final stats = [for (final c in _courses) _CourseStat(c)];
+      final byType = <String, int>{};
+      final buckets = [0, 0, 0, 0, 0];
 
-      for (final acts in listaActividades) {
-        for (final a in acts) {
-          if (ahoraCol.isBefore(ActivityModel.toCol(a.closingDate))) pendientes++;
-          resolsFutures.add(ApiService().getResolutions(a.id)
-              .catchError((_) => <Map<String, dynamic>>[]));
+      // (índice de curso, futuro de entregas) por cada actividad
+      final pendientes = <MapEntry<int, Future<List<Map<String, dynamic>>>>>[];
+      for (var i = 0; i < listaActividades.length; i++) {
+        for (final a in listaActividades[i]) {
+          byType[a.type] = (byType[a.type] ?? 0) + 1;
+          if (ahoraCol.isBefore(ActivityModel.toCol(a.closingDate))) {
+            stats[i].open++;
+          }
+          pendientes.add(MapEntry(
+            i,
+            ApiService().getResolutions(a.id)
+                .catchError((_) => <Map<String, dynamic>>[]),
+          ));
         }
       }
 
-      // Obtener todas las resoluciones en paralelo de una sola vez
-      final todasResols = await Future.wait(resolsFutures);
-      for (final resols in todasResols) {
-        sinCalif += resols.where((r) =>
-            r['resolution'] != null &&
-            r['resolution'].toString().isNotEmpty &&
-            r['GPA'] == null).length;
+      final resols = await Future.wait(pendientes.map((e) => e.value));
+      for (var k = 0; k < resols.length; k++) {
+        final stat = stats[pendientes[k].key];
+        for (final r in resols[k]) {
+          final entregada = r['resolution'] != null &&
+              r['resolution'].toString().isNotEmpty;
+          final nota = _gpa(r['GPA']);
+          if (nota != null) {
+            stat.graded++;
+            buckets[nota.clamp(0, 4.999).floor()]++;
+          } else if (entregada) {
+            stat.ungraded++;
+          }
+        }
       }
 
-      if (mounted) setState(() {
-        _actsPendientes   = pendientes;
-        _entregasSinCalif = sinCalif;
+      if (!mounted) return;
+      setState(() {
+        _stats..clear()..addAll(stats);
+        _byType..clear()..addAll(byType);
+        for (var i = 0; i < buckets.length; i++) {
+          _gradeBuckets[i] = buckets[i];
+        }
+        _statsLoading = false;
       });
-    } catch (_) {}
+    } catch (_) {
+      if (mounted) setState(() => _statsLoading = false);
+    }
   }
 
   Future<void> _logout() async {
+    if (!await confirmarSalidaConPendientes(context)) return;
     await AuthService().clearSession();
     if (!mounted) return;
     Navigator.pushReplacement(context, slideRoute(const LoginScreen()));
@@ -159,71 +183,82 @@ class _TeacherHomeState extends State<TeacherHome> with TickerProviderStateMixin
 
   String get _ttsText => _courses.isEmpty
       ? 'Hola profesor $_name. Sin cursos asignados.'
-      : 'Hola profesor $_name. Tienes ${_courses.length} cursos: ${_courses.map((c) => c.name).join(', ')}.';
+      : 'Hola profesor $_name. Tienes ${_courses.length} cursos: '
+          '${_courses.map((c) => c.name).join(', ')}. '
+          'Hay $_ungraded entregas sin calificar.';
+
+  // ── BUILD ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    final themeType = AppSettings.currentTheme.value;
     final primary = Theme.of(context).colorScheme.primary;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF0FDF4),
-      appBar: _buildAppBar(themeType),
-      body: RefreshIndicator(
+      appBar: _buildAppBar(),
+      body: LogoBackdrop(child: RefreshIndicator(
         color: primary,
         onRefresh: _load,
         child: _loading
-            ? _buildShimmer()
-            : FadeTransition(
-                opacity: _entryFade,
-                child: CustomScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  slivers: [
-                    SliverToBoxAdapter(child: _buildHeader(themeType, primary)),
-                    SliverToBoxAdapter(child: _buildStatsBar(primary)),
-                    SliverToBoxAdapter(child: _buildQuickAccess()),
-                    SliverToBoxAdapter(child: _buildSectionTitle(primary)),
-                    if (_courses.isEmpty)
-                      SliverFillRemaining(child: _buildEmpty())
-                    else
-                      SliverPadding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-                        sliver: SliverGrid(
-                          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                            maxCrossAxisExtent: 260,
-                            mainAxisExtent: 220,
-                            crossAxisSpacing: 14,
-                            mainAxisSpacing: 14,
+            ? _buildSkeleton()
+            : _error
+                ? LayoutBuilder(
+                    builder: (_, c) => SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      child: SizedBox(
+                        height: c.maxHeight,
+                        child: ErrorState(
+                          message: 'No se pudieron cargar tus cursos. '
+                              'Revisa tu conexión e inténtalo de nuevo.',
+                          onRetry: _load,
+                        ),
+                      ),
+                    ),
+                  )
+                : CustomScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    slivers: [
+                      SliverToBoxAdapter(child: _centered(_buildDashboard())),
+                      if (_courses.isEmpty)
+                        const SliverToBoxAdapter(
+                          child: EmptyState(
+                            icon: Icons.menu_book_outlined,
+                            message: 'Sin cursos asignados.\nContacta al administrador.',
                           ),
-                          delegate: SliverChildBuilderDelegate(
-                            (_, i) => TweenAnimationBuilder<double>(
-                              tween: Tween(begin: 0.0, end: 1.0),
-                              duration: Duration(milliseconds: 250 + i * 90),
-                              curve: Curves.easeOut,
-                              builder: (_, v, child) => Opacity(
-                                opacity: v,
-                                child: Transform.translate(
-                                  offset: Offset(0, 18 * (1 - v)),
-                                  child: child,
-                                ),
-                              ),
-                              child: CourseCard(
+                        )
+                      else
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(
+                              AppTokens.pagePadding, 0,
+                              AppTokens.pagePadding, 100),
+                          sliver: SliverGrid(
+                            gridDelegate:
+                                const SliverGridDelegateWithMaxCrossAxisExtent(
+                              maxCrossAxisExtent: 260,
+                              mainAxisExtent: 220,
+                              crossAxisSpacing: 14,
+                              mainAxisSpacing: 14,
+                            ),
+                            delegate: SliverChildBuilderDelegate(
+                              (_, i) => CourseCard(
                                 course: _courses[i],
                                 index: i,
                                 onTap: () async {
-                                  await Navigator.push(context,
-                                    slideRoute(TeacherCourseContent(course: _courses[i], teacherId: _myId)));
+                                  await Navigator.push(
+                                      context,
+                                      slideRoute(TeacherCourseContent(
+                                          course: _courses[i],
+                                          teacherId: _myId)));
+                                  // Al volver puede haber cambiado lo calificado.
+                                  if (mounted) _calcularEstadisticas();
                                 },
                               ),
+                              childCount: _courses.length,
                             ),
-                            childCount: _courses.length,
                           ),
                         ),
-                      ),
-                  ],
-                ),
-              ),
-      ),
+                    ],
+                  ),
+      )),
       floatingActionButton: _loading
           ? null
           : Column(
@@ -237,61 +272,59 @@ class _TeacherHomeState extends State<TeacherHome> with TickerProviderStateMixin
     );
   }
 
-  PreferredSizeWidget _buildAppBar(AppThemeType themeType) {
+  Widget _centered(Widget child) => Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1100),
+          child: child,
+        ),
+      );
+
+  PreferredSizeWidget _buildAppBar() {
+    final danger = context.tokens.danger;
     return AppBar(
       automaticallyImplyLeading: false,
-      flexibleSpace: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: themeType.gradient,
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-      ),
-      title: Row(mainAxisSize: MainAxisSize.min, children: [
-        Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
-          child: const Icon(Icons.school_rounded, color: Colors.white, size: 18),
-        ),
-        const SizedBox(width: 10),
-        Text('GESACAD', style: GoogleFonts.poppins(
-            color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18, letterSpacing: 1)),
+      title: const Row(mainAxisSize: MainAxisSize.min, children: [
+        MotionIcon(PhosphorIconsRegular.graduationCap,
+            size: 24, motion: IconMotion.swing, halo: true),
+        SizedBox(width: 8),
+        Text('GESACAD'),
       ]),
-      centerTitle: true,
-      backgroundColor: Colors.transparent,
-      elevation: 0,
       actions: [
         NotificationBell(userId: _myId, userRol: 'Teacher'),
-        IconButton(
+        AnimatedIconButton(
           tooltip: 'Calendario',
-          icon: const Icon(Icons.calendar_month_rounded, color: Colors.white),
+          icon: PhosphorIconsRegular.calendarBlank,
+          reaction: IconReaction.flip,
           onPressed: () => Navigator.push(context, slideRoute(const CalendarScreen())),
         ),
-        IconButton(
+        AnimatedIconButton(
           tooltip: 'Mi Perfil',
-          icon: _photoBytes != null
-              ? CircleAvatar(backgroundImage: MemoryImage(_photoBytes!), radius: 14)
-              : const Icon(Icons.account_circle_rounded, color: Colors.white),
+          icon: PhosphorIconsRegular.userCircle,
+          reaction: IconReaction.pop,
+          custom: _photoBytes != null
+              ? CircleAvatar(backgroundImage: MemoryImage(_photoBytes!), radius: 15)
+              : null,
           onPressed: () => Navigator.push(context, slideRoute(const ProfileScreen()))
               .then((_) => _reloadPhoto()),
         ),
         PopupMenuButton<String>(
           tooltip: 'Más opciones',
-          icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
+          icon: const Icon(PhosphorIconsRegular.dotsThreeVertical),
           onSelected: (v) {
-            if (v == 'settings') Navigator.push(context, slideRoute(const SettingsScreen()));
+            if (v == 'settings') {
+              Navigator.push(context, slideRoute(const SettingsScreen()));
+            }
             if (v == 'logout') _logout();
           },
           itemBuilder: (_) => [
-            PopupMenuItem(value: 'settings', child: Row(children: [
-              const Icon(Icons.settings_rounded, size: 18), const SizedBox(width: 8), const Text('Ajustes'),
+            const PopupMenuItem(value: 'settings', child: Row(children: [
+              Icon(PhosphorIconsRegular.gear, size: 18),
+              SizedBox(width: 8), Text('Ajustes'),
             ])),
             PopupMenuItem(value: 'logout', child: Row(children: [
-              Icon(Icons.logout_rounded, size: 18, color: Colors.red.shade600),
+              Icon(PhosphorIconsRegular.signOut, size: 18, color: danger),
               const SizedBox(width: 8),
-              Text('Cerrar sesión', style: TextStyle(color: Colors.red.shade600)),
+              Text('Cerrar sesión', style: TextStyle(color: danger)),
             ])),
           ],
         ),
@@ -299,266 +332,294 @@ class _TeacherHomeState extends State<TeacherHome> with TickerProviderStateMixin
     );
   }
 
-  Widget _buildHeader(AppThemeType themeType, Color primary) {
+  // ── DASHBOARD ─────────────────────────────────────────────────────────────
+
+  Widget _buildDashboard() {
     final now = DateTime.now();
-    final saludo = now.hour < 12 ? 'Buenos días' : now.hour < 18 ? 'Buenas tardes' : 'Buenas noches';
-    final emoji = now.hour < 12 ? '🌤️' : now.hour < 18 ? '☀️' : '🌙';
+    final saludo = now.hour < 12
+        ? 'Buenos días'
+        : now.hour < 18 ? 'Buenas tardes' : 'Buenas noches';
 
-    return AnimatedBuilder(
-      animation: _cardAnim,
-      builder: (_, __) => Container(
-        margin: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(colors: themeType.gradient, begin: Alignment.topLeft, end: Alignment.bottomRight),
-          borderRadius: BorderRadius.circular(28),
-          boxShadow: [BoxShadow(color: primary.withOpacity(0.40), blurRadius: 28, offset: const Offset(0, 10))],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(28),
-          child: Stack(children: [
-            Positioned.fill(
-                child: ExcludeSemantics(
-                    child: CustomPaint(painter: _BubblePainter(_cardAnim.value)))),
-            Positioned(top: 0, left: 0, right: 0, child: ExcludeSemantics(child: Container(height: 1.5,
-              decoration: BoxDecoration(gradient: LinearGradient(colors: [
-                Colors.white.withOpacity(0.0), Colors.white.withOpacity(0.35), Colors.white.withOpacity(0.0),
-              ])),
-            ))),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
-              child: Row(children: [
-                ExcludeSemantics(
-                  child: Container(
-                  width: 70, height: 70,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white.withOpacity(0.55), width: 2.5),
-                    color: Colors.white.withOpacity(0.15),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 12, offset: const Offset(0, 4))],
-                  ),
-                  child: ClipOval(child: _photoBytes != null
-                      ? Image.memory(_photoBytes!, fit: BoxFit.cover, width: 70, height: 70)
-                      : const Icon(Icons.school_rounded, color: Colors.white, size: 32)),
-                )),
-                const SizedBox(width: 18),
-                Expanded(child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Row(children: [
-                      Text('$emoji ', style: const TextStyle(fontSize: 13)),
-                      Text('$saludo, Profe', style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12)),
-                    ]),
-                    TalkWidget(label: 'Bienvenido $_name',
-                    child: Text(_name, style: GoogleFonts.poppins(
-                        color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800, height: 1.2))),
-                    const SizedBox(height: 8),
-                    Wrap(spacing: 6, children: [
-                      _chip('📖 ${_courses.length} curso${_courses.length == 1 ? '' : 's'}'),
-                      _chip('✅ Docente'),
-                    ]),
-                  ],
-                )),
-              ]),
+    return Padding(
+      padding: const EdgeInsets.all(AppTokens.pagePadding),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        PageHeader(
+          title: _name,
+          subtitle: '$saludo, profe',
+          leading: ExcludeSemantics(
+            child: Container(
+              width: 56, height: 56,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.5), width: 2),
+                color: Colors.white.withValues(alpha: 0.15),
+              ),
+              child: ClipOval(
+                child: _photoBytes != null
+                    ? Image.memory(_photoBytes!, fit: BoxFit.cover)
+                    : const Icon(PhosphorIconsRegular.chalkboardTeacher,
+                        color: Colors.white, size: 28),
+              ),
             ),
-          ]),
-        ),
-      ),
-    );
-  }
-
-  Widget _chip(String label) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-    decoration: BoxDecoration(
-      color: Colors.white.withOpacity(0.2),
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: Colors.white.withOpacity(0.3)),
-    ),
-    child: Text(label, style: GoogleFonts.poppins(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600)),
-  );
-
-  Widget _buildStatsBar(Color primary) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-      padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 14, offset: const Offset(0, 4))],
-      ),
-      child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
-        _statItem('${_courses.length}', 'Cursos\nasignados', Icons.library_books_rounded, primary),
-        _vDivider(),
-        _statItem('$_actsPendientes', 'Actividades\npendientes', Icons.assignment_rounded, Colors.orange.shade600),
-        _vDivider(),
-        _statItem('$_entregasSinCalif', 'Entregas\nsin calificar', Icons.grading_rounded, Colors.red.shade600),
-      ]),
-    );
-  }
-
-  Widget _statItem(String val, String label, IconData icon, Color color) {
-    final n = int.tryParse(val) ?? 0;
-    // Semantics en el nivel superior: TalkBack anuncia el valor FINAL y el label
-    // sin leer los números intermedios de la animación count-up.
-    return Semantics(
-      label: '$n ${label.replaceAll('\n', ' ')}',
-      child: Column(children: [
-        ExcludeSemantics(
-          child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(
-            color: color.withOpacity(0.1), shape: BoxShape.circle),
-            child: Icon(icon, color: color, size: 20)),
-        ),
-        const SizedBox(height: 6),
-        // ExcludeSemantics: TalkBack lee el Semantics padre, no el número animado
-        ExcludeSemantics(
-          child: TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0, end: n.toDouble()),
-            duration: const Duration(milliseconds: 900),
-            curve: Curves.easeOut,
-            builder: (_, v, __) => Text('${v.toInt()}',
-                style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 20, color: color)),
           ),
+          chips: [
+            HeaderChip(PhosphorIconsRegular.books,
+                '${_courses.length} curso${_courses.length == 1 ? '' : 's'}'),
+            const HeaderChip(PhosphorIconsRegular.chalkboardTeacher, 'Docente'),
+          ],
         ),
-        ExcludeSemantics(
-          child: Text(label, style: GoogleFonts.poppins(fontSize: 10, color: Colors.grey.shade500, height: 1.3), textAlign: TextAlign.center),
-        ),
+        // Resultados de evaluación docente (CU-08): solo con periodos cerrados.
+        EvaluationEntryCard(role: EvalRole.teacher, userId: _myId),
+        const SizedBox(height: AppTokens.sectionGap),
+        _buildKpis(),
+        const SizedBox(height: AppTokens.sectionGap),
+        _buildCharts(),
+        const SizedBox(height: AppTokens.sectionGap),
+        SectionTitle('Mis cursos',
+            icon: PhosphorIconsRegular.books,
+            subtitle: '${_courses.length} asignados'),
+        const SizedBox(height: 12),
       ]),
     );
   }
 
-  Widget _vDivider() => Container(width: 1, height: 52, color: Colors.grey.shade100);
+  Widget _buildKpis() {
+    final t = context.tokens;
+    final cards = [
+      StatCard(icon: PhosphorIconsRegular.books,
+          value: '${_courses.length}', label: 'Cursos asignados',
+          color: t.chart[0], motion: IconMotion.float),
+      StatCard(icon: PhosphorIconsRegular.clock,
+          value: _statsLoading ? '…' : '$_actsOpen',
+          label: 'Actividades abiertas', color: t.chart[3],
+          motion: IconMotion.pulse, delay: const Duration(milliseconds: 140)),
+      StatCard(icon: PhosphorIconsRegular.clipboardText,
+          value: _statsLoading ? '…' : '$_ungraded',
+          label: 'Entregas por calificar', color: t.chart[2],
+          motion: IconMotion.wiggle, delay: const Duration(milliseconds: 280)),
+    ];
+    return LayoutBuilder(builder: (ctx, c) {
+      final cols = c.maxWidth > 760 ? 3 : (c.maxWidth > 480 ? 2 : 1);
+      const gap = 12.0;
+      final w = (c.maxWidth - gap * (cols - 1)) / cols;
+      return Wrap(
+        spacing: gap,
+        runSpacing: gap,
+        children: [for (final card in cards) SizedBox(width: w, child: card)],
+      );
+    });
+  }
 
-  Widget _buildQuickAccess() {
-    final items = [
-      _QuickItem('📅', 'Calendario', const Color(0xFF7C3AED),
-          () => Navigator.push(context, slideRoute(const CalendarScreen()))),
-      _QuickItem('🔔', 'Avisos', const Color(0xFFDB2777),
-          () => Navigator.push(context, slideRoute(NotificationsPanel(userId: _myId, userRol: 'Teacher')))),
-      _QuickItem('👤', 'Perfil', const Color(0xFF059669),
-          () => Navigator.push(context, slideRoute(const ProfileScreen()))
-              .then((_) => _reloadPhoto())),
-      _QuickItem('⚙️', 'Ajustes', const Color(0xFFD97706),
-          () => Navigator.push(context, slideRoute(const SettingsScreen()))),
+  Widget _buildCharts() {
+    if (_courses.isEmpty) return const SizedBox.shrink();
+    if (_statsLoading) {
+      return Row(children: const [
+        Expanded(child: SkeletonBox(height: 280)),
+        SizedBox(width: 16),
+        Expanded(child: SkeletonBox(height: 280)),
+      ]);
+    }
+    if (_totalActs == 0) {
+      return AppCard(
+        child: EmptyState(
+          icon: PhosphorIconsRegular.chartBar,
+          message: 'Cuando crees actividades y recibas entregas, '
+              'verás aquí tus estadísticas.',
+        ),
+      );
+    }
+
+    final cards = [
+      _buildGradingCard(),
+      _buildGradesHistogram(),
+      _buildPendingByCourse(),
+      _buildTypesCard(),
     ];
 
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 14, offset: const Offset(0, 4))],
-      ),
-      child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: items.map(_quickBtn).toList()),
-    );
+    return LayoutBuilder(builder: (ctx, c) {
+      final cols = c.maxWidth > 760 ? 2 : 1;
+      const gap = 16.0;
+      final w = (c.maxWidth - gap * (cols - 1)) / cols;
+      return Wrap(
+        spacing: gap,
+        runSpacing: gap,
+        children: [for (final card in cards) SizedBox(width: w, child: card)],
+      );
+    });
   }
 
-  Widget _quickBtn(_QuickItem item) => TalkWidget(
-    label: item.label,
-    child: InkWell(
-    onTap: item.onTap,
-    borderRadius: BorderRadius.circular(16),
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Container(padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(colors: [item.color, item.color.withOpacity(0.7)],
-                begin: Alignment.topLeft, end: Alignment.bottomRight),
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(color: item.color.withOpacity(0.40), blurRadius: 10, offset: const Offset(0, 4)),
-              BoxShadow(color: Colors.white.withOpacity(0.2), blurRadius: 3, offset: const Offset(0, -1)),
-            ],
-          ),
-          child: Text(item.emoji, style: const TextStyle(fontSize: 20))),
-        const SizedBox(height: 6),
-        Text(item.label, style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w700, color: item.color)),
-      ]),
-    ),
-  ));
-
-  Widget _buildSectionTitle(Color primary) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
-      child: Row(children: [
-        Container(padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(color: primary.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-          child: Icon(Icons.library_books_rounded, color: primary, size: 18)),
-        const SizedBox(width: 10),
-        Text('Mis cursos asignados', style: GoogleFonts.poppins(
-            fontSize: 16, fontWeight: FontWeight.w700, color: const Color(0xFF1E1B4B))),
-        const Spacer(),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(colors: [primary, primary.withOpacity(0.7)]),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Text('${_courses.length}', style: GoogleFonts.poppins(
-              fontSize: 12, color: Colors.white, fontWeight: FontWeight.w700)),
+  /// Dona: entregas calificadas vs. por calificar.
+  Widget _buildGradingCard() {
+    final t = context.tokens;
+    final total = _graded + _ungraded;
+    return AppCard(
+      padding: const EdgeInsets.all(20),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SectionTitle('Estado de calificación',
+            icon: PhosphorIconsRegular.chartDonut,
+            subtitle: '$total entregas recibidas'),
+        const SizedBox(height: 12),
+        DonutChart(
+          slices: [
+            DonutSlice('Calificadas', _graded, t.success),
+            DonutSlice('Por calificar', _ungraded, t.warning),
+          ],
+          centerValue: total == 0 ? '0%' : '${(_graded / total * 100).round()}%',
+          centerLabel: 'calificado',
+          summary: 'Estado de calificación. $_graded entregas calificadas y '
+              '$_ungraded por calificar.',
         ),
       ]),
     );
   }
 
-  Widget _buildEmpty() => Center(
-    child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-      Container(padding: const EdgeInsets.all(28),
-        decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFF0FDF4), Color(0xFFDCFCE7)]), shape: BoxShape.circle),
-        child: const Icon(Icons.book_outlined, size: 64, color: Color(0xFF059669))),
-      const SizedBox(height: 20),
-      Text('Sin cursos asignados', style: GoogleFonts.poppins(
-          fontSize: 18, fontWeight: FontWeight.w700, color: const Color(0xFF1E1B4B))),
-      const SizedBox(height: 8),
-      Text('Contacta al administrador', style: GoogleFonts.poppins(fontSize: 13, color: Colors.grey.shade400)),
-    ]),
-  );
+  /// Histograma de notas (0-1 … 4-5) con todas las entregas calificadas.
+  Widget _buildGradesHistogram() {
+    final t = context.tokens;
+    const labels = ['0–1', '1–2', '2–3', '3–4', '4–5'];
+    final maxV = _gradeBuckets.fold<int>(0, (m, v) => v > m ? v : m);
+    final hasData = maxV > 0;
 
-  Widget _buildShimmer() => Padding(
-    padding: const EdgeInsets.all(20),
-    child: Column(children: [
-      _sBox(150, 24), const SizedBox(height: 14),
-      _sBox(80, 18), const SizedBox(height: 14),
-      _sBox(80, 18), const SizedBox(height: 14),
-      Row(children: [Expanded(child: _sBox(220, 18)), const SizedBox(width: 14), Expanded(child: _sBox(220, 18))]),
-    ]),
-  );
-
-  Widget _sBox(double h, double r) => TweenAnimationBuilder<double>(
-    tween: Tween(begin: 0.3, end: 0.7),
-    duration: const Duration(milliseconds: 900),
-    builder: (_, v, __) => Container(height: h, margin: const EdgeInsets.symmetric(vertical: 4),
-      decoration: BoxDecoration(color: Colors.grey.shade200.withOpacity(v), borderRadius: BorderRadius.circular(r))),
-  );
-}
-
-class _BubblePainter extends CustomPainter {
-  final double t;
-  _BubblePainter(this.t);
-  @override
-  void paint(Canvas canvas, Size size) {
-    final p = Paint()..style = PaintingStyle.fill;
-    final w = size.width; final h = size.height;
-    p.color = Colors.white.withOpacity(0.07);
-    canvas.drawCircle(Offset(w * 0.85 + 12 * math.sin(t * 2 * math.pi), h * -0.3), h * 1.15, p);
-    p.color = Colors.white.withOpacity(0.05);
-    canvas.drawCircle(Offset(w * -0.05 + 8 * math.cos(t * 2 * math.pi + 1), h * 1.1), h * 0.75, p);
-    p.color = Colors.white.withOpacity(0.06);
-    canvas.drawCircle(Offset(w * 0.55 + 10 * math.sin(t * 3 * math.pi), h * 0.55), h * 0.35, p);
-    p.color = Colors.white.withOpacity(0.10);
-    canvas.drawCircle(Offset(w * 0.72 + 6 * math.cos(t * 4 * math.pi), h * 0.2), 14, p);
+    return AppCard(
+      padding: const EdgeInsets.all(20),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const SectionTitle('Distribución de notas',
+            icon: PhosphorIconsRegular.chartBar,
+            subtitle: 'Número de entregas por rango de nota'),
+        const SizedBox(height: 16),
+        if (!hasData)
+          const EmptyState(
+              icon: PhosphorIconsRegular.chartBar,
+              message: 'Aún no hay entregas calificadas.')
+        else
+          Semantics(
+            label: 'Distribución de notas. '
+                '${[for (var i = 0; i < labels.length; i++) '${labels[i]}: ${_gradeBuckets[i]}'].join(', ')}.',
+            child: ExcludeSemantics(
+              child: GradientColumns(
+                height: 220,
+                items: [
+                  for (var i = 0; i < _gradeBuckets.length; i++)
+                    BarItem(labels[i], _gradeBuckets[i].toDouble(),
+                        color: i < 3 ? t.danger : t.success),
+                ],
+              ),
+            ),
+          ),
+        const SizedBox(height: 10),
+        Wrap(spacing: 14, runSpacing: 4, children: [
+          _legendDot(t.danger, 'Por debajo de 3.0'),
+          _legendDot(t.success, '3.0 o más'),
+        ]),
+      ]),
+    );
   }
-  @override
-  bool shouldRepaint(_BubblePainter old) => old.t != t;
-}
 
-class _QuickItem {
-  final String emoji;
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
-  const _QuickItem(this.emoji, this.label, this.color, this.onTap);
-}
+  Widget _legendDot(Color c, String text) => Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+          width: 10, height: 10,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(colors: AppTokens.gradientOf(c)),
+            shape: BoxShape.circle,
+            boxShadow: [BoxShadow(color: c.withValues(alpha: 0.5), blurRadius: 6)],
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(text,
+            style: GoogleFonts.poppins(fontSize: 12, color: context.tokens.muted)),
+      ]);
 
+  /// Entregas por calificar en cada curso (ordenadas de mayor a menor).
+  Widget _buildPendingByCourse() {
+    final t = context.tokens;
+    final ordenados = [..._stats]..sort((a, b) => b.ungraded.compareTo(a.ungraded));
+    final todoAlDia = ordenados.every((s) => s.ungraded == 0);
+
+    return AppCard(
+      padding: const EdgeInsets.all(20),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const SectionTitle('Por calificar, por curso',
+            icon: PhosphorIconsRegular.clipboardText,
+            subtitle: 'Entregas enviadas sin nota'),
+        const SizedBox(height: 12),
+        if (todoAlDia)
+          const EmptyState(
+              icon: PhosphorIconsRegular.checkCircle,
+              message: 'Todo al día: no tienes entregas por calificar.')
+        else
+          Semantics(
+            label: 'Entregas por calificar por curso. ' +
+                ordenados
+                    .map((s) => '${s.course.name}: ${s.ungraded}')
+                    .join(', ') +
+                '.',
+            child: ExcludeSemantics(
+              child: BarList(
+                color: t.warning,
+                items: [
+                  for (final s in ordenados)
+                    BarItem(s.course.name, s.ungraded.toDouble()),
+                ],
+              ),
+            ),
+          ),
+      ]),
+    );
+  }
+
+  /// Actividades por tipo (parcial, proyecto, recurso, otro).
+  Widget _buildTypesCard() {
+    final t = context.tokens;
+    final tipos = _byType.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return AppCard(
+      padding: const EdgeInsets.all(20),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SectionTitle('Actividades por tipo',
+            icon: PhosphorIconsRegular.exam,
+            subtitle: '$_totalActs actividades en total'),
+        const SizedBox(height: 12),
+        Semantics(
+          label: 'Actividades por tipo. ' +
+              tipos
+                  .map((e) => '${ActivityTypeInfo.of(e.key).label}: ${e.value}')
+                  .join(', ') +
+              '.',
+          child: ExcludeSemantics(
+            child: BarList(
+              color: t.chart[0],
+              items: [
+                for (final e in tipos)
+                  BarItem(ActivityTypeInfo.of(e.key).label, e.value.toDouble(),
+                      color: ActivityTypeInfo.colorOf(e.key, t)),
+              ],
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  // ── ESQUELETO DE CARGA ────────────────────────────────────────────────────
+
+  Widget _buildSkeleton() => Semantics(
+        label: 'Cargando cursos y estadísticas',
+        child: ExcludeSemantics(
+          child: Padding(
+            padding: const EdgeInsets.all(AppTokens.pagePadding),
+            child: Column(children: const [
+              SkeletonBox(height: 110),
+              SizedBox(height: 16),
+              Row(children: [
+                Expanded(child: SkeletonBox(height: 76)),
+                SizedBox(width: 12),
+                Expanded(child: SkeletonBox(height: 76)),
+              ]),
+              SizedBox(height: 16),
+              SkeletonBox(height: 240),
+            ]),
+          ),
+        ),
+      );
+}

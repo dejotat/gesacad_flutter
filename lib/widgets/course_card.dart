@@ -1,17 +1,23 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'talk_widget.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+import '../config/app_tokens.dart';
 import '../models/course_model.dart';
+import 'talk_widget.dart';
+import 'ui/animated_buttons.dart';
+import 'ui/motion_icon.dart';
 
-/// Tarjeta de curso con diseño moderno glassmorphism + gradientes vibrantes.
+/// Tarjeta de curso: portada de color sobrio con ícono, nombre y código.
+/// Toda la tarjeta es un único destino táctil.
 class CourseCard extends StatefulWidget {
   final CourseModel course;
   final VoidCallback onTap;
   final VoidCallback? onDelete;
   final VoidCallback? onEdit;
   final int index;
-  /// Si true, oculta el botón "Abrir curso" (usado en la vista Admin de gestión)
+
+  /// Si true, oculta la indicación "Abrir curso" (vista Admin de gestión).
   final bool hideOpenButton;
 
   const CourseCard({
@@ -24,27 +30,43 @@ class CourseCard extends StatefulWidget {
     this.hideOpenButton = false,
   });
 
+  /// Pares de degradado vivos (texto blanco encima con buen contraste).
   static const List<List<Color>> _gradients = [
-    [Color(0xFF0052D4), Color(0xFF4364F7), Color(0xFF6FB1FC)],
-    [Color(0xFF8E2DE2), Color(0xFF4A00E0), Color(0xFFB721FF)],
-    [Color(0xFF11998E), Color(0xFF38EF7D), Color(0xFF00B09B)],
-    [Color(0xFFEB3349), Color(0xFFF45C43), Color(0xFFFF6B6B)],
-    [Color(0xFF1D976C), Color(0xFF93F9B9), Color(0xFF1D976C)],
-    [Color(0xFFFF6B35), Color(0xFFF7C59F), Color(0xFFFF8E53)],
-    [Color(0xFF373B44), Color(0xFF4286F4), Color(0xFF373B44)],
-    [Color(0xFFDA22FF), Color(0xFF9733EE), Color(0xFFDA22FF)],
+    [Color(0xFF2563EB), Color(0xFF06B6D4)], // azul → cian
+    [Color(0xFF7C3AED), Color(0xFFEC4899)], // violeta → rosa
+    [Color(0xFF059669), Color(0xFF22D3EE)], // esmeralda → turquesa
+    [Color(0xFFE11D48), Color(0xFFF59E0B)], // carmín → ámbar
+    [Color(0xFF0D9488), Color(0xFF84CC16)], // teal → lima
+    [Color(0xFFEA580C), Color(0xFFEF4444)], // naranja → rojo
+    [Color(0xFF4F46E5), Color(0xFF0EA5E9)], // índigo → cielo
+    [Color(0xFFC026D3), Color(0xFF6366F1)], // fucsia → índigo
   ];
 
   static const List<IconData> _icons = [
-    Icons.computer_rounded,
-    Icons.science_rounded,
-    Icons.calculate_rounded,
-    Icons.biotech_rounded,
-    Icons.architecture_rounded,
-    Icons.psychology_rounded,
-    Icons.menu_book_rounded,
-    Icons.hub_rounded,
+    PhosphorIconsRegular.code,
+    PhosphorIconsRegular.flask,
+    PhosphorIconsRegular.calculator,
+    PhosphorIconsRegular.dna,
+    PhosphorIconsRegular.compass,
+    PhosphorIconsRegular.brain,
+    PhosphorIconsRegular.bookOpen,
+    PhosphorIconsRegular.graph,
   ];
+
+  /// Cada materia mueve su ícono a su manera (código teclea, el matraz burbujea…).
+  static const List<IconMotion> _motions = [
+    IconMotion.write,      // code
+    IconMotion.wiggle,     // flask
+    IconMotion.pulse,      // calculator
+    IconMotion.spin,       // dna
+    IconMotion.swing,      // compass
+    IconMotion.heartbeat,  // brain
+    IconMotion.float,      // book
+    IconMotion.bounce,     // graph
+  ];
+
+  static IconMotion motionFor(int imgCourse) =>
+      _motions[(imgCourse - 1).clamp(0, _motions.length - 1)];
 
   static List<Color> gradientFor(int imgCourse) {
     final idx = (imgCourse - 1).clamp(0, _gradients.length - 1);
@@ -63,24 +85,25 @@ class CourseCard extends StatefulWidget {
 class _CourseCardState extends State<CourseCard>
     with SingleTickerProviderStateMixin {
   bool _hovered = false;
-  late AnimationController _ctrl;
-  late Animation<double> _entry;
+
+  /// Reloj de la portada: mueve las luces de fondo (ciclo de 14 s sin saltos).
+  late final AnimationController _aurora =
+      AnimationController(vsync: this, duration: const Duration(seconds: 14));
 
   @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 500));
-    _entry = CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack);
-    Future.delayed(
-      Duration(milliseconds: 70 * widget.index.clamp(0, 12)),
-      () { if (mounted) _ctrl.forward(); },
-    );
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    if (reduce) {
+      _aurora.stop();
+    } else if (!_aurora.isAnimating) {
+      _aurora.repeat();
+    }
   }
 
   @override
   void dispose() {
-    _ctrl.dispose();
+    _aurora.dispose();
     super.dispose();
   }
 
@@ -88,54 +111,49 @@ class _CourseCardState extends State<CourseCard>
   Widget build(BuildContext context) {
     final colors = CourseCard.gradientFor(widget.course.imgCourse);
     final icon = CourseCard.iconFor(widget.course.imgCourse);
-    final hasActions = widget.onEdit != null || widget.onDelete != null;
+    final t = context.tokens;
+    final cs = Theme.of(context).colorScheme;
+    final radius = BorderRadius.circular(AppTokens.radiusCard);
 
-    return AnimatedBuilder(
-      animation: _entry,
-      builder: (_, child) => Transform.translate(
-        offset: Offset(0, 28 * (1 - _entry.value)),
-        child: Opacity(opacity: _entry.value.clamp(0.0, 1.0), child: child),
-      ),
-      child: Semantics(
-        label: 'Curso: ${widget.course.name}, código ${widget.course.courseCode}',
-        button: true,
-        child: TalkWidget(
-          label: 'Curso ${widget.course.name}, código ${widget.course.courseCode}',
-          child: MouseRegion(
+    return Semantics(
+      label: 'Curso: ${widget.course.name}, código ${widget.course.courseCode}',
+      button: true,
+      // Con botones de administración (editar/eliminar) deben seguir accesibles.
+      excludeSemantics: widget.onEdit == null && widget.onDelete == null,
+      onTap: widget.onTap,
+      child: TalkWidget(
+        label: 'Curso ${widget.course.name}, código ${widget.course.courseCode}',
+        child: MouseRegion(
           onEnter: (_) => setState(() => _hovered = true),
           onExit: (_) => setState(() => _hovered = false),
-          child: AnimatedScale(
-            scale: _hovered ? 1.03 : 1.0,
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOutCubic,
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: colors[0].withOpacity(_hovered ? 0.45 : 0.18),
-                    blurRadius: _hovered ? 28 : 10,
-                    spreadRadius: _hovered ? 2 : 0,
-                    offset: Offset(0, _hovered ? 10 : 4),
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: Material(
-                  color: Colors.white,
-                  child: InkWell(
-                    onTap: widget.onTap,
-                    splashColor: colors[0].withOpacity(0.12),
-                    highlightColor: Colors.transparent,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _buildCover(colors, icon, hasActions),
-                        _buildInfo(colors),
-                      ],
-                    ),
+          child: Pressable(
+            hoverScale: 1.03,
+            pressedScale: 0.97,
+            child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            decoration: BoxDecoration(
+              color: cs.surface,
+              borderRadius: radius,
+              border: Border.all(color: _hovered ? colors[1] : t.border),
+              boxShadow: _hovered
+                  ? [BoxShadow(
+                      color: colors[0].withValues(alpha: 0.18),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6))]
+                  : t.cardShadow,
+            ),
+            child: ClipRRect(
+              borderRadius: radius,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: widget.onTap,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildCover(colors, icon),
+                      _buildInfo(colors, cs, t),
+                    ],
                   ),
                 ),
               ),
@@ -147,252 +165,181 @@ class _CourseCardState extends State<CourseCard>
     );
   }
 
-  Widget _buildCover(List<Color> colors, IconData icon, bool hasActions) {
-    return Stack(
-      children: [
-        // Fondo gradiente animado
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          height: 90,
-          width: double.infinity,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: _hovered
-                  ? [colors[1], colors[0], colors[2]]
-                  : [colors[0], colors[1], colors[2]],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-          child: CustomPaint(painter: _ModernPatternPainter(colors)),
+  Widget _buildCover(List<Color> colors, IconData icon) {
+    final hasActions = widget.onEdit != null || widget.onDelete != null;
+    final delay = Duration(milliseconds: 80 * widget.index.clamp(0, 10));
+    return Container(
+      height: 96,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: colors,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        // Shimmer overlay al hacer hover
-        if (_hovered)
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Colors.white.withOpacity(0.0),
-                    Colors.white.withOpacity(0.08),
-                    Colors.white.withOpacity(0.0),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
+      ),
+      child: Stack(children: [
+        // Aurora: tres luces que derivan lentamente (decorativo).
+        Positioned.fill(
+          child: ExcludeSemantics(
+            child: AnimatedBuilder(
+              animation: _aurora,
+              builder: (_, __) => CustomPaint(painter: _AuroraPainter(_aurora.value)),
             ),
           ),
-        // Botones admin
-        if (hasActions)
-          Positioned(
-            top: 8, right: 8,
-            child: Row(children: [
-              if (widget.onEdit != null)
-                _actionBtn(Icons.edit_rounded, 'Editar', widget.onEdit!,
-                    Colors.white),
-              if (widget.onDelete != null)
-                _actionBtn(Icons.delete_rounded, 'Eliminar', widget.onDelete!,
-                    Colors.red.shade200),
-            ]),
-          ),
-        // Ícono central con efecto glass
-        Positioned.fill(
-          child: Center(
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: EdgeInsets.all(_hovered ? 14 : 12),
+        ),
+        // Medallón de cristal con el ícono animado de la materia.
+        Center(
+          child: ExcludeSemantics(
+            child: Container(
+              width: 62, height: 62,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(_hovered ? 0.25 : 0.18),
                 shape: BoxShape.circle,
-                border: Border.all(
-                    color: Colors.white.withOpacity(0.5),
-                    width: _hovered ? 2.0 : 1.5),
+                color: Colors.white.withValues(alpha: 0.18),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.55)),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.15),
-                    blurRadius: 12,
-                    offset: const Offset(0, 3),
+                    color: Colors.white.withValues(alpha: _hovered ? 0.45 : 0.18),
+                    blurRadius: _hovered ? 26 : 14,
                   ),
                 ],
               ),
-              child: Icon(icon, color: Colors.white,
-                  size: _hovered ? 28 : 24),
+              child: Center(
+                child: MotionIcon(icon,
+                    color: Colors.white,
+                    size: 32,
+                    glow: true,
+                    halo: _hovered,
+                    motion: CourseCard.motionFor(widget.course.imgCourse),
+                    delay: delay),
+              ),
             ),
           ),
         ),
-        // Número de código pequeño arriba izquierda
         Positioned(
           top: 8, left: 10,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.25),
+              color: Colors.black.withValues(alpha: 0.28),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text(
               widget.course.courseCode,
               style: GoogleFonts.poppins(
                 color: Colors.white,
-                fontSize: 8,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.3,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ),
         ),
-      ],
+        if (hasActions)
+          Positioned(
+            top: 2, right: 2,
+            child: Row(children: [
+              if (widget.onEdit != null)
+                _actionBtn(PhosphorIconsRegular.pencilSimple, 'Editar',
+                    IconReaction.write, widget.onEdit!),
+              if (widget.onDelete != null)
+                _actionBtn(PhosphorIconsRegular.trash, 'Eliminar',
+                    IconReaction.shake, widget.onDelete!),
+            ]),
+          ),
+      ]),
     );
   }
 
-  Widget _buildInfo(List<Color> colors) {
+  Widget _buildInfo(List<Color> colors, ColorScheme cs, AppTokens t) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Nombre del curso
           Text(
             widget.course.name,
             style: GoogleFonts.poppins(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: const Color(0xFF1A1A2E),
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: cs.onSurface,
               height: 1.25,
             ),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 10),
-          // Botón Abrir — oculto cuando hideOpenButton = true (Admin)
-          if (!widget.hideOpenButton) SizedBox(
-            width: double.infinity,
-            height: 34,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [colors[0], colors[1]],
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                ),
-                borderRadius: BorderRadius.circular(10),
-                boxShadow: _hovered
-                    ? [BoxShadow(
-                        color: colors[0].withOpacity(0.40),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4))]
-                    : [],
+          if (!widget.hideOpenButton) ...[
+            const SizedBox(height: 8),
+            Row(children: [
+              Text('Abrir curso',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: cs.brightness == Brightness.dark
+                        ? colors[1]
+                        : colors[0],
+                  )),
+              const SizedBox(width: 4),
+              AnimatedSlide(
+                duration: const Duration(milliseconds: 260),
+                curve: Curves.easeOutBack,
+                offset: Offset(_hovered ? 0.7 : 0, 0),
+                child: Icon(PhosphorIconsRegular.arrowRight,
+                    size: 14,
+                    color: cs.brightness == Brightness.dark
+                        ? colors[1]
+                        : colors[0]),
               ),
-              child: Material(
-                color: Colors.transparent,
-                borderRadius: BorderRadius.circular(10),
-                child: InkWell(
-                  onTap: widget.onTap,
-                  borderRadius: BorderRadius.circular(10),
-                  splashColor: Colors.white24,
-                  child: Center(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.rocket_launch_rounded,
-                            color: Colors.white, size: 13),
-                        const SizedBox(width: 6),
-                        Text('Abrir curso',
-                            style: GoogleFonts.poppins(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.3,
-                            )),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
+            ]),
+          ],
         ],
       ),
     );
   }
 
-  Widget _actionBtn(IconData icon, String tooltip, VoidCallback onPressed,
-      Color iconColor) {
-    return Tooltip(
-      message: tooltip,
-      child: GestureDetector(
-        onTap: onPressed,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          margin: const EdgeInsets.all(3),
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.30),
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white.withOpacity(0.2), width: 1),
-          ),
-          child: Icon(icon, color: iconColor, size: 14),
-        ),
-      ),
+  /// Botón de administración sobre la portada: reacciona según su función.
+  Widget _actionBtn(IconData icon, String tooltip, IconReaction reaction,
+      VoidCallback onPressed) {
+    return AnimatedIconButton(
+      tooltip: tooltip,
+      icon: icon,
+      reaction: reaction,
+      size: 18,
+      color: Colors.white,
+      filled: true,
+      onPressed: onPressed,
     );
   }
 }
 
-class _ModernPatternPainter extends CustomPainter {
-  final List<Color> colors;
-  const _ModernPatternPainter(this.colors);
+/// Luces difusas que derivan en trayectorias de Lissajous (bucle sin saltos).
+class _AuroraPainter extends CustomPainter {
+  _AuroraPainter(this.t);
+  final double t;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final p1 = Paint()
-      ..color = Colors.white.withOpacity(0.05)
-      ..style = PaintingStyle.fill;
-    final p2 = Paint()
-      ..color = Colors.white.withOpacity(0.07)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
-
-    // Círculos decorativos
-    final positions = [
-      Offset(size.width * 0.80, size.height * 0.15),
-      Offset(size.width * 0.90, size.height * 0.70),
-      Offset(size.width * 0.10, size.height * 0.80),
-      Offset(size.width * 0.15, size.height * 0.15),
-    ];
-    final radii = [40.0, 32.0, 28.0, 22.0];
-    for (var i = 0; i < positions.length; i++) {
-      canvas.drawCircle(positions[i], radii[i], p1);
-      canvas.drawCircle(positions[i], radii[i], p2);
+    final tau = 2 * math.pi;
+    void luz(double fx, double fy, double ph, double r, double a) {
+      final c = Offset(
+        size.width * (0.5 + 0.42 * math.sin(t * tau * fx + ph)),
+        size.height * (0.5 + 0.40 * math.cos(t * tau * fy + ph * 1.7)),
+      );
+      canvas.drawCircle(
+        c, r,
+        Paint()
+          ..shader = RadialGradient(colors: [
+            Colors.white.withValues(alpha: a),
+            Colors.white.withValues(alpha: 0),
+          ]).createShader(Rect.fromCircle(center: c, radius: r)),
+      );
     }
 
-    // Líneas diagonales sutiles
-    final lp = Paint()
-      ..color = Colors.white.withOpacity(0.04)
-      ..strokeWidth = 12.0
-      ..style = PaintingStyle.stroke;
-    for (var i = -1; i < 4; i++) {
-      final x = size.width * 0.25 * i;
-      canvas.drawLine(Offset(x, 0), Offset(x + size.height, size.height), lp);
-    }
-
-    // Hexágono decorativo
-    _drawHex(canvas, Offset(size.width * 0.62, size.height * 0.25), 16, p2);
-    _drawHex(canvas, Offset(size.width * 0.92, size.height * 0.45), 12, p2);
-  }
-
-  void _drawHex(Canvas canvas, Offset center, double r, Paint paint) {
-    final path = Path();
-    for (var i = 0; i < 6; i++) {
-      final angle = math.pi / 3 * i - math.pi / 6;
-      final x = center.dx + r * math.cos(angle);
-      final y = center.dy + r * math.sin(angle);
-      i == 0 ? path.moveTo(x, y) : path.lineTo(x, y);
-    }
-    path.close();
-    canvas.drawPath(path, paint);
+    luz(1, 1, 0.0, size.height * 0.95, 0.30);
+    luz(2, 1, 2.1, size.height * 0.70, 0.20);
+    luz(1, 2, 4.2, size.height * 0.80, 0.16);
   }
 
   @override
-  bool shouldRepaint(_ModernPatternPainter old) => false;
+  bool shouldRepaint(covariant _AuroraPainter old) => old.t != t;
 }

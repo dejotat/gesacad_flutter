@@ -1,8 +1,16 @@
+import '../../config/app_tokens.dart';
+import '../../widgets/ui/ui.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+import '../../utils/activity_type.dart';
+import '../../utils/grade_style.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../helpers/file_viewer_helper.dart';
 import '../../services/api_service.dart';
+import '../../services/connectivity_service.dart';
+import '../../services/offline_queue.dart';
 
 /// Pantalla de calificación de entregas de estudiantes (CU-06 / RF09).
 ///
@@ -45,10 +53,33 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
 
   bool get _esVistaGeneral => widget.activityId == null;
 
+  StreamSubscription<SyncEvent>? _syncSub;
+
   @override
   void initState() {
     super.initState();
     _load();
+    // Al sincronizarse una nota guardada sin conexión, se recarga la lista.
+    _syncSub = OfflineQueue.instance.events.listen((e) {
+      if (e.completed &&
+          e.operation.type == OperationType.grade &&
+          e.operation.activityId == widget.activityId &&
+          mounted) {
+        _load();
+      }
+    });
+    OfflineQueue.instance.operations.addListener(_onQueueChanged);
+  }
+
+  void _onQueueChanged() {
+    if (mounted) setState(() {}); // actualiza las marcas "pendiente de sincronizar"
+  }
+
+  @override
+  void dispose() {
+    _syncSub?.cancel();
+    OfflineQueue.instance.operations.removeListener(_onQueueChanged);
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -133,11 +164,7 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
   }
 
   /// Retorna el color semántico de la nota según la escala colombiana.
-  Color _gradeColor(double gpa) {
-    if (gpa >= 4.0) return const Color(0xFF2E7D32);
-    if (gpa >= 3.0) return const Color(0xFFE65100);
-    return const Color(0xFFC62828);
-  }
+  Color _gradeColor(double gpa) => GradeStyle.color(gpa, context.tokens);
 
   void _showSnack(String msg, Color color) {
     if (!mounted) return;
@@ -173,12 +200,12 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
     final String? fechaEntrega = res['dateResolution']?.toString();
     final String comentarioEstudiante = res['comment']?.toString() ?? '';
 
-    const primary = Color(0xFF1A237E);
+    final primary = Theme.of(context).colorScheme.primary;
+    final t = context.tokens;
 
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 560, maxHeight: 720),
           child: SingleChildScrollView(
@@ -194,10 +221,10 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: primary.withOpacity(0.1),
+                        color: primary.withValues(alpha: 0.12),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.grading_rounded,
+                      child: Icon(Icons.grading_rounded,
                           color: primary, size: 24),
                     ),
                     const SizedBox(width: 12),
@@ -208,13 +235,13 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
                           Text(
                             'Calificar a $username',
                             style: GoogleFonts.poppins(
-                                fontSize: 17, fontWeight: FontWeight.w700),
+                                fontSize: 17, fontWeight: FontWeight.w600),
                           ),
                           if (existingGpa != null)
                             Text(
                               'Nota actual: $existingStr / 5.00',
                               style: GoogleFonts.poppins(
-                                  fontSize: 11,
+                                  fontSize: 12,
                                   color: _gradeColor(
                                       double.tryParse(existingStr) ?? 0)),
                             ),
@@ -228,7 +255,7 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
                   if (archivos.isNotEmpty) ...[
                     Row(children: [
                       Icon(Icons.folder_open_rounded,
-                          color: Colors.blue.shade700, size: 16),
+                          color: t.info, size: 16),
                       const SizedBox(width: 6),
                       Text(
                         'Entrega${archivos.length > 1 ? 's' : ''} del estudiante '
@@ -241,9 +268,9 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.blue.shade50,
+                        color: t.info.withValues(alpha: 0.10),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.blue.shade200),
+                        border: Border.all(color: t.info.withValues(alpha: 0.30)),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -252,13 +279,13 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
                           if (fechaEntrega != null) ...[
                             Row(children: [
                               Icon(Icons.schedule_rounded,
-                                  color: Colors.grey.shade500, size: 14),
+                                  color: t.muted, size: 14),
                               const SizedBox(width: 4),
                               Text(
                                 'Enviado: ${fechaEntrega.split('T')[0]}',
                                 style: GoogleFonts.poppins(
-                                    fontSize: 11,
-                                    color: Colors.grey.shade600),
+                                    fontSize: 12,
+                                    color: t.muted),
                               ),
                             ]),
                             const SizedBox(height: 8),
@@ -268,7 +295,7 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
                             FileViewerHelper.buildFileCard(
                               e.value,
                               index: e.key + 1,
-                              primaryColor: Colors.blue.shade700,
+                              primaryColor: t.info,
                             ),
                           ),
                           // Comentario del estudiante
@@ -276,16 +303,16 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
                             Container(
                               padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
-                                color: Colors.amber.shade50,
+                                color: t.warning.withValues(alpha: 0.10),
                                 borderRadius: BorderRadius.circular(8),
-                                border:
-                                    Border.all(color: Colors.amber.shade300),
+                                border: Border.all(
+                                    color: t.warning.withValues(alpha: 0.35)),
                               ),
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Icon(Icons.comment_rounded,
-                                      color: Colors.amber.shade800, size: 16),
+                                      color: t.warning, size: 16),
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: Column(
@@ -294,16 +321,16 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
                                       children: [
                                         Text('Comentario del estudiante:',
                                             style: GoogleFonts.poppins(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.w700,
-                                                color:
-                                                    Colors.amber.shade900)),
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                                color: t.warning)),
                                         const SizedBox(height: 2),
                                         Text(comentarioEstudiante,
                                             style: GoogleFonts.poppins(
                                                 fontSize: 12,
-                                                color:
-                                                    Colors.grey.shade800)),
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .onSurface)),
                                       ],
                                     ),
                                   ),
@@ -320,20 +347,20 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.orange.shade50,
+                        color: t.warning.withValues(alpha: 0.10),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.orange.shade200),
+                        border: Border.all(color: t.warning.withValues(alpha: 0.35)),
                       ),
                       child: Row(children: [
                         Icon(Icons.info_outline_rounded,
-                            color: Colors.orange.shade700, size: 18),
+                            color: t.warning, size: 18),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             'Este estudiante no ha realizado entrega.',
                             style: GoogleFonts.poppins(
                                 fontSize: 12,
-                                color: Colors.orange.shade800),
+                                color: t.warning),
                           ),
                         ),
                       ]),
@@ -354,15 +381,8 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
                       labelText: 'Nota (0.00 – 5.00)',
                       helperText:
                           'Máx. 2 decimales.  Mínima aprobatoria: 3.00',
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10)),
                       prefixIcon: const Icon(Icons.star_rounded),
                       suffixText: '/ 5.00',
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide:
-                            const BorderSide(color: primary, width: 2),
-                      ),
                     ),
                     validator: (v) {
                       final t = v?.trim() ?? '';
@@ -379,12 +399,9 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      _scaleChip('< 3.0', 'Reprobado',
-                          const Color(0xFFC62828)),
-                      _scaleChip('3.0–3.9', 'Aprobado',
-                          const Color(0xFFE65100)),
-                      _scaleChip('≥ 4.0', 'Excelente',
-                          const Color(0xFF2E7D32)),
+                      _scaleChip('< 3.0', 'En riesgo', t.danger),
+                      _scaleChip('3.0–3.9', 'Aprobando', t.warning),
+                      _scaleChip('≥ 4.0', 'Sobresaliente', t.success),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -396,14 +413,7 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
                     decoration: InputDecoration(
                       labelText: 'Retroalimentación para el estudiante',
                       hintText: 'Opcional: escribe comentarios sobre la entrega...',
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10)),
                       prefixIcon: const Icon(Icons.rate_review_rounded),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide:
-                            const BorderSide(color: primary, width: 2),
-                      ),
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -414,20 +424,10 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
                     children: [
                       TextButton(
                         onPressed: () => Navigator.pop(ctx),
-                        child: Text('Cancelar',
-                            style: GoogleFonts.poppins(
-                                color: Colors.grey.shade600)),
+                        child: Text('Cancelar', style: GoogleFonts.poppins()),
                       ),
                       const SizedBox(width: 8),
                       ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: primary,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10)),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 24, vertical: 12),
-                        ),
                         icon: const Icon(Icons.save_rounded, size: 18),
                         label: Text('Guardar Nota',
                             style: GoogleFonts.poppins(
@@ -437,28 +437,8 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
                           final grade = _validateAndParseGrade(gradeCtrl.text);
                           if (grade == null) return;
                           Navigator.pop(ctx);
-                          try {
-                            await ApiService().gradeActivity(
-                              res['id'] as int,
-                              widget.activityId!,
-                              grade,
-                              teacherComment: commentCtrl.text,
-                            );
-                            await _load();
-                            if (mounted) {
-                              _showSnack(
-                                'Nota ${grade.toStringAsFixed(2)} asignada a $username '
-                                '(${grade >= 3.0 ? 'Aprobado' : 'Reprobado'})',
-                                _gradeColor(grade),
-                              );
-                            }
-                          } catch (_) {
-                            if (mounted) {
-                              _showSnack(
-                                  'Error al guardar la nota. Verifica la conexión.',
-                                  Colors.red);
-                            }
-                          }
+                          await _guardarNota(
+                              res, grade, commentCtrl.text, username);
                         },
                       ),
                     ],
@@ -472,6 +452,65 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
     );
   }
 
+  /// Guarda la nota en el servidor; sin conexión la deja en la cola y la
+  /// refleja de inmediato en pantalla (se sincroniza sola al reconectar).
+  Future<void> _guardarNota(Map<String, dynamic> res, double grade,
+      String comentario, String username) async {
+    Future<void> encolar() async {
+      await OfflineQueue.instance.enqueueGrade(
+        studentId: res['id'] as int,
+        activityId: widget.activityId!,
+        gpa: grade,
+        teacherComment: comentario,
+        label: 'Nota ${grade.toStringAsFixed(2)} · $username',
+      );
+      if (!mounted) return;
+      setState(() {
+        res['GPA'] = grade; // vista optimista hasta confirmar con el servidor
+        res['teacherComment'] = comentario;
+      });
+      _showSnack(
+          'Sin conexión: la nota de $username quedó guardada y se enviará '
+          'automáticamente.',
+          context.tokens.warning);
+    }
+
+    if (!ConnectivityService.instance.online.value) {
+      await encolar();
+      return;
+    }
+    try {
+      final code = await ApiService().gradeActivity(
+        res['id'] as int,
+        widget.activityId!,
+        grade,
+        teacherComment: comentario,
+      );
+      if (code < 200 || code >= 300) {
+        if (mounted) {
+          _showSnack('El servidor rechazó la nota (código $code).',
+              context.tokens.danger);
+        }
+        return;
+      }
+      await _load();
+      if (mounted) {
+        _showSnack(
+          'Nota ${grade.toStringAsFixed(2)} asignada a $username '
+          '(${grade >= 3.0 ? 'Aprobado' : 'En riesgo'})',
+          _gradeColor(grade),
+        );
+      }
+    } catch (e) {
+      if (isNetworkError(e)) {
+        await encolar();
+      } else if (mounted) {
+        _showSnack('Error al guardar la nota. Intenta de nuevo.',
+            context.tokens.danger);
+      }
+    }
+  }
+
   /// Chip de referencia de la escala de calificación colombiana.
   Widget _scaleChip(String range, String label, Color color) {
     return Column(
@@ -479,41 +518,31 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.12),
+            color: color.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: color.withOpacity(0.4)),
+            border: Border.all(color: color.withValues(alpha: 0.4)),
           ),
           child: Text(range,
               style: GoogleFonts.poppins(
                   color: color,
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold)),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600)),
         ),
         const SizedBox(height: 3),
         Text(label,
             style: GoogleFonts.poppins(
-                fontSize: 9, color: Colors.grey.shade600)),
+                fontSize: 12, color: context.tokens.muted)),
       ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    const primary = Color(0xFF1A237E);
+    final primary = Theme.of(context).colorScheme.primary;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
       appBar: AppBar(
-        flexibleSpace: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Color(0xFF1A237E), Color(0xFF3949AB)],
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-            ),
-          ),
-        ),
-        backgroundColor: Colors.transparent,
+        centerTitle: false,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -522,25 +551,42 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
                   ? 'Calificaciones generales'
                   : (widget.activityName ?? 'Calificaciones'),
               style: GoogleFonts.poppins(
-                  color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15),
+                  color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15),
             ),
             Text(widget.courseName,
-                style: GoogleFonts.poppins(color: Colors.white70, fontSize: 11)),
+                style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12)),
           ],
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: Colors.white),
+            icon: const Icon(Icons.refresh_rounded),
             tooltip: 'Actualizar',
             onPressed: _load,
           ),
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _esVistaGeneral
-              ? _buildGeneralView(primary)
-              : _buildActivityView(primary),
+          ? Semantics(
+              label: 'Cargando calificaciones',
+              child: ExcludeSemantics(
+                child: ListView(
+                  padding: const EdgeInsets.all(AppTokens.pagePadding),
+                  children: const [
+                    SkeletonBox(height: 70), SizedBox(height: 10),
+                    SkeletonBox(height: 90), SizedBox(height: 10),
+                    SkeletonBox(height: 90),
+                  ],
+                ),
+              ),
+            )
+          : Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 760),
+                child: _esVistaGeneral
+                    ? _buildGeneralView(primary)
+                    : _buildActivityView(primary),
+              ),
+            ),
     );
   }
 
@@ -553,13 +599,18 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
 
     if (_resolutions.isEmpty) return _buildEmpty();
     return Column(children: [
-      _buildSummaryBar(total, entregados, calificados, primary),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(
+            AppTokens.pagePadding, AppTokens.pagePadding, AppTokens.pagePadding, 4),
+        child: _buildSummaryBar(total, entregados, calificados, primary),
+      ),
       Expanded(
         child: RefreshIndicator(
           onRefresh: _load,
-          child: ListView.builder(
+          child: ListView.separated(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
             itemCount: _resolutions.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 10),
             itemBuilder: (_, i) => _buildStudentCard(_resolutions[i]),
           ),
         ),
@@ -571,30 +622,26 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
 
   Widget _buildGeneralView(Color primary) {
     if (_activitiesStats.isEmpty) {
-      return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Icon(Icons.bar_chart_rounded, size: 64, color: Colors.grey.shade300),
-        const SizedBox(height: 14),
-        Text('Sin actividades en este curso',
-            style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600,
-                color: Colors.grey.shade500)),
-        const SizedBox(height: 8),
-        Text('Crea actividades para ver las calificaciones aquí.',
-            style: GoogleFonts.poppins(fontSize: 13, color: Colors.grey.shade400),
-            textAlign: TextAlign.center),
-      ]));
+      return const EmptyState(
+        icon: PhosphorIconsRegular.chartBar,
+        message: 'Sin actividades en este curso.\n'
+            'Crea actividades para ver las calificaciones aquí.',
+      );
     }
 
     return RefreshIndicator(
       onRefresh: _load,
-      child: ListView.builder(
+      child: ListView.separated(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         itemCount: _activitiesStats.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 12),
         itemBuilder: (_, i) => _buildActivityStatCard(_activitiesStats[i], primary),
       ),
     );
   }
 
   Widget _buildActivityStatCard(Map<String, dynamic> stat, Color primary) {
+    final t = context.tokens;
     final name       = stat['name'] as String;
     final type       = stat['type'] as String;
     final weighting  = (stat['weighting'] as double) * 100;
@@ -604,110 +651,89 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
     final promedio   = stat['promedio'] as double?;
     final actId      = stat['activityId'] as int;
 
-    final String typeLabel;
-    final Color typeColor;
-    switch (type) {
-      case 'midterm':  typeLabel = 'Parcial';   typeColor = Colors.orange; break;
-      case 'project':  typeLabel = 'Proyecto';  typeColor = Colors.blue;   break;
-      case 'resource': typeLabel = 'Recurso';   typeColor = Colors.green;  break;
-      default:         typeLabel = 'Otro';       typeColor = Colors.purple;
-    }
-
+    final info = ActivityTypeInfo.of(type);
+    final typeColor = ActivityTypeInfo.colorOf(type, t);
     final double progress = total > 0 ? entregados / total : 0.0;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      elevation: 2,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () => Navigator.push(context, MaterialPageRoute(
-          builder: (_) => GradeStudentsScreen(
-            courseId: widget.courseId,
-            courseName: widget.courseName,
-            activityId: actId,
-            activityName: name,
-          ),
-        )).then((_) => _load()),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
+    return Semantics(
+      button: true,
+      label: '$name, ${info.label}, ponderado ${weighting.toStringAsFixed(0)} por ciento. '
+          '$entregados de $total entregaron, $calificados calificados'
+          '${promedio != null ? ', promedio ${promedio.toStringAsFixed(2)}' : ''}.',
+      child: ExcludeSemantics(
+        child: AppCard(
+          blur: false,
+          onTap: () => Navigator.push(context, MaterialPageRoute(
+            builder: (_) => GradeStudentsScreen(
+              courseId: widget.courseId,
+              courseName: widget.courseName,
+              activityId: actId,
+              activityName: name,
+            ),
+          )).then((_) => _load()),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            // Encabezado
             Row(children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                width: 40, height: 40,
                 decoration: BoxDecoration(
-                  color: typeColor.withOpacity(0.12),
-                  shape: BoxShape.circle,
+                  color: typeColor.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(AppTokens.radiusControl),
                 ),
-                child: Icon(Icons.assignment_rounded, color: typeColor, size: 20),
+                child: Icon(info.icon, color: typeColor, size: 20),
               ),
               const SizedBox(width: 10),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(name, style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 14),
+                Text(name,
+                    style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 14),
                     maxLines: 1, overflow: TextOverflow.ellipsis),
-                Row(children: [
-                  Container(
-                    margin: const EdgeInsets.only(top: 2),
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: typeColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(typeLabel,
-                        style: GoogleFonts.poppins(fontSize: 10, color: typeColor, fontWeight: FontWeight.w600)),
-                  ),
-                  const SizedBox(width: 6),
-                  Text('${weighting.toStringAsFixed(0)}%',
-                      style: GoogleFonts.poppins(fontSize: 11, color: Colors.grey.shade500)),
-                ]),
+                Text('${info.label} · ${weighting.toStringAsFixed(0)}%',
+                    style: GoogleFonts.poppins(fontSize: 12, color: t.muted)),
               ])),
-              // Promedio
               if (promedio != null)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: _gradeColor(promedio).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: _gradeColor(promedio).withOpacity(0.3)),
+                    color: _gradeColor(promedio).withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(AppTokens.radiusControl),
                   ),
                   child: Column(children: [
                     Text(promedio.toStringAsFixed(2),
                         style: GoogleFonts.poppins(
-                            fontSize: 16, fontWeight: FontWeight.w800, color: _gradeColor(promedio))),
-                    Text('prom.', style: GoogleFonts.poppins(fontSize: 9, color: Colors.grey.shade500)),
+                            fontSize: 16, fontWeight: FontWeight.w700,
+                            color: _gradeColor(promedio))),
+                    Text('promedio',
+                        style: GoogleFonts.poppins(fontSize: 12, color: t.muted)),
                   ]),
                 ),
             ]),
             const SizedBox(height: 12),
-
-            // Barra de progreso de entregas
             ClipRRect(
               borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
                 value: progress,
                 minHeight: 6,
-                backgroundColor: Colors.grey.shade200,
-                color: entregados == total && total > 0 ? Colors.green : primary,
+                backgroundColor: t.border,
+                color: entregados == total && total > 0 ? t.success : primary,
               ),
             ),
-            const SizedBox(height: 8),
-
-            // Contadores
+            const SizedBox(height: 10),
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              _miniStat('$total', 'Total', Colors.grey.shade600),
-              _miniStat('$entregados', 'Entregaron', Colors.green.shade700),
-              _miniStat('$calificados', 'Calificados', Colors.indigo),
-              _miniStat('${total - entregados}', 'Sin entrega', Colors.orange.shade700),
+              _miniStat('$total', 'Total', t.muted),
+              _miniStat('$entregados', 'Entregaron', t.success),
+              _miniStat('$calificados', 'Calificados', t.info),
+              _miniStat('${total - entregados}', 'Sin entrega', t.warning),
             ]),
             const SizedBox(height: 8),
-
-            // Botón ver detalle
-            Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-              Text('Ver entregas →',
-                  style: GoogleFonts.poppins(
-                      fontSize: 12, color: primary, fontWeight: FontWeight.w600)),
-            ]),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text('Ver entregas',
+                    style: GoogleFonts.poppins(
+                        fontSize: 13, color: primary, fontWeight: FontWeight.w600)),
+                const SizedBox(width: 4),
+                Icon(PhosphorIconsRegular.arrowRight, size: 14, color: primary),
+              ]),
+            ),
           ]),
         ),
       ),
@@ -716,36 +742,42 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
 
   Widget _miniStat(String value, String label, Color color) {
     return Column(children: [
-      Text(value, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w800, color: color)),
-      Text(label, style: GoogleFonts.poppins(fontSize: 9, color: Colors.grey.shade500)),
+      Text(value,
+          style: GoogleFonts.poppins(
+              fontSize: 16, fontWeight: FontWeight.w700, color: color)),
+      Text(label,
+          style: GoogleFonts.poppins(fontSize: 12, color: context.tokens.muted)),
     ]);
   }
 
   /// Barra superior con contadores de total, entregados y calificados.
   Widget _buildSummaryBar(
       int total, int entregados, int calificados, Color primary) {
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _summaryItem(
-              total.toString(), 'Total', Icons.people_rounded, primary),
-          _divider(),
-          _summaryItem(entregados.toString(), 'Entregaron',
-              Icons.upload_file_rounded, Colors.green.shade700),
-          _divider(),
-          _summaryItem(calificados.toString(), 'Calificados',
-              Icons.grading_rounded, Colors.indigo),
-          _divider(),
-          _summaryItem(
-            '${total - entregados}',
-            'Sin entrega',
-            Icons.pending_rounded,
-            Colors.orange.shade700,
+    final t = context.tokens;
+    return Semantics(
+      label: '$total estudiantes, $entregados entregaron, '
+          '$calificados calificados, ${total - entregados} sin entrega.',
+      child: ExcludeSemantics(
+        child: AppCard(
+          blur: false,
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _summaryItem(total.toString(), 'Total',
+                  PhosphorIconsRegular.users, primary),
+              _divider(),
+              _summaryItem(entregados.toString(), 'Entregaron',
+                  PhosphorIconsRegular.uploadSimple, t.success),
+              _divider(),
+              _summaryItem(calificados.toString(), 'Calificados',
+                  PhosphorIconsRegular.checkCircle, t.info),
+              _divider(),
+              _summaryItem('${total - entregados}', 'Sin entrega',
+                  PhosphorIconsRegular.hourglass, t.warning),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -753,24 +785,22 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
   Widget _summaryItem(
       String value, String label, IconData icon, Color color) {
     return Column(children: [
-      Icon(icon, color: color, size: 20),
+      Icon(icon, color: color, size: 22),
       const SizedBox(height: 4),
       Text(value,
           style: GoogleFonts.poppins(
-              fontWeight: FontWeight.w800,
-              fontSize: 18,
-              color: color)),
+              fontWeight: FontWeight.w700, fontSize: 18, color: color)),
       Text(label,
-          style: GoogleFonts.poppins(
-              fontSize: 10, color: Colors.grey.shade600)),
+          style: GoogleFonts.poppins(fontSize: 12, color: context.tokens.muted)),
     ]);
   }
 
-  Widget _divider() => Container(
-      width: 1, height: 40, color: Colors.grey.shade200);
+  Widget _divider() =>
+      Container(width: 1, height: 40, color: context.tokens.border);
 
   /// Tarjeta de estudiante con estado de entrega y nota.
   Widget _buildStudentCard(Map<String, dynamic> r) {
+    final t = context.tokens;
     final hasDelivery =
         r['resolution'] != null && r['resolution'].toString().isNotEmpty;
     final gpaParsed = r['GPA'] != null
@@ -780,166 +810,117 @@ class _GradeStudentsScreenState extends State<GradeStudentsScreen> {
     final String? fechaEntrega = r['dateResolution']?.toString();
 
     // Color del avatar según estado
-    Color avatarColor;
-    IconData avatarIcon;
+    final Color avatarColor;
+    final IconData avatarIcon;
     if (gpaParsed != null) {
       avatarColor = _gradeColor(gpaParsed);
-      avatarIcon = Icons.check_circle_rounded;
+      avatarIcon = PhosphorIconsFill.checkCircle;
     } else if (hasDelivery) {
-      avatarColor = Colors.green;
-      avatarIcon = Icons.check_circle_outline_rounded;
+      avatarColor = t.info;
+      avatarIcon = PhosphorIconsRegular.paperPlaneTilt;
     } else {
-      avatarColor = Colors.grey.shade400;
-      avatarIcon = Icons.radio_button_unchecked_rounded;
+      avatarColor = t.muted;
+      avatarIcon = PhosphorIconsRegular.hourglass;
     }
 
     return Semantics(
       label: 'Estudiante $username, '
           '${hasDelivery ? 'entrega realizada' : 'sin entrega'}, '
           'nota: ${gpaParsed != null ? gpaParsed.toStringAsFixed(2) : 'sin calificar'}',
-      child: Card(
-        margin: const EdgeInsets.only(bottom: 10),
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        elevation: 2,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              // Ícono de estado
-              Container(
-                padding: const EdgeInsets.all(10),
+      child: AppCard(
+        blur: false,
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            ExcludeSemantics(
+              child: Container(
+                width: 46, height: 46,
                 decoration: BoxDecoration(
-                  color: avatarColor.withOpacity(0.12),
+                  color: avatarColor.withValues(alpha: 0.14),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(avatarIcon, color: avatarColor, size: 24),
               ),
-              const SizedBox(width: 14),
-
-              // Información del estudiante
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(username,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(username,
+                      style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w600, fontSize: 15)),
+                  const SizedBox(height: 2),
+                  Text(
+                    hasDelivery ? 'Entrega realizada' : 'Sin entrega',
+                    style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: hasDelivery ? t.success : t.warning,
+                        fontWeight: FontWeight.w500),
+                  ),
+                  if (hasDelivery && fechaEntrega != null)
+                    Text('Enviado: ${fechaEntrega.split('T')[0]}',
+                        style: GoogleFonts.poppins(fontSize: 12, color: t.muted)),
+                  if (gpaParsed != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        '${gpaParsed.toStringAsFixed(2)} / 5.00 · '
+                        '${GradeStyle.label(gpaParsed)}',
                         style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 15)),
-                    const SizedBox(height: 4),
-
-                    // Estado de entrega
-                    _estadoChip(
-                      hasDelivery
-                          ? '✅ Entrega realizada'
-                          : '⏳ Sin entrega',
-                      hasDelivery
-                          ? Colors.green.shade700
-                          : Colors.orange.shade700,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: _gradeColor(gpaParsed)),
+                      ),
                     ),
-
-                    // Fecha de entrega
-                    if (hasDelivery && fechaEntrega != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          'Enviado: ${fechaEntrega.split('T')[0]}',
-                          style: GoogleFonts.poppins(
-                              fontSize: 11,
-                              color: Colors.grey.shade500),
-                        ),
-                      ),
-
-                    // Nota asignada
-                    if (gpaParsed != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Row(children: [
-                          Icon(Icons.star_rounded,
-                              color: _gradeColor(gpaParsed),
-                              size: 14),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${gpaParsed.toStringAsFixed(2)} / 5.00  •  '
-                            '${gpaParsed >= 4.0 ? 'Excelente' : gpaParsed >= 3.0 ? 'Aprobado' : 'Reprobado'}',
+                  if (r['id'] is int &&
+                      OfflineQueue.instance.hasPendingGrade(
+                          r['id'] as int, widget.activityId ?? 0))
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        MotionIcon(Icons.cloud_upload_rounded,
+                            size: 14, color: t.warning, motion: IconMotion.float),
+                        const SizedBox(width: 4),
+                        Text('Pendiente de sincronizar',
                             style: GoogleFonts.poppins(
-                                fontSize: 12,
+                                fontSize: 11.5,
                                 fontWeight: FontWeight.w600,
-                                color: _gradeColor(gpaParsed)),
-                          ),
-                        ]),
-                      ),
-                  ],
-                ),
+                                color: t.warning)),
+                      ]),
+                    ),
+                ],
               ),
-
-              // Botón de calificar / editar nota
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: gpaParsed != null
-                      ? Colors.grey.shade100
-                      : const Color(0xFF1A237E),
-                  foregroundColor: gpaParsed != null
-                      ? const Color(0xFF1A237E)
-                      : Colors.white,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 8),
-                  elevation: gpaParsed != null ? 0 : 2,
-                ),
-                onPressed: () => _showGradeDialog(r),
-                child: Text(
-                  gpaParsed != null ? 'Editar' : 'Calificar',
-                  style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.w600, fontSize: 12),
-                ),
-              ),
-            ],
-          ),
+            ),
+            // Botón de calificar / editar nota
+            gpaParsed != null
+                ? OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 8)),
+                    onPressed: () => _showGradeDialog(r),
+                    child: Text('Editar',
+                        style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.w600, fontSize: 13)),
+                  )
+                : ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 8)),
+                    onPressed: () => _showGradeDialog(r),
+                    child: Text('Calificar',
+                        style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.w600, fontSize: 13)),
+                  ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _estadoChip(String text, Color color) {
-    return Text(
-      text,
-      style: GoogleFonts.poppins(
-          fontSize: 12,
-          color: color,
-          fontWeight: FontWeight.w500),
-    );
-  }
-
-  Widget _buildEmpty() {
-    return Center(
-      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Container(
-          padding: const EdgeInsets.all(28),
-          decoration: BoxDecoration(
-            color: Colors.grey.shade100,
-            shape: BoxShape.circle,
-          ),
-          child: Icon(Icons.inbox_outlined,
-              size: 64, color: Colors.grey.shade400),
-        ),
-        const SizedBox(height: 18),
-        Text(
-          'Sin entregas aún',
-          style: GoogleFonts.poppins(
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
-              color: Colors.grey.shade600),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          'Los estudiantes no han enviado archivos para esta actividad.',
-          style: GoogleFonts.poppins(
-              fontSize: 13, color: Colors.grey.shade400),
-          textAlign: TextAlign.center,
-        ),
-      ]),
-    );
-  }
+  Widget _buildEmpty() => const EmptyState(
+        icon: PhosphorIconsRegular.tray,
+        message: 'Sin entregas aún.\n'
+            'Los estudiantes no han enviado archivos para esta actividad.',
+      );
 }

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../services/api_service.dart';
 import '../../models/user_model.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+import '../../widgets/ui/ui.dart';
+import '../../config/app_tokens.dart';
 
 /// Pantalla de gestión de usuarios — diseño moderno con tarjetas en mosaico.
 class AdminUsers extends StatefulWidget {
@@ -59,11 +62,11 @@ class _AdminUsersState extends State<AdminUsers> {
   List<Color> _rolGradient(String rol) {
     switch (rol) {
       case 'Admin':
-        return [const Color(0xFF7C3AED), const Color(0xFFDB2777)];
+        return [const Color(0xFF4F46E5), const Color(0xFF9F1239)];
       case 'Teacher':
-        return [const Color(0xFF059669), const Color(0xFF0EA5E9)];
+        return [const Color(0xFF047857), const Color(0xFF0369A1)];
       default:
-        return [const Color(0xFF2563EB), const Color(0xFF7C3AED)];
+        return [const Color(0xFF1D4ED8), const Color(0xFF4F46E5)];
     }
   }
 
@@ -97,14 +100,14 @@ class _AdminUsersState extends State<AdminUsers> {
         Icon(
           met ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
           size: 15,
-          color: met ? Colors.green : Colors.grey.shade400,
+          color: met ? context.tokens.success : context.tokens.muted,
         ),
         const SizedBox(width: 6),
         Text(
           text,
           style: GoogleFonts.poppins(
             fontSize: 11,
-            color: met ? Colors.green.shade700 : Colors.grey.shade500,
+            color: met ? context.tokens.success : context.tokens.muted,
           ),
         ),
       ]),
@@ -182,11 +185,11 @@ class _AdminUsersState extends State<AdminUsers> {
           child: Container(
             constraints: const BoxConstraints(maxWidth: 420),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: Theme.of(context).dialogTheme.backgroundColor,
               borderRadius: BorderRadius.circular(28),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.18),
+                  color: Colors.black.withValues(alpha: 0.18),
                   blurRadius: 40,
                   offset: const Offset(0, 16),
                 ),
@@ -202,8 +205,8 @@ class _AdminUsersState extends State<AdminUsers> {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: user == null
-                          ? [const Color(0xFF2563EB), const Color(0xFF7C3AED)]
-                          : [const Color(0xFF059669), const Color(0xFF0EA5E9)],
+                          ? [const Color(0xFF1D4ED8), const Color(0xFF4F46E5)]
+                          : [const Color(0xFF047857), const Color(0xFF0369A1)],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -216,7 +219,7 @@ class _AdminUsersState extends State<AdminUsers> {
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                        color: Colors.white.withValues(alpha: 0.2),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
@@ -269,13 +272,13 @@ class _AdminUsersState extends State<AdminUsers> {
                             labelStyle:
                                 GoogleFonts.poppins(fontSize: 13),
                             prefixIcon: const Icon(Icons.person_outline_rounded,
-                                color: Color(0xFF2563EB)),
+                                color: Color(0xFF1D4ED8)),
                             border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(14)),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(14),
                               borderSide: const BorderSide(
-                                  color: Color(0xFF2563EB), width: 2),
+                                  color: Color(0xFF1D4ED8), width: 2),
                             ),
                           ),
                           validator: (v) {
@@ -306,14 +309,14 @@ class _AdminUsersState extends State<AdminUsers> {
 
                           // Color de las 6 barras según criterios cumplidos
                           final barColor = passed <= 2
-                              ? Colors.red
+                              ? context.tokens.danger
                               : passed <= 3
-                                  ? Colors.orange
+                                  ? context.tokens.warning
                                   : passed <= 4
-                                      ? Colors.yellow.shade700
+                                      ? context.tokens.warning
                                       : passed <= 5
                                           ? Colors.lightGreen
-                                          : Colors.green;
+                                          : context.tokens.success;
 
                           // criteriosOk se calcula a nivel StatefulBuilder para
                           // que tanto este indicador como el botón Guardar lo lean.
@@ -335,13 +338,13 @@ class _AdminUsersState extends State<AdminUsers> {
                                   labelStyle: GoogleFonts.poppins(fontSize: 12),
                                   prefixIcon: const Icon(
                                       Icons.lock_outline_rounded,
-                                      color: Color(0xFF7C3AED)),
+                                      color: Color(0xFF4F46E5)),
                                   suffixIcon: IconButton(
                                     icon: Icon(
                                       showPass
                                           ? Icons.visibility_off_rounded
                                           : Icons.visibility_rounded,
-                                      color: Colors.grey,
+                                      color: context.tokens.muted,
                                     ),
                                     onPressed: () =>
                                         setS(() => showPass = !showPass),
@@ -351,7 +354,7 @@ class _AdminUsersState extends State<AdminUsers> {
                                   focusedBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(14),
                                     borderSide: const BorderSide(
-                                        color: Color(0xFF7C3AED), width: 2),
+                                        color: Color(0xFF4F46E5), width: 2),
                                   ),
                                 ),
                                 validator: (v) =>
@@ -372,7 +375,7 @@ class _AdminUsersState extends State<AdminUsers> {
                                       decoration: BoxDecoration(
                                         color: i < passed
                                             ? barColor
-                                            : Colors.grey.shade200,
+                                            : context.tokens.border,
                                         borderRadius: BorderRadius.circular(2),
                                       ),
                                     ),
@@ -397,19 +400,19 @@ class _AdminUsersState extends State<AdminUsers> {
                         DropdownButtonFormField<String>(
                           value: selectedRol,
                           style: GoogleFonts.poppins(
-                              fontSize: 14, color: Colors.black87),
+                              fontSize: 14, color: Theme.of(context).colorScheme.onSurface),
                           decoration: InputDecoration(
                             labelText: 'Rol',
                             labelStyle: GoogleFonts.poppins(fontSize: 13),
                             prefixIcon: const Icon(
                                 Icons.badge_rounded,
-                                color: Color(0xFF059669)),
+                                color: Color(0xFF047857)),
                             border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(14)),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(14),
                               borderSide: const BorderSide(
-                                  color: Color(0xFF059669), width: 2),
+                                  color: Color(0xFF047857), width: 2),
                             ),
                           ),
                           items: const [
@@ -453,21 +456,21 @@ class _AdminUsersState extends State<AdminUsers> {
                                 gradient: LinearGradient(
                                   colors: criteriosOk
                                       ? (user == null
-                                          ? [const Color(0xFF2563EB),
-                                             const Color(0xFF7C3AED)]
-                                          : [const Color(0xFF059669),
-                                             const Color(0xFF0EA5E9)])
-                                      : [Colors.grey.shade400,
-                                         Colors.grey.shade500],
+                                          ? [const Color(0xFF1D4ED8),
+                                             const Color(0xFF4F46E5)]
+                                          : [const Color(0xFF047857),
+                                             const Color(0xFF0369A1)])
+                                      : [context.tokens.muted,
+                                         context.tokens.muted],
                                 ),
                                 borderRadius: BorderRadius.circular(14),
                                 boxShadow: criteriosOk
                                     ? [
                                         BoxShadow(
                                           color: (user == null
-                                                  ? const Color(0xFF2563EB)
-                                                  : const Color(0xFF059669))
-                                              .withOpacity(0.35),
+                                                  ? const Color(0xFF1D4ED8)
+                                                  : const Color(0xFF047857))
+                                              .withValues(alpha: 0.35),
                                           blurRadius: 12,
                                           offset: const Offset(0, 4),
                                         ),
@@ -492,7 +495,7 @@ class _AdminUsersState extends State<AdminUsers> {
                                               style: const TextStyle(
                                                   color: Colors.white,
                                                   fontSize: 13)),
-                                          backgroundColor: Colors.red.shade700,
+                                          backgroundColor: context.tokens.danger,
                                           duration:
                                               const Duration(seconds: 3),
                                           behavior: SnackBarBehavior.floating,
@@ -514,20 +517,29 @@ class _AdminUsersState extends State<AdminUsers> {
                                           .showSnackBar(SnackBar(
                                         content: Text(
                                             'Ya existe un usuario "$trimmed"'),
-                                        backgroundColor: Colors.red,
+                                        backgroundColor: context.tokens.danger,
                                       ));
                                       return;
                                     }
                                     Navigator.pop(ctx);
-                                    if (user == null) {
-                                      await ApiService().addUser(
-                                          trimmed, passCtrl.text, selectedRol);
-                                    } else {
-                                      final pass = passCtrl.text.isEmpty
-                                          ? user.pass ?? ''
-                                          : passCtrl.text;
-                                      await ApiService().editUser(
-                                          user.id, trimmed, pass, selectedRol);
+                                    try {
+                                      if (user == null) {
+                                        await ApiService().addUser(
+                                            trimmed, passCtrl.text, selectedRol);
+                                      } else {
+                                        // Vacío = no cambiar la contraseña: el servidor ya
+                                        // no entrega las actuales (solo guarda su cifrado).
+                                        await ApiService().editUser(user.id,
+                                            trimmed, passCtrl.text, selectedRol);
+                                      }
+                                    } on ApiMessageException catch (e) {
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                          content: Text(e.message),
+                                          backgroundColor: context.tokens.danger,
+                                        ));
+                                      }
+                                      return;
                                     }
                                     await _loadUsers();
                                     if (mounted) {
@@ -536,7 +548,7 @@ class _AdminUsersState extends State<AdminUsers> {
                                         content: Text(user == null
                                             ? 'Usuario "$trimmed" creado'
                                             : 'Usuario "$trimmed" actualizado'),
-                                        backgroundColor: Colors.green,
+                                        backgroundColor: context.tokens.success,
                                       ));
                                     }
                                   },
@@ -596,11 +608,11 @@ class _AdminUsersState extends State<AdminUsers> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.purple.shade50,
+                  color: context.tokens.typeOtro.withValues(alpha: 0.10),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(Icons.shield_rounded,
-                    color: Colors.purple.shade700, size: 32),
+                    color: context.tokens.typeOtro, size: 32),
               ),
               const SizedBox(height: 16),
               Text('Acción no permitida',
@@ -610,7 +622,7 @@ class _AdminUsersState extends State<AdminUsers> {
               Text(
                 'Los administradores no pueden eliminarse por motivos de seguridad.',
                 style: GoogleFonts.poppins(
-                    fontSize: 13, color: Colors.grey.shade600),
+                    fontSize: 13, color: context.tokens.muted),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 20),
@@ -619,7 +631,7 @@ class _AdminUsersState extends State<AdminUsers> {
                 child: ElevatedButton(
                   onPressed: () => Navigator.pop(ctx),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.purple.shade700,
+                    backgroundColor: context.tokens.typeOtro,
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
                     padding: const EdgeInsets.symmetric(vertical: 14),
@@ -656,9 +668,9 @@ class _AdminUsersState extends State<AdminUsers> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                  color: Colors.red.shade50, shape: BoxShape.circle),
+                  color: context.tokens.danger.withValues(alpha: 0.10), shape: BoxShape.circle),
               child: Icon(Icons.delete_forever_rounded,
-                  color: Colors.red.shade600, size: 32),
+                  color: context.tokens.danger, size: 32),
             ),
             const SizedBox(height: 16),
             Text('Eliminar Usuario',
@@ -673,19 +685,19 @@ class _AdminUsersState extends State<AdminUsers> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.amber.shade50,
+                  color: context.tokens.warning.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.amber.shade300),
+                  border: Border.all(color: context.tokens.warning.withValues(alpha: 0.35)),
                 ),
                 child: Row(children: [
                   Icon(Icons.warning_amber_rounded,
-                      color: Colors.amber.shade800, size: 20),
+                      color: context.tokens.warning, size: 20),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'Tiene $cursosActivos curso(s) asignados que quedarán sin profesor.',
                       style: GoogleFonts.poppins(
-                          fontSize: 12, color: Colors.amber.shade900),
+                          fontSize: 12, color: context.tokens.warning),
                     ),
                   ),
                 ]),
@@ -694,7 +706,7 @@ class _AdminUsersState extends State<AdminUsers> {
               const SizedBox(height: 8),
               Text('Esta acción no se puede deshacer.',
                   style: GoogleFonts.poppins(
-                      fontSize: 12, color: Colors.grey.shade500)),
+                      fontSize: 12, color: context.tokens.muted)),
             ],
             const SizedBox(height: 24),
             Row(children: [
@@ -709,7 +721,7 @@ class _AdminUsersState extends State<AdminUsers> {
               Expanded(
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red.shade600,
+                    backgroundColor: context.tokens.danger,
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
                     padding: const EdgeInsets.symmetric(vertical: 14),
@@ -729,12 +741,22 @@ class _AdminUsersState extends State<AdminUsers> {
     );
 
     if (confirmed == true) {
-      await ApiService().deleteUser(user.id);
+      try {
+        await ApiService().deleteUser(user.id);
+      } on ApiMessageException catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(e.message),
+            backgroundColor: context.tokens.danger,
+          ));
+        }
+        return;
+      }
       await _loadUsers();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('Usuario "${user.username}" eliminado'),
-          backgroundColor: Colors.orange,
+          backgroundColor: context.tokens.warning,
         ));
       }
     }
@@ -743,199 +765,175 @@ class _AdminUsersState extends State<AdminUsers> {
   // ── BUILD ─────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F4FF),
       appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-        flexibleSpace: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Color(0xFF1E1B4B), Color(0xFF2563EB)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-        ),
-        title: Text('Gestión de Usuarios',
-            style: GoogleFonts.poppins(
-                color: Colors.white, fontWeight: FontWeight.w700)),
+        title: const Text('Gestión de Usuarios'),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+          tooltip: 'Regresar',
+          icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
-          Container(
-            margin: const EdgeInsets.only(right: 16, top: 8, bottom: 8),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              '${_filtered.length} usuarios',
-              style: GoogleFonts.poppins(
-                  color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+          Semantics(
+            label: '${_filtered.length} usuarios',
+            child: ExcludeSemantics(
+              child: Container(
+                margin: const EdgeInsets.only(right: 16, top: 10, bottom: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  '${_filtered.length} usuarios',
+                  style: GoogleFonts.poppins(
+                      color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+              ),
             ),
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showUserDialog(),
-        backgroundColor: const Color(0xFF2563EB),
-        elevation: 6,
-        icon: const Icon(Icons.person_add_rounded, color: Colors.white),
-        label: Text('Nuevo Usuario',
-            style: GoogleFonts.poppins(
-                color: Colors.white, fontWeight: FontWeight.w700)),
+        icon: const Icon(PhosphorIconsRegular.userPlus),
+        label: Text('Nuevo usuario',
+            style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
       ),
-      body: Column(
-        children: [
-          // ── Barra búsqueda + filtro ────────────────────────────────────
-          Container(
-            margin: const EdgeInsets.all(16),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.06),
-                  blurRadius: 16,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Row(children: [
-              Expanded(
-                child: TextField(
-                  controller: _searchCtrl,
-                  style: GoogleFonts.poppins(fontSize: 14),
-                  decoration: InputDecoration(
-                    hintText: 'Buscar usuario...',
-                    hintStyle: GoogleFonts.poppins(
-                        fontSize: 13, color: Colors.grey.shade400),
-                    prefixIcon: const Icon(Icons.search_rounded,
-                        color: Color(0xFF2563EB)),
-                    filled: true,
-                    fillColor: const Color(0xFFF0F4FF),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide.none,
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1100),
+          child: Column(
+            children: [
+              // ── Barra búsqueda + filtro ────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: AppCard(
+                  blur: false,
+                  padding: const EdgeInsets.all(16),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    TextField(
+                      controller: _searchCtrl,
+                      style: GoogleFonts.poppins(fontSize: 14),
+                      decoration: const InputDecoration(
+                        hintText: 'Buscar usuario...',
+                        prefixIcon: Icon(PhosphorIconsRegular.magnifyingGlass),
+                        isDense: true,
+                        contentPadding:
+                            EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
+                      onChanged: (_) => _applyFilter(),
                     ),
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
-                  ),
-                  onChanged: (_) => _applyFilter(),
+                    const SizedBox(height: 12),
+                    // Filtro de roles como chips (se ajusta en pantallas angostas)
+                    Wrap(spacing: 8, runSpacing: 8, children: [
+                      _rolChip('Todos', t.muted),
+                      _rolChip('Admin', t.chart[3]),
+                      _rolChip('Teacher', t.chart[1]),
+                      _rolChip('Student', t.chart[0]),
+                    ]),
+                  ]),
                 ),
               ),
-              const SizedBox(width: 12),
-              // Filtro de roles como chips
-              _rolChip('Todos', Colors.grey),
-              _rolChip('Admin', const Color(0xFF7C3AED)),
-              _rolChip('Teacher', const Color(0xFF059669)),
-              _rolChip('Student', const Color(0xFF2563EB)),
-            ]),
-          ),
 
-          // ── Grid de tarjetas ──────────────────────────────────────────
-          Expanded(
-            child: _loading
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const CircularProgressIndicator(
-                            color: Color(0xFF2563EB)),
-                        const SizedBox(height: 16),
-                        Text('Cargando usuarios...',
-                            style: GoogleFonts.poppins(color: Colors.grey)),
-                      ],
-                    ),
-                  )
-                : _filtered.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.people_outline_rounded,
-                                size: 80,
-                                color: Colors.grey.shade300),
-                            const SizedBox(height: 16),
-                            Text('No se encontraron usuarios',
-                                style: GoogleFonts.poppins(
-                                    color: Colors.grey.shade400,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600)),
-                          ],
-                        ),
-                      )
-                    : LayoutBuilder(builder: (ctx, constraints) {
-                        final cross = constraints.maxWidth > 900
-                            ? 4
-                            : constraints.maxWidth > 600
-                                ? 3
-                                : constraints.maxWidth > 400
-                                    ? 2
-                                    : 1;
-                        return GridView.builder(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-                          gridDelegate:
-                              SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: cross,
+              // ── Grid de tarjetas ───────────────────────────────────────
+              Expanded(
+                child: _loading
+                    ? Semantics(
+                        label: 'Cargando usuarios',
+                        child: ExcludeSemantics(
+                          child: GridView.count(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                            crossAxisCount: 2,
                             crossAxisSpacing: 14,
                             mainAxisSpacing: 14,
                             childAspectRatio: 0.85,
+                            children: List.generate(
+                                4, (_) => const SkeletonBox(height: 160)),
                           ),
-                          itemCount: _filtered.length,
-                          itemBuilder: (ctx, i) =>
-                              _UserCard(
-                            user: _filtered[i],
-                            gradient: _rolGradient(_filtered[i].rol),
-                            rolIcon: _rolIcon(_filtered[i].rol),
-                            rolLabel: _rolLabel(_filtered[i].rol),
-                            onEdit: () => _showUserDialog(user: _filtered[i]),
-                            onDelete: () => _deleteUser(_filtered[i]),
-                            index: i,
-                          ),
-                        );
-                      }),
+                        ),
+                      )
+                    : _filtered.isEmpty
+                        ? const EmptyState(
+                            icon: PhosphorIconsRegular.users,
+                            message: 'No se encontraron usuarios',
+                          )
+                        : LayoutBuilder(builder: (ctx, constraints) {
+                            final cross = constraints.maxWidth > 900
+                                ? 4
+                                : constraints.maxWidth > 600
+                                    ? 3
+                                    : constraints.maxWidth > 400
+                                        ? 2
+                                        : 1;
+                            return GridView.builder(
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                              gridDelegate:
+                                  SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: cross,
+                                crossAxisSpacing: 14,
+                                mainAxisSpacing: 14,
+                                childAspectRatio: 0.85,
+                              ),
+                              itemCount: _filtered.length,
+                              itemBuilder: (ctx, i) => _UserCard(
+                                user: _filtered[i],
+                                gradient: _rolGradient(_filtered[i].rol),
+                                rolIcon: _rolIcon(_filtered[i].rol),
+                                rolLabel: _rolLabel(_filtered[i].rol),
+                                onEdit: () => _showUserDialog(user: _filtered[i]),
+                                onDelete: () => _deleteUser(_filtered[i]),
+                                index: i,
+                              ),
+                            );
+                          }),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
   Widget _rolChip(String rol, Color color) {
     final selected = _rolFilter == rol;
-    return GestureDetector(
-      onTap: () {
-        _rolFilter = rol;
-        _applyFilter();
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        margin: const EdgeInsets.only(left: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected ? color : color.withOpacity(0.08),
+    final label = rol == 'Todos'
+        ? 'Todos'
+        : rol == 'Admin'
+            ? 'Administradores'
+            : rol == 'Teacher'
+                ? 'Profesores'
+                : 'Estudiantes';
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: 'Filtrar: $label',
+      child: ExcludeSemantics(
+        child: InkWell(
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-              color: selected ? color : color.withOpacity(0.2), width: 1.5),
-        ),
-        child: Text(
-          rol == 'Todos'
-              ? 'Todos'
-              : rol == 'Admin'
-                  ? 'Admin'
-                  : rol == 'Teacher'
-                      ? 'Prof.'
-                      : 'Est.',
-          style: GoogleFonts.poppins(
-            color: selected ? Colors.white : color,
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
+          onTap: () {
+            _rolFilter = rol;
+            _applyFilter();
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: selected ? color : color.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                  color: selected ? color : color.withValues(alpha: 0.35)),
+            ),
+            child: Text(
+              label,
+              style: GoogleFonts.poppins(
+                color: selected ? Colors.white : color,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ),
       ),
@@ -1005,12 +1003,12 @@ class _UserCardState extends State<_UserCard>
           duration: const Duration(milliseconds: 180),
           child: Container(
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: context.tokens.glass,
               borderRadius: BorderRadius.circular(22),
               boxShadow: [
                 BoxShadow(
                   color: widget.gradient[0]
-                      .withOpacity(_hovered ? 0.30 : 0.10),
+                      .withValues(alpha: _hovered ? 0.30 : 0.10),
                   blurRadius: _hovered ? 24 : 8,
                   offset: Offset(0, _hovered ? 8 : 3),
                 ),
@@ -1037,14 +1035,14 @@ class _UserCardState extends State<_UserCard>
                         width: 56,
                         height: 56,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.22),
+                          color: Colors.white.withValues(alpha: 0.22),
                           shape: BoxShape.circle,
                           border: Border.all(
-                              color: Colors.white.withOpacity(0.5),
+                              color: Colors.white.withValues(alpha: 0.5),
                               width: 2.5),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.15),
+                              color: Colors.black.withValues(alpha: 0.15),
                               blurRadius: 10,
                               offset: const Offset(0, 4),
                             ),
@@ -1052,7 +1050,7 @@ class _UserCardState extends State<_UserCard>
                         ),
                         child: Center(
                           child: Text(
-                            widget.user.username[0].toUpperCase(),
+                            widget.user.username.isEmpty ? "?" : widget.user.username[0].toUpperCase(),
                             style: GoogleFonts.poppins(
                               color: Colors.white,
                               fontSize: 22,
@@ -1079,7 +1077,7 @@ class _UserCardState extends State<_UserCard>
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 3),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.22),
+                          color: Colors.white.withValues(alpha: 0.22),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Row(
@@ -1147,9 +1145,9 @@ class _UserCardState extends State<_UserCard>
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.08),
+          color: color.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withOpacity(0.2), width: 1.5),
+          border: Border.all(color: color.withValues(alpha: 0.2), width: 1.5),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,

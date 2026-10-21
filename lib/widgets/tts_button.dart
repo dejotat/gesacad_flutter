@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/tts_service.dart';
 import '../services/settings_service.dart';
+import 'ui/motion_icon.dart';
 
 /// Botón flotante TalkBack premium con animaciones y tema dinámico.
 class TtsButton extends StatefulWidget {
@@ -108,7 +109,7 @@ class _TtsButtonState extends State<TtsButton>
         }
 
         final themeType = AppSettings.currentTheme.value;
-        final activeColors  = [const Color(0xFFD32F2F), const Color(0xFF7B1111)];
+        final activeColors  = [const Color(0xFFB91C1C), const Color(0xFF7F1D1D)];
         final idleColors    = themeType.gradient;
 
         return Semantics(
@@ -131,16 +132,11 @@ class _TtsButtonState extends State<TtsButton>
                 boxShadow: [
                   BoxShadow(
                     color: (_leyendo
-                        ? const Color(0xFFD32F2F)
+                        ? const Color(0xFFB91C1C)
                         : themeType.primaryColor)
-                        .withOpacity(_leyendo ? _glow.value : 0.45),
+                        .withValues(alpha: _leyendo ? _glow.value : 0.35),
                     blurRadius: _leyendo ? 24 : 14,
                     offset: const Offset(0, 5),
-                  ),
-                  BoxShadow(
-                    color: Colors.white.withOpacity(0.15),
-                    blurRadius: 3,
-                    offset: const Offset(0, -1),
                   ),
                 ],
               ),
@@ -158,13 +154,16 @@ class _TtsButtonState extends State<TtsButton>
                         duration: const Duration(milliseconds: 250),
                         transitionBuilder: (child, anim) => ScaleTransition(
                             scale: anim, child: child),
-                        child: Icon(
+                        child: MotionIcon(
                           _leyendo
                               ? Icons.stop_circle_rounded
                               : Icons.volume_up_rounded,
                           key: ValueKey(_leyendo),
                           color: Colors.white,
                           size: 20,
+                          motion: _leyendo
+                              ? IconMotion.heartbeat
+                              : IconMotion.pulse,
                         ),
                       ),
                       const SizedBox(width: 8),

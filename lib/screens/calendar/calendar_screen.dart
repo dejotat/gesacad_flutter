@@ -5,32 +5,34 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:table_calendar/table_calendar.dart';
 import '../../services/api_service.dart';
 import '../../services/settings_service.dart';
-import '../../widgets/animated_logo.dart';
 import '../../widgets/talk_widget.dart';
 
 /// Tipo de evento del calendario académico.
+import '../../config/app_tokens.dart';
+import '../../widgets/ui/ui.dart';
+
 enum EventType { exam, assignment, class_, holiday, event, notification }
 
 extension EventTypeExt on EventType {
   Color get color {
     switch (this) {
-      case EventType.exam:         return const Color(0xFFE53935);
-      case EventType.assignment:   return const Color(0xFF1565C0);
-      case EventType.class_:       return const Color(0xFF2E7D32);
-      case EventType.holiday:      return const Color(0xFF6A1B9A);
-      case EventType.event:        return const Color(0xFFE65100);
-      case EventType.notification: return const Color(0xFF0097A7);
+      case EventType.exam:         return const Color(0xFFDC2626);
+      case EventType.assignment:   return const Color(0xFF2563EB);
+      case EventType.class_:       return const Color(0xFF16A34A);
+      case EventType.holiday:      return const Color(0xFF7C3AED);
+      case EventType.event:        return const Color(0xFFD97706);
+      case EventType.notification: return const Color(0xFF0891B2);
     }
   }
 
   List<Color> get gradient {
     switch (this) {
-      case EventType.exam:         return [const Color(0xFFE53935), const Color(0xFFFF7043)];
-      case EventType.assignment:   return [const Color(0xFF1565C0), const Color(0xFF06B6D4)];
-      case EventType.class_:       return [const Color(0xFF2E7D32), const Color(0xFF66BB6A)];
-      case EventType.holiday:      return [const Color(0xFF6A1B9A), const Color(0xFFAB47BC)];
-      case EventType.event:        return [const Color(0xFFE65100), const Color(0xFFFFB300)];
-      case EventType.notification: return [const Color(0xFF0097A7), const Color(0xFF26C6DA)];
+      case EventType.exam:         return [const Color(0xFFB91C1C), const Color(0xFFEF4444)];
+      case EventType.assignment:   return [const Color(0xFF1D4ED8), const Color(0xFF3B82F6)];
+      case EventType.class_:       return [const Color(0xFF15803D), const Color(0xFF22C55E)];
+      case EventType.holiday:      return [const Color(0xFF6D28D9), const Color(0xFF8B5CF6)];
+      case EventType.event:        return [const Color(0xFFB45309), const Color(0xFFF59E0B)];
+      case EventType.notification: return [const Color(0xFF0E7490), const Color(0xFF06B6D4)];
     }
   }
 
@@ -42,6 +44,18 @@ extension EventTypeExt on EventType {
       case EventType.holiday:      return Icons.celebration_rounded;
       case EventType.event:        return Icons.event_rounded;
       case EventType.notification: return Icons.notifications_rounded;
+    }
+  }
+
+  /// Cada tipo de evento tiene su propio movimiento de ícono.
+  IconMotion get motion {
+    switch (this) {
+      case EventType.exam:         return IconMotion.heartbeat;
+      case EventType.assignment:   return IconMotion.write;
+      case EventType.class_:       return IconMotion.bounce;
+      case EventType.holiday:      return IconMotion.tada;
+      case EventType.event:        return IconMotion.swing;
+      case EventType.notification: return IconMotion.ring;
     }
   }
 
@@ -91,6 +105,9 @@ class _CalendarScreenState extends State<CalendarScreen>
   CalendarFormat _format = CalendarFormat.month;
   bool _loading = false;
   int _userId = 0;
+
+  /// Tipo elegido en la leyenda (null = todos).
+  EventType? _legendFilter;
 
   // Mapa de eventos: fecha → lista de eventos
   late Map<DateTime, List<CalendarEvent>> _events;
@@ -250,9 +267,10 @@ class _CalendarScreenState extends State<CalendarScreen>
               bottom: MediaQuery.of(ctx).viewInsets.bottom),
           child: Container(
             padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            decoration: BoxDecoration(
+              color: Theme.of(ctx).bottomSheetTheme.backgroundColor,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+              border: Border.all(color: ctx.tokens.glassBorder),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -263,7 +281,7 @@ class _CalendarScreenState extends State<CalendarScreen>
                   width: 40, height: 4,
                   margin: const EdgeInsets.only(bottom: 16),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
+                    color: ctx.tokens.border,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 )),
@@ -276,7 +294,7 @@ class _CalendarScreenState extends State<CalendarScreen>
                   '${_selected.month.toString().padLeft(2,'0')}/'
                   '${_selected.year}',
                   style: GoogleFonts.poppins(
-                      fontSize: 12, color: Colors.grey.shade500)),
+                      fontSize: 12, color: ctx.tokens.muted)),
                 const SizedBox(height: 16),
                 TextField(
                   controller: tituloCtrl,
@@ -285,14 +303,7 @@ class _CalendarScreenState extends State<CalendarScreen>
                     hintText: 'Ej: Entregar tesis, Reunión, Examen...',
                     hintStyle: GoogleFonts.poppins(fontSize: 13),
                     prefixIcon: const Icon(Icons.notifications_rounded,
-                        color: Color(0xFF0097A7)),
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(
-                          color: Color(0xFF0097A7), width: 2),
-                    ),
+                        color: Color(0xFF0891B2)),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -317,18 +328,18 @@ class _CalendarScreenState extends State<CalendarScreen>
                     padding: const EdgeInsets.symmetric(
                         horizontal: 14, vertical: 12),
                     decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.shade300),
+                      border: Border.all(color: ctx.tokens.border),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(children: [
                       const Icon(Icons.access_time_rounded,
-                          color: Color(0xFF0097A7), size: 20),
+                          color: Color(0xFF0891B2), size: 20),
                       const SizedBox(width: 10),
                       Text('Hora: $horaSeleccionada',
                           style: GoogleFonts.poppins(fontSize: 13)),
                       const Spacer(),
                       Icon(Icons.edit_rounded,
-                          size: 16, color: Colors.grey.shade400),
+                          size: 16, color: ctx.tokens.muted),
                     ]),
                   ),
                 ),
@@ -336,22 +347,16 @@ class _CalendarScreenState extends State<CalendarScreen>
                 SizedBox(
                   width: double.infinity,
                   height: 50,
-                  child: ElevatedButton.icon(
+                  child: AppButton(
+                    label: 'Guardar recordatorio',
+                    icon: Icons.save_rounded,
+                    reaction: IconReaction.pop,
+                    expand: true,
                     onPressed: () {
                       if (tituloCtrl.text.trim().isEmpty) return;
                       Navigator.pop(ctx);
                       _saveRecordatorio(tituloCtrl.text, horaSeleccionada);
                     },
-                    icon: const Icon(Icons.save_rounded),
-                    label: Text('Guardar recordatorio',
-                        style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w700)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0097A7),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14)),
-                    ),
                   ),
                 ),
               ],
@@ -484,53 +489,50 @@ class _CalendarScreenState extends State<CalendarScreen>
   Widget build(BuildContext context) {
     final themeType  = AppSettings.currentTheme.value;
     final primary    = themeType.primaryColor;
-    final eventos    = _eventsFor(_selected);
+    final eventos    = _eventsFor(_selected)
+        .where((e) => _legendFilter == null || e.type == _legendFilter)
+        .toList();
 
     return Scaffold(
-      backgroundColor: themeType.backgroundColor,
       appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-        flexibleSpace: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: themeType.gradient,
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-        ),
-        leading: IconButton(
+        leading: AnimatedIconButton(
           tooltip: 'Regresar',
-          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+          icon: Icons.arrow_back_rounded,
+          reaction: IconReaction.nudge,
           onPressed: () => Navigator.pop(context),
         ),
-        title: Row(children: [
-          const LogoWatermark(size: 26, opacity: 0.35),
-          const SizedBox(width: 8),
-          Text('Calendario Académico',
-              style: GoogleFonts.poppins(
-                  color: Colors.white, fontWeight: FontWeight.w700)),
+        title: const Row(mainAxisSize: MainAxisSize.min, children: [
+          MotionIcon(Icons.calendar_month_rounded,
+              size: 22, motion: IconMotion.swing),
+          SizedBox(width: 8),
+          Flexible(child: Text('Calendario Académico', overflow: TextOverflow.ellipsis)),
         ]),
-        centerTitle: true,
         actions: [
           if (_loading)
             const Padding(
-              padding: EdgeInsets.only(right: 16),
+              padding: EdgeInsets.only(right: 8),
               child: Center(
                 child: SizedBox(width: 18, height: 18,
                     child: CircularProgressIndicator(
                         color: Colors.white, strokeWidth: 2)),
               ),
             ),
+          AnimatedIconButton(
+            tooltip: 'Ir a hoy',
+            icon: Icons.today_rounded,
+            reaction: IconReaction.flip,
+            onPressed: () {
+              final hoy = DateTime.now();
+              setState(() { _focused = hoy; _selected = hoy; });
+              _cardAnim.forward(from: 0);
+            },
+          ),
         ],
       ),
-      body: Stack(children: [
-        // Logo de fondo decorativo
-        Positioned(bottom: -30, right: -30,
-            child: LogoWatermark(size: 240, opacity: 0.04)),
-
-        Column(children: [
+      body: LogoBackdrop(child:
+        Center(child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 760),
+          child: Column(children: [
           // Leyenda premium de tipos de evento
           _buildLegend(primary),
 
@@ -561,7 +563,8 @@ class _CalendarScreenState extends State<CalendarScreen>
             ),
           ),
         ]),
-      ]),
+        )),
+      ),
     );
   }
 
@@ -573,27 +576,57 @@ class _CalendarScreenState extends State<CalendarScreen>
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
-          children: EventType.values.map((t) => TalkWidget(
-            label: 'Tipo de evento: ${t.label}',
-            child: Container(
-              margin: const EdgeInsets.only(right: 10),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(colors: t.gradient),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [BoxShadow(
-                    color: t.color.withOpacity(0.3),
-                    blurRadius: 6, offset: const Offset(0, 2))],
+          children: EventType.values.map((t) {
+            final sel = _legendFilter == t;
+            final dim = _legendFilter != null && !sel;
+            return Padding(
+              padding: const EdgeInsets.only(right: 10),
+              child: Semantics(
+                button: true,
+                selected: sel,
+                label: 'Filtrar por ${t.label}',
+                excludeSemantics: true,
+                onTap: () => setState(() => _legendFilter = sel ? null : t),
+                child: Pressable(
+                  pressedScale: 0.9,
+                  onTap: () => setState(() => _legendFilter = sel ? null : t),
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() => _legendFilter = sel ? null : t);
+                      _cardAnim.forward(from: 0);
+                    },
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 220),
+                      opacity: dim ? 0.38 : 1,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 260),
+                        curve: Curves.easeOutBack,
+                        padding: EdgeInsets.symmetric(
+                            horizontal: sel ? 14 : 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(colors: t.gradient),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: sel
+                              ? [BoxShadow(
+                                  color: t.color.withValues(alpha: 0.5),
+                                  blurRadius: 14, offset: const Offset(0, 4))]
+                              : null,
+                        ),
+                        child: Row(children: [
+                          MotionIcon(t.icon,
+                              color: Colors.white, size: 14, motion: t.motion),
+                          const SizedBox(width: 5),
+                          Text(t.label, style: GoogleFonts.poppins(
+                              color: Colors.white, fontSize: 12,
+                              fontWeight: FontWeight.w700)),
+                        ]),
+                      ),
+                    ),
+                  ),
+                ),
               ),
-              child: Row(children: [
-                Icon(t.icon, color: Colors.white, size: 12),
-                const SizedBox(width: 5),
-                Text(t.label, style: GoogleFonts.poppins(
-                    color: Colors.white, fontSize: 10,
-                    fontWeight: FontWeight.w700)),
-              ]),
-            ),
-          )).toList(),
+            );
+          }).toList(),
         ),
       ),
     );
@@ -602,23 +635,17 @@ class _CalendarScreenState extends State<CalendarScreen>
   // ── Calendario premium ────────────────────────────────────────────────────
 
   Widget _buildCalendar(AppThemeType themeType, Color primary) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(color: primary.withOpacity(0.12),
-              blurRadius: 20, offset: const Offset(0, 6)),
-          BoxShadow(color: Colors.black.withOpacity(0.05),
-              blurRadius: 10, offset: const Offset(0, 2)),
-        ],
-      ),
+    final tk = context.tokens;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return AppCard(
+      radius: 24,
+      padding: const EdgeInsets.only(bottom: 8),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
         child: Column(children: [
-          // Header del calendario con gradiente
+          // Franja de acento del tema
           Container(
-            padding: const EdgeInsets.symmetric(vertical: 6),
+            height: 4,
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: themeType.gradient,
@@ -651,7 +678,7 @@ class _CalendarScreenState extends State<CalendarScreen>
               formatButtonShowsNext: false,
               titleTextStyle: GoogleFonts.poppins(
                   fontWeight: FontWeight.w700, fontSize: 16,
-                  color: const Color(0xFF1A1A2E)),
+                  color: onSurface),
               leftChevronIcon: Container(
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
@@ -699,11 +726,11 @@ class _CalendarScreenState extends State<CalendarScreen>
               selectedTextStyle: GoogleFonts.poppins(
                   fontWeight: FontWeight.w800, color: Colors.white),
               defaultTextStyle: GoogleFonts.poppins(
-                  fontSize: 13, color: const Color(0xFF1A1A2E)),
+                  fontSize: 13, color: onSurface),
               weekendTextStyle: GoogleFonts.poppins(
-                  color: Colors.red.shade400, fontSize: 13),
+                  color: tk.danger, fontSize: 13),
               outsideTextStyle: GoogleFonts.poppins(
-                  color: Colors.grey.shade300, fontSize: 13),
+                  color: tk.muted.withValues(alpha: 0.5), fontSize: 13),
               // Remover bordes del rango
               rangeHighlightColor: primary.withOpacity(0.1),
               cellMargin: const EdgeInsets.all(4),
@@ -711,13 +738,44 @@ class _CalendarScreenState extends State<CalendarScreen>
             daysOfWeekStyle: DaysOfWeekStyle(
               weekdayStyle: GoogleFonts.poppins(
                   fontSize: 12, fontWeight: FontWeight.w700,
-                  color: Colors.grey.shade500),
+                  color: tk.muted),
               weekendStyle: GoogleFonts.poppins(
                   fontSize: 12, fontWeight: FontWeight.w700,
-                  color: Colors.red.shade300),
+                  color: tk.danger),
             ),
             // Builder personalizado para los marcadores de eventos por tipo
             calendarBuilders: CalendarBuilders(
+              // Mes con transición: el título se desliza al cambiar de página.
+              headerTitleBuilder: (ctx, date) => AnimatedSwitcher(
+                duration: const Duration(milliseconds: 320),
+                transitionBuilder: (c, a) => FadeTransition(
+                  opacity: a,
+                  child: SlideTransition(
+                    position: Tween(
+                            begin: const Offset(0, 0.4), end: Offset.zero)
+                        .animate(a),
+                    child: c,
+                  ),
+                ),
+                child: Text(
+                  _mesAnio(date),
+                  key: ValueKey('${date.year}-${date.month}'),
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w700, fontSize: 16,
+                      color: onSurface),
+                ),
+              ),
+              selectedBuilder: (ctx, day, focused) => _CeldaDia(
+                key: ValueKey('sel-$day'),
+                day: day,
+                gradient: themeType.gradient,
+                glow: primary,
+              ),
+              todayBuilder: (ctx, day, focused) => _CeldaHoy(
+                day: day,
+                color: primary,
+              ),
               markerBuilder: (ctx, day, events) {
                 if (events.isEmpty) return null;
                 // Mostrar punto de color por cada tipo de evento único
@@ -726,15 +784,10 @@ class _CalendarScreenState extends State<CalendarScreen>
                   bottom: 2,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
-                    children: tipos.take(3).map((t) => Container(
-                      width: 5, height: 5,
-                      margin: const EdgeInsets.symmetric(horizontal: 1),
-                      decoration: BoxDecoration(
-                        color: t.color, shape: BoxShape.circle,
-                        boxShadow: [BoxShadow(
-                          color: t.color.withOpacity(0.5), blurRadius: 3)],
-                      ),
-                    )).toList(),
+                    children: [
+                      for (var i = 0; i < tipos.take(3).length; i++)
+                        _MarcadorPop(color: tipos[i].color, delay: i * 70),
+                    ],
                   ),
                 );
               },
@@ -747,6 +800,12 @@ class _CalendarScreenState extends State<CalendarScreen>
 
   // ── Header del día seleccionado ───────────────────────────────────────────
 
+  String _mesAnio(DateTime d) {
+    const m = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio',
+               'Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    return '${m[d.month - 1]} ${d.year}';
+  }
+
   Widget _buildDayHeader(List<CalendarEvent> eventos, Color primary,
       AppThemeType themeType) {
     final meses = ['enero','febrero','marzo','abril','mayo','junio',
@@ -757,78 +816,94 @@ class _CalendarScreenState extends State<CalendarScreen>
     final mesNom = meses[_selected.month - 1];
     final label  = '${diaNom[0].toUpperCase()}${diaNom.substring(1)}, '
         '${_selected.day} de $mesNom';
+    final conteo =
+        '${eventos.length} evento${eventos.length == 1 ? "" : "s"}';
 
     return Row(children: [
-      Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(colors: themeType.gradient),
-          borderRadius: BorderRadius.circular(10),
-          boxShadow: [BoxShadow(
-              color: primary.withOpacity(0.3),
-              blurRadius: 8, offset: const Offset(0, 3))],
-        ),
-        child: const Icon(Icons.calendar_today_rounded,
-            color: Colors.white, size: 16),
-      ),
-      const SizedBox(width: 10),
-      TalkWidget(
-        label: '$label. ${ eventos.isEmpty ? "Sin eventos." : "${eventos.length} evento${eventos.length == 1 ? "" : "s"}." }',
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: GoogleFonts.poppins(
-              fontSize: 15, fontWeight: FontWeight.w700,
-              color: primary)),
-          if (eventos.isNotEmpty)
-            Text('${eventos.length} evento${eventos.length == 1 ? "" : "s"}',
-                style: GoogleFonts.poppins(
-                    fontSize: 11, color: Colors.grey.shade400)),
-        ]),
-      ),
-      const Spacer(),
-      if (eventos.isNotEmpty)
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(colors: themeType.gradient),
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [BoxShadow(
-                color: primary.withOpacity(0.3), blurRadius: 6)],
-          ),
-          child: Text('${eventos.length} evento${eventos.length == 1 ? "" : "s"}',
-              style: GoogleFonts.poppins(
-                  color: Colors.white, fontSize: 10,
-                  fontWeight: FontWeight.w700)),
-        ),
-      const SizedBox(width: 8),
-      // Botón para agregar recordatorio personal en el día seleccionado
-      Tooltip(
-        message: 'Agregar recordatorio',
-        child: InkWell(
-          borderRadius: BorderRadius.circular(10),
-          onTap: _mostrarModalRecordatorio,
-          child: Container(
-            padding: const EdgeInsets.all(7),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0097A7).withOpacity(0.12),
-              borderRadius: BorderRadius.circular(10),
+      // Ficha de fecha: el número gira al cambiar de día.
+      ExcludeSemantics(
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 420),
+          switchInCurve: Curves.easeOutBack,
+          transitionBuilder: (c, a) => ScaleTransition(
+            scale: a,
+            child: RotationTransition(
+              turns: Tween(begin: -0.08, end: 0.0).animate(a),
+              child: c,
             ),
-            child: const Icon(Icons.add_alert_rounded,
-                color: Color(0xFF0097A7), size: 20),
+          ),
+          child: Container(
+            key: ValueKey(_norm(_selected)),
+            width: 52, height: 56,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: themeType.gradient,
+                begin: Alignment.topLeft, end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [BoxShadow(
+                  color: primary.withValues(alpha: 0.38),
+                  blurRadius: 12, offset: const Offset(0, 5))],
+            ),
+            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Text(mesNom.substring(0, 3).toUpperCase(),
+                  style: GoogleFonts.poppins(
+                      color: Colors.white.withValues(alpha: 0.85),
+                      fontSize: 10, fontWeight: FontWeight.w700,
+                      letterSpacing: 1)),
+              Text('${_selected.day}',
+                  style: GoogleFonts.poppins(
+                      color: Colors.white, fontSize: 22,
+                      fontWeight: FontWeight.w800, height: 1.05)),
+            ]),
           ),
         ),
+      ),
+      const SizedBox(width: 12),
+      Expanded(
+        child: TalkWidget(
+          label: '$label. ${eventos.isEmpty ? "Sin eventos." : "$conteo."}',
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(label, style: GoogleFonts.poppins(
+                fontSize: 15, fontWeight: FontWeight.w700, color: primary)),
+            Text(eventos.isEmpty ? 'Día libre' : conteo,
+                style: GoogleFonts.poppins(
+                    fontSize: 12, color: context.tokens.muted)),
+          ]),
+        ),
+      ),
+      // Recordatorio personal en el día seleccionado.
+      AnimatedIconButton(
+        tooltip: 'Agregar recordatorio',
+        icon: Icons.add_alert_rounded,
+        reaction: IconReaction.ring,
+        color: const Color(0xFF0891B2),
+        filled: false,
+        onPressed: _mostrarModalRecordatorio,
       ),
     ]);
+  }
+
+  /// "Hoy", "Mañana", "En 3 días"… respecto del día seleccionado.
+  String _cuentaRegresiva() {
+    final hoy = _norm(DateTime.now());
+    final d = _norm(_selected).difference(hoy).inDays;
+    if (d == 0) return 'Hoy';
+    if (d == 1) return 'Mañana';
+    if (d == -1) return 'Ayer';
+    return d > 0 ? 'En $d días' : 'Hace ${-d} días';
   }
 
   // ── Tarjeta de evento ─────────────────────────────────────────────────────
 
   Widget _buildEventCard(CalendarEvent ev, int idx) {
+    final cuenta = _cuentaRegresiva();
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
-      duration: Duration(milliseconds: 250 + idx * 80),
+      duration: Duration(milliseconds: 300 + idx * 90),
       curve: Curves.easeOutBack,
       builder: (_, v, child) => Transform.translate(
-        offset: Offset(0, 16 * (1 - v)),
+        offset: Offset(0, 22 * (1 - v)),
         child: Opacity(opacity: v.clamp(0.0, 1.0), child: child),
       ),
       child: TalkWidget(
@@ -836,130 +911,237 @@ class _CalendarScreenState extends State<CalendarScreen>
             '${ev.course != null ? " Curso: ${ev.course}." : ""}'
             '${ev.description != null ? " ${ev.description}." : ""}',
         highlightOnHover: true,
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-                color: ev.type.color.withOpacity(0.2), width: 1.5),
-            boxShadow: [BoxShadow(
-                color: ev.type.color.withOpacity(0.08),
-                blurRadius: 12, offset: const Offset(0, 4))],
-          ),
-          child: Row(children: [
-            // Barra lateral de color
-            Container(
-              width: 5,
-              height: 80,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: AppCard(
+            blur: false,
+            tint: ev.type.color,
+            radius: 18,
+            padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
+            child: Row(children: [
+              IconMedallion(ev.type.icon,
+                  size: 48,
                   colors: ev.type.gradient,
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                ),
-                borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(18),
-                    bottomLeft: Radius.circular(18)),
-              ),
-            ),
-            const SizedBox(width: 14),
-            // Ícono con gradiente
-            Container(
-              width: 42, height: 42,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(colors: ev.type.gradient),
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [BoxShadow(
-                    color: ev.type.color.withOpacity(0.3),
-                    blurRadius: 8, offset: const Offset(0, 3))],
-              ),
-              child: Icon(ev.type.icon, color: Colors.white, size: 20),
-            ),
-            const SizedBox(width: 12),
-            // Contenido
-            Expanded(child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 7, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: ev.type.color.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(ev.type.label,
-                          style: GoogleFonts.poppins(
-                              fontSize: 9, color: ev.type.color,
-                              fontWeight: FontWeight.w700)),
-                    ),
-                  ]),
-                  const SizedBox(height: 4),
-                  Text(ev.title, style: GoogleFonts.poppins(
-                      fontSize: 13, fontWeight: FontWeight.w700,
-                      color: const Color(0xFF1A1A2E))),
-                  if (ev.course != null)
-                    Text(ev.course!, style: GoogleFonts.poppins(
-                        fontSize: 11, color: ev.type.color,
-                        fontWeight: FontWeight.w500)),
-                  if (ev.description != null)
-                    Text(ev.description!, style: GoogleFonts.poppins(
-                        fontSize: 10, color: Colors.grey.shade400),
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
-                ],
-              ),
-            )),
-            // Botón eliminar — solo visible en recordatorios personales
-            if (ev.isReminder)
-              IconButton(
-                tooltip: 'Eliminar recordatorio',
-                icon: Icon(Icons.delete_outline_rounded,
-                    color: Colors.red.shade300, size: 20),
-                onPressed: () => _eliminarRecordatorio(ev),
-              )
-            else
+                  motion: ev.type.motion,
+                  delay: Duration(milliseconds: 120 * idx)),
               const SizedBox(width: 14),
-          ]),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      _pastilla(ev.type.label, ev.type.color),
+                      const SizedBox(width: 6),
+                      _pastilla(cuenta, context.tokens.muted, soft: true),
+                    ]),
+                    const SizedBox(height: 6),
+                    Text(ev.title, style: GoogleFonts.poppins(
+                        fontSize: 13.5, fontWeight: FontWeight.w700,
+                        color: Theme.of(context).colorScheme.onSurface)),
+                    if (ev.course != null)
+                      Text(ev.course!, style: GoogleFonts.poppins(
+                          fontSize: 12, color: ev.type.color,
+                          fontWeight: FontWeight.w500)),
+                    if (ev.description != null)
+                      Row(children: [
+                        Icon(Icons.schedule_rounded,
+                            size: 12, color: context.tokens.muted),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(ev.description!,
+                              style: GoogleFonts.poppins(
+                                  fontSize: 12, color: context.tokens.muted),
+                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                        ),
+                      ]),
+                  ],
+                ),
+              ),
+              if (ev.isReminder)
+                AnimatedIconButton(
+                  tooltip: 'Eliminar recordatorio',
+                  icon: Icons.delete_outline_rounded,
+                  reaction: IconReaction.shake,
+                  color: context.tokens.danger,
+                  onPressed: () => _eliminarRecordatorio(ev),
+                )
+              else
+                const SizedBox(width: 8),
+            ]),
+          ),
         ),
       ),
     );
   }
+
+  Widget _pastilla(String texto, Color c, {bool soft = false}) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: c.withValues(alpha: soft ? 0.10 : 0.14),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(texto,
+            style: GoogleFonts.poppins(
+                fontSize: 11, color: c, fontWeight: FontWeight.w700)),
+      );
 
   // ── Sin eventos ───────────────────────────────────────────────────────────
 
   Widget _buildEmptyDay(Color primary) {
     return TalkWidget(
       label: 'No hay eventos para este día. Selecciona otro día del calendario.',
-      child: Container(
+      child: AppCard(
         padding: const EdgeInsets.all(28),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.grey.shade100),
-        ),
         child: Column(children: [
           Container(
-            padding: const EdgeInsets.all(18),
+            width: 88, height: 88,
             decoration: BoxDecoration(
-              color: primary.withOpacity(0.07),
               shape: BoxShape.circle,
+              gradient: RadialGradient(colors: [
+                primary.withValues(alpha: 0.20),
+                primary.withValues(alpha: 0.03),
+              ]),
+              border: Border.all(color: primary.withValues(alpha: 0.18)),
             ),
-            child: Icon(Icons.event_busy_rounded,
-                size: 40, color: primary.withOpacity(0.4)),
+            child: Center(
+              child: MotionIcon(Icons.beach_access_rounded,
+                  size: 40, color: primary, glow: true, halo: true),
+            ),
           ),
           const SizedBox(height: 14),
-          Text('Sin eventos', style: GoogleFonts.poppins(
+          Text('Día libre', style: GoogleFonts.poppins(
               fontSize: 15, fontWeight: FontWeight.w700,
-              color: Colors.grey.shade500)),
+              color: context.tokens.muted)),
           const SizedBox(height: 6),
           Text('No hay actividades programadas\npara este día',
               textAlign: TextAlign.center,
               style: GoogleFonts.poppins(
-                  fontSize: 12, color: Colors.grey.shade400, height: 1.5)),
+                  fontSize: 12, color: context.tokens.muted, height: 1.5)),
         ]),
+      ),
+    );
+  }
+}
+
+/// Celda del día seleccionado: entra con rebote elástico y brilla.
+class _CeldaDia extends StatelessWidget {
+  const _CeldaDia({
+    super.key,
+    required this.day,
+    required this.gradient,
+    required this.glow,
+  });
+  final DateTime day;
+  final List<Color> gradient;
+  final Color glow;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.3, end: 1),
+      duration: const Duration(milliseconds: 560),
+      curve: Curves.elasticOut,
+      builder: (_, v, child) => Transform.scale(scale: v, child: child),
+      child: Container(
+        margin: const EdgeInsets.all(4),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            colors: gradient,
+            begin: Alignment.topLeft, end: Alignment.bottomRight,
+          ),
+          boxShadow: [BoxShadow(
+              color: glow.withValues(alpha: 0.5),
+              blurRadius: 12, offset: const Offset(0, 4))],
+        ),
+        child: Text('${day.day}',
+            style: GoogleFonts.poppins(
+                fontSize: 13, fontWeight: FontWeight.w800, color: Colors.white)),
+      ),
+    );
+  }
+}
+
+/// Celda de hoy: anillo que late suavemente para ubicarse de un vistazo.
+class _CeldaHoy extends StatefulWidget {
+  const _CeldaHoy({required this.day, required this.color});
+  final DateTime day;
+  final Color color;
+
+  @override
+  State<_CeldaHoy> createState() => _CeldaHoyState();
+}
+
+class _CeldaHoyState extends State<_CeldaHoy>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 2000));
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    if (reduce) {
+      _c.stop();
+    } else if (!_c.isAnimating) {
+      _c.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (_, __) => Container(
+        margin: EdgeInsets.all(4 - 2.5 * _c.value),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: widget.color.withValues(alpha: 0.12),
+          border: Border.all(
+            color: widget.color.withValues(alpha: 0.9 - 0.55 * _c.value),
+            width: 1.6,
+          ),
+        ),
+        child: Text('${widget.day.day}',
+            style: GoogleFonts.poppins(
+                fontSize: 13, fontWeight: FontWeight.w800, color: widget.color)),
+      ),
+    );
+  }
+}
+
+/// Punto marcador de evento: aparece con un pequeño rebote.
+class _MarcadorPop extends StatelessWidget {
+  const _MarcadorPop({required this.color, this.delay = 0});
+  final Color color;
+  final int delay;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = 420 + delay;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: Duration(milliseconds: total),
+      curve: Interval(delay / total, 1, curve: Curves.elasticOut),
+      builder: (_, v, __) => Transform.scale(
+        scale: v,
+        child: Container(
+          width: 6, height: 6,
+          margin: const EdgeInsets.symmetric(horizontal: 1),
+          decoration: BoxDecoration(
+            color: color, shape: BoxShape.circle,
+            boxShadow: [BoxShadow(
+                color: color.withValues(alpha: 0.55), blurRadius: 4)],
+          ),
+        ),
       ),
     );
   }

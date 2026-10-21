@@ -1,3 +1,5 @@
+import '../../config/app_tokens.dart';
+import '../../widgets/ui/ui.dart';
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -270,6 +272,9 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
       appBar: AppBar(title: const Text('Nueva Actividad')),
       body: Form(
         key: _formKey,
+        child: Center(
+        child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 640),
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
@@ -278,16 +283,10 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
               label: available > 0
                   ? 'Ponderado disponible en este curso: ${available.toStringAsFixed(0)} por ciento'
                   : 'No hay ponderado disponible. El curso ya tiene 100 por ciento asignado.',
-              child: Container(
+              child: AppCard(
+                blur: false,
+                tint: available > 0 ? context.tokens.success : context.tokens.danger,
                 padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: available > 0
-                      ? Colors.green.shade50
-                      : Colors.red.shade50,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                      color: available > 0 ? Colors.green : Colors.red),
-                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -295,7 +294,9 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
                       children: [
                         Icon(
                           available > 0 ? Icons.check_circle : Icons.warning,
-                          color: available > 0 ? Colors.green : Colors.red,
+                          color: available > 0
+                              ? context.tokens.success
+                              : context.tokens.danger,
                         ),
                         const SizedBox(width: 10),
                         Text(
@@ -303,8 +304,8 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
                           style: TextStyle(
                               fontWeight: FontWeight.bold,
                               color: available > 0
-                                  ? Colors.green.shade800
-                                  : Colors.red),
+                                  ? context.tokens.success
+                                  : context.tokens.danger),
                         ),
                       ],
                     ),
@@ -318,8 +319,8 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
                         style: TextStyle(
                             fontSize: 12,
                             color: remaining >= 0
-                                ? Colors.green.shade700
-                                : Colors.red),
+                                ? context.tokens.success
+                                : context.tokens.danger),
                       ),
                     ],
                   ],
@@ -339,7 +340,6 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
                 textInputAction: TextInputAction.next,
                 decoration: const InputDecoration(
                   labelText: 'Título de la actividad *',
-                  border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.title),
                 ),
                 validator: (v) {
@@ -363,7 +363,6 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
                 maxLines: 3,
                 decoration: const InputDecoration(
                   labelText: 'Descripción *',
-                  border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.description),
                 ),
                 validator: (v) =>
@@ -380,7 +379,6 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
                 value: _type,
                 decoration: const InputDecoration(
                   labelText: 'Tipo de actividad',
-                  border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.category),
                 ),
                 items: const [
@@ -412,7 +410,6 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
                           decimal: true),
                       decoration: const InputDecoration(
                         labelText: 'Ponderado (%)',
-                        border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.percent),
                         suffixText: '%',
                       ),
@@ -437,7 +434,6 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
                       value: _week,
                       decoration: const InputDecoration(
                         labelText: 'Semana',
-                        border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.calendar_view_week),
                       ),
                       items: List.generate(
@@ -462,7 +458,7 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
                     label: 'Fecha de inicio con hora',
                     hint: 'Toca fecha u hora para cambiarlas',
                     child: ListTile(
-                      leading: const Icon(Icons.event_available, color: Colors.green),
+                      leading: Icon(Icons.event_available, color: context.tokens.success),
                       title: const Text('Fecha de inicio'),
                       subtitle: Text(
                         '${_startDate.day.toString().padLeft(2, '0')}/'
@@ -476,14 +472,14 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
                         children: [
                           IconButton(
                             tooltip: 'Cambiar fecha',
-                            icon: const Icon(Icons.calendar_today_rounded,
-                                color: Colors.green, size: 20),
+                            icon: Icon(Icons.calendar_today_rounded,
+                                color: context.tokens.success, size: 20),
                             onPressed: () => _pickDate(true),
                           ),
                           IconButton(
                             tooltip: 'Cambiar hora',
-                            icon: const Icon(Icons.access_time_rounded,
-                                color: Colors.green, size: 20),
+                            icon: Icon(Icons.access_time_rounded,
+                                color: context.tokens.success, size: 20),
                             onPressed: _pickStartTime,
                           ),
                         ],
@@ -495,7 +491,7 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
                     label: 'Fecha de cierre con hora',
                     hint: 'Toca fecha u hora para cambiarlas',
                     child: ListTile(
-                      leading: const Icon(Icons.event_busy, color: Colors.red),
+                      leading: Icon(Icons.event_busy, color: context.tokens.danger),
                       title: const Text('Fecha de cierre'),
                       subtitle: Text(
                         '${_closeDate.day.toString().padLeft(2, '0')}/'
@@ -510,14 +506,14 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
                         children: [
                           IconButton(
                             tooltip: 'Cambiar fecha',
-                            icon: const Icon(Icons.calendar_today_rounded,
-                                color: Colors.red, size: 20),
+                            icon: Icon(Icons.calendar_today_rounded,
+                                color: context.tokens.danger, size: 20),
                             onPressed: () => _pickDate(false),
                           ),
                           IconButton(
                             tooltip: 'Cambiar hora',
-                            icon: const Icon(Icons.access_time_rounded,
-                                color: Colors.red, size: 20),
+                            icon: Icon(Icons.access_time_rounded,
+                                color: context.tokens.danger, size: 20),
                             onPressed: _pickCloseTime,
                           ),
                         ],
@@ -582,6 +578,8 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
 
             const SizedBox(height: 20),
           ],
+        ),
+        ),
         ),
       ),
     );

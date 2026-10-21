@@ -4,7 +4,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/activity_model.dart';
 import '../../services/api_service.dart';
-import '../../services/settings_service.dart';
+
+import '../../config/app_tokens.dart';
+import '../../widgets/ui/ui.dart';
 
 /// Modelo de notificación.
 class AppNotification {
@@ -30,11 +32,11 @@ enum NotifType { activity, grade, announcement, event, system }
 extension NotifTypeExt on NotifType {
   Color get color {
     switch (this) {
-      case NotifType.activity:     return const Color(0xFF1565C0);
-      case NotifType.grade:        return const Color(0xFF2E7D32);
-      case NotifType.announcement: return const Color(0xFFE65100);
-      case NotifType.event:        return const Color(0xFF6A1B9A);
-      case NotifType.system:       return const Color(0xFF37474F);
+      case NotifType.activity:     return const Color(0xFF2563EB);
+      case NotifType.grade:        return const Color(0xFF16A34A);
+      case NotifType.announcement: return const Color(0xFFD97706);
+      case NotifType.event:        return const Color(0xFF7C3AED);
+      case NotifType.system:       return const Color(0xFF64748B);
     }
   }
 
@@ -45,6 +47,17 @@ extension NotifTypeExt on NotifType {
       case NotifType.announcement: return Icons.campaign_rounded;
       case NotifType.event:        return Icons.event_rounded;
       case NotifType.system:       return Icons.info_rounded;
+    }
+  }
+
+  /// Movimiento propio de cada tipo: el ícono "cuenta" de qué trata.
+  IconMotion get motion {
+    switch (this) {
+      case NotifType.activity:     return IconMotion.write;
+      case NotifType.grade:        return IconMotion.tada;
+      case NotifType.announcement: return IconMotion.ring;
+      case NotifType.event:        return IconMotion.swing;
+      case NotifType.system:       return IconMotion.pulse;
     }
   }
 
@@ -86,6 +99,7 @@ class _NotificationsPanelState extends State<NotificationsPanel>
   late Animation<double> _fade;
 
   List<AppNotification> _notifs = [];
+  NotifType? _filter;
   bool _loading = true;
   String? _error;
 
@@ -244,43 +258,64 @@ class _NotificationsPanelState extends State<NotificationsPanel>
 
   // ── Build ──────────────────────────────────────────────────────────────────
 
+  /// Etiqueta de grupo según qué tan reciente es la notificación.
+  String _grupo(DateTime t) {
+    final hoy = DateTime.now();
+    final d0 = DateTime(hoy.year, hoy.month, hoy.day);
+    final dias = d0.difference(DateTime(t.year, t.month, t.day)).inDays;
+    if (dias <= 0) return 'Hoy';
+    if (dias == 1) return 'Ayer';
+    if (dias < 7) return 'Esta semana';
+    return 'Anteriores';
+  }
+
+  /// Lista plana: cadenas (encabezados de grupo) y notificaciones.
+  List<Object> _itemsAgrupados() {
+    final lista = _filter == null
+        ? _notifs
+        : _notifs.where((n) => n.type == _filter).toList();
+    final out = <Object>[];
+    String? actual;
+    for (final n in lista) {
+      final g = _grupo(n.time);
+      if (g != actual) {
+        out.add(g);
+        actual = g;
+      }
+      out.add(n);
+    }
+    return out;
+  }
+
+  int get _sinLeer => _notifs.where((n) => !n.isRead).length;
+
   @override
   Widget build(BuildContext context) {
-    final themeType = AppSettings.currentTheme.value;
-    final primary = Theme.of(context).colorScheme.primary;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(
+        leading: AnimatedIconButton(
           tooltip: 'Regresar',
-          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+          icon: Icons.arrow_back_rounded,
+          reaction: IconReaction.nudge,
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text('Notificaciones',
-            style: GoogleFonts.poppins(
-                color: Colors.white, fontWeight: FontWeight.w700)),
-        centerTitle: true,
-        flexibleSpace: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-                colors: themeType.gradient,
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight),
-          ),
-        ),
-        backgroundColor: Colors.transparent,
+        title: const Row(mainAxisSize: MainAxisSize.min, children: [
+          MotionIcon(Icons.notifications_rounded,
+              size: 22, motion: IconMotion.ring),
+          SizedBox(width: 8),
+          Flexible(child: Text('Notificaciones', overflow: TextOverflow.ellipsis)),
+        ]),
         actions: [
-          // Recargar notificaciones desde el backend
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: Colors.white),
+          AnimatedIconButton(
+            icon: Icons.refresh_rounded,
             tooltip: 'Actualizar',
+            reaction: IconReaction.spin,
             onPressed: _cargarNotificaciones,
           ),
-          // Marcar todas como leídas
-          IconButton(
-            icon: const Icon(Icons.done_all_rounded, color: Colors.white),
+          AnimatedIconButton(
+            icon: Icons.done_all_rounded,
             tooltip: 'Marcar todas como leídas',
+            reaction: IconReaction.pop,
             onPressed: () {
               for (final n in _notifs) { n.isRead = true; }
               setState(() {});
@@ -288,290 +323,401 @@ class _NotificationsPanelState extends State<NotificationsPanel>
           ),
         ],
       ),
-      body: FadeTransition(
-        opacity: _fade,
-        child: _loading
-            ? _buildShimmer()
-            : _error != null
-                ? _buildError()
-                : _notifs.isEmpty
-                    ? _buildEmpty()
-                    : ListView.separated(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        itemCount: _notifs.length,
-                        separatorBuilder: (_, __) => Divider(
-                            height: 1,
-                            color: isDark
-                                ? Colors.white10
-                                : Colors.grey.shade100),
-                        itemBuilder: (_, i) =>
-                            _buildNotifTile(_notifs[i], isDark, primary),
-                      ),
-      ),
-    );
-  }
-
-  /// Muestra un panel deslizable con el detalle completo de la notificación.
-  void _mostrarDetalle(AppNotification notif) {
-    setState(() => notif.isRead = true);
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Indicador visual de arrastre
-            Center(
-              child: Container(
-                width: 40, height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            // Tipo de notificación
-            Row(children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: notif.type.color.withOpacity(0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(notif.type.icon, color: notif.type.color, size: 22),
-              ),
-              const SizedBox(width: 12),
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: notif.type.color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(notif.type.label,
-                      style: GoogleFonts.poppins(
-                          fontSize: 11,
-                          color: notif.type.color,
-                          fontWeight: FontWeight.w600)),
-                ),
-                const SizedBox(height: 4),
-                Text(_timeAgo(notif.time),
-                    style: GoogleFonts.poppins(
-                        fontSize: 11, color: Colors.grey.shade500)),
-              ]),
-            ]),
-            const SizedBox(height: 16),
-            // Título
-            Text(notif.title,
-                style: GoogleFonts.poppins(
-                    fontWeight: FontWeight.w700, fontSize: 16)),
-            const SizedBox(height: 8),
-            // Cuerpo completo (sin truncar)
-            Text(notif.body,
-                style: GoogleFonts.poppins(
-                    fontSize: 13,
-                    color: Colors.grey.shade600,
-                    height: 1.5)),
-            const SizedBox(height: 24),
-            // Botón cerrar
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () => Navigator.pop(ctx),
-                style: ElevatedButton.styleFrom(
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-                child: Text('Cerrar',
-                    style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
-              ),
-            ),
-            const SizedBox(height: 8),
-          ],
+      body: LogoBackdrop(
+        child: FadeTransition(
+          opacity: _fade,
+          child: _loading
+              ? _buildShimmer()
+              : _error != null
+                  ? _buildError()
+                  : _notifs.isEmpty
+                      ? _buildEmpty()
+                      : _buildLista(),
         ),
       ),
     );
   }
 
-  Widget _buildNotifTile(AppNotification notif, bool isDark, Color primary) {
-    return InkWell(
-      onTap: () => _mostrarDetalle(notif),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        color: notif.isRead
-            ? Colors.transparent
-            : (isDark
-                ? Colors.white.withOpacity(0.04)
-                : notif.type.color.withOpacity(0.04)),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Ícono del tipo de notificación
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: notif.type.color.withOpacity(0.12),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(notif.type.icon,
-                  color: notif.type.color, size: 20),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(children: [
-                    // Badge del tipo
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: notif.type.color.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(notif.type.label,
-                          style: GoogleFonts.poppins(
-                              fontSize: 10,
-                              color: notif.type.color,
-                              fontWeight: FontWeight.w600)),
-                    ),
-                    const Spacer(),
-                    // Tiempo transcurrido
-                    Text(_timeAgo(notif.time),
-                        style: GoogleFonts.poppins(
-                            fontSize: 11, color: Colors.grey.shade500)),
-                    // Punto azul de no leído
-                    if (!notif.isRead) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                              color: primary, shape: BoxShape.circle)),
-                    ],
-                  ]),
-                  const SizedBox(height: 6),
-                  Text(notif.title,
-                      style: GoogleFonts.poppins(
-                          fontWeight: notif.isRead
-                              ? FontWeight.w500
-                              : FontWeight.w700,
-                          fontSize: 14)),
-                  const SizedBox(height: 4),
-                  Text(notif.body,
-                      style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          color: Colors.grey.shade500,
-                          height: 1.4),
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildShimmer() {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.3, end: 0.7),
-      duration: const Duration(milliseconds: 800),
-      builder: (_, v, __) => ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: 5,
-        itemBuilder: (_, i) => Opacity(
-          opacity: v,
-          child: Container(
-            margin: const EdgeInsets.only(bottom: 14),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade200,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Row(children: [
-              Container(
-                width: 44, height: 44,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(height: 12, width: double.infinity,
-                      decoration: BoxDecoration(color: Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(6))),
-                  const SizedBox(height: 8),
-                  Container(height: 10, width: 200,
-                      decoration: BoxDecoration(color: Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(6))),
-                  const SizedBox(height: 6),
-                  Container(height: 10, width: 140,
-                      decoration: BoxDecoration(color: Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(6))),
-                ],
-              )),
-            ]),
+  Widget _buildLista() {
+    final items = _itemsAgrupados();
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 760),
+        child: RefreshIndicator(
+          onRefresh: _cargarNotificaciones,
+          child: ListView.builder(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(
+                AppTokens.pagePadding, AppTokens.pagePadding,
+                AppTokens.pagePadding, 40),
+            itemCount: items.length + 2,
+            itemBuilder: (_, i) {
+              if (i == 0) return _buildResumen();
+              if (i == 1) return _buildFiltros();
+              final it = items[i - 2];
+              if (it is String) return _buildGrupo(it);
+              return _Entrada(
+                // Escalonado: cada tarjeta entra un poco después de la anterior.
+                delay: Duration(milliseconds: 50 * (i - 2).clamp(0, 8)),
+                child: _buildNotifTile(it as AppNotification),
+              );
+            },
           ),
         ),
       ),
     );
   }
 
-  Widget _buildEmpty() {
-    return Center(
-      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Icon(Icons.notifications_off_rounded,
-            size: 64, color: Colors.grey.shade300),
-        const SizedBox(height: 14),
-        Text('Sin notificaciones',
-            style: GoogleFonts.poppins(
-                fontSize: 17,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey.shade400)),
-        const SizedBox(height: 8),
-        Text('Cuando haya actividades o calificaciones\nnuevas aparecerán aquí.',
-            style: GoogleFonts.poppins(
-                fontSize: 13, color: Colors.grey.shade400),
-            textAlign: TextAlign.center),
-      ]),
+  /// Encabezado de cristal: campana que suena + cuántas hay sin leer.
+  Widget _buildResumen() {
+    final n = _sinLeer;
+    final porTipo = <NotifType, int>{};
+    for (final x in _notifs) {
+      porTipo[x.type] = (porTipo[x.type] ?? 0) + 1;
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: PageHeader(
+        title: n == 0 ? 'Todo al día' : '$n sin leer',
+        subtitle: n == 0
+            ? 'No tienes notificaciones pendientes'
+            : 'Toca una para ver el detalle o desliza para descartar',
+        leading: ExcludeSemantics(
+          child: Container(
+            width: 56, height: 56,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white.withValues(alpha: 0.22),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
+            ),
+            child: Center(
+              child: MotionIcon(
+                n == 0 ? Icons.notifications_active_outlined : Icons.notifications_active_rounded,
+                color: Colors.white,
+                size: 30,
+                glow: true,
+                halo: n > 0,
+                motion: n == 0 ? IconMotion.float : IconMotion.ring,
+              ),
+            ),
+          ),
+        ),
+        chips: [
+          for (final e in porTipo.entries)
+            HeaderChip(e.key.icon, '${e.value} ${e.key.label.toLowerCase()}'),
+        ],
+      ),
     );
   }
 
-  Widget _buildError() {
-    return Center(
-      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Icon(Icons.cloud_off_rounded, size: 56, color: Colors.red.shade300),
-        const SizedBox(height: 14),
-        Text('No se pudieron cargar las notificaciones',
-            style: GoogleFonts.poppins(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey.shade600)),
-        const SizedBox(height: 12),
-        ElevatedButton.icon(
-          onPressed: _cargarNotificaciones,
-          icon: const Icon(Icons.refresh_rounded),
-          label: Text('Reintentar',
-              style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+  /// Filtros por tipo: la selección se anima y lleva el color del tipo.
+  Widget _buildFiltros() {
+    final tipos = NotifType.values
+        .where((t) => _notifs.any((n) => n.type == t))
+        .toList();
+    if (tipos.length < 2) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: SizedBox(
+        height: 44,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          children: [
+            _chipFiltro(null, 'Todas', Icons.all_inbox_rounded,
+                Theme.of(context).colorScheme.primary),
+            for (final t in tipos) _chipFiltro(t, t.label, t.icon, t.color),
+          ],
         ),
-      ]),
+      ),
     );
   }
+
+  Widget _chipFiltro(NotifType? tipo, String label, IconData icon, Color color) {
+    final sel = _filter == tipo;
+    final t = context.tokens;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Semantics(
+        button: true,
+        selected: sel,
+        label: 'Filtrar: $label',
+        excludeSemantics: true,
+        onTap: () => setState(() => _filter = tipo),
+        child: Pressable(
+          pressedScale: 0.92,
+          onTap: () => setState(() => _filter = tipo),
+          child: GestureDetector(
+            onTap: () => setState(() => _filter = tipo),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 260),
+              curve: Curves.easeOutCubic,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                gradient: sel
+                    ? LinearGradient(colors: AppTokens.gradientOf(color))
+                    : null,
+                color: sel ? null : t.glass,
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: sel ? Colors.transparent : t.glassBorder),
+                boxShadow: sel
+                    ? [BoxShadow(
+                        color: color.withValues(alpha: 0.4),
+                        blurRadius: 12, offset: const Offset(0, 4))]
+                    : null,
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 260),
+                  transitionBuilder: (c, a) =>
+                      ScaleTransition(scale: a, child: c),
+                  child: Icon(icon,
+                      key: ValueKey(sel),
+                      size: 16,
+                      color: sel ? Colors.white : color),
+                ),
+                const SizedBox(width: 6),
+                Text(label,
+                    style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: sel
+                            ? Colors.white
+                            : Theme.of(context).colorScheme.onSurface)),
+              ]),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGrupo(String texto) => Padding(
+        padding: const EdgeInsets.fromLTRB(4, 16, 0, 8),
+        child: Semantics(
+          header: true,
+          child: Row(children: [
+            Container(
+              width: 4, height: 14,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: AppTokens.gradientOf(
+                      Theme.of(context).colorScheme.primary),
+                  begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                ),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(texto.toUpperCase(),
+                style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.1,
+                    color: context.tokens.muted)),
+          ]),
+        ),
+      );
+
+  /// Panel deslizable con el detalle completo de la notificación.
+  void _mostrarDetalle(AppNotification notif) {
+    setState(() => notif.isRead = true);
+    final color = notif.type.color;
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 4, 24, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                IconMedallion(notif.type.icon,
+                    size: 56,
+                    colors: AppTokens.gradientOf(color),
+                    motion: notif.type.motion),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(notif.type.label,
+                          style: GoogleFonts.poppins(
+                              fontSize: 11, color: color,
+                              fontWeight: FontWeight.w600)),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(_timeAgo(notif.time),
+                        style: GoogleFonts.poppins(
+                            fontSize: 12, color: context.tokens.muted)),
+                  ]),
+                ),
+              ]),
+              const SizedBox(height: 18),
+              Text(notif.title,
+                  style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w700, fontSize: 17)),
+              const SizedBox(height: 8),
+              Text(notif.body,
+                  style: GoogleFonts.poppins(
+                      fontSize: 13.5, color: context.tokens.muted, height: 1.55)),
+              const SizedBox(height: 22),
+              AppButton(
+                label: 'Entendido',
+                icon: Icons.check_rounded,
+                expand: true,
+                onPressed: () => Navigator.pop(ctx),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNotifTile(AppNotification notif) {
+    final primary = Theme.of(context).colorScheme.primary;
+    final t = context.tokens;
+    final color = notif.type.color;
+
+    Widget fondoSwipe(Alignment al, IconData ic, String txt, Color c) =>
+        Container(
+          alignment: al,
+          padding: const EdgeInsets.symmetric(horizontal: 22),
+          decoration: BoxDecoration(
+            color: c.withValues(alpha: 0.18),
+            borderRadius: BorderRadius.circular(AppTokens.radiusCard),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              MotionIcon(ic, color: c, size: 22, motion: IconMotion.pulse),
+              const SizedBox(width: 8),
+              Text(txt,
+                  style: GoogleFonts.poppins(
+                      fontSize: 12, fontWeight: FontWeight.w700, color: c)),
+            ],
+          ),
+        );
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Dismissible(
+        key: ValueKey(notif.id),
+        background: fondoSwipe(Alignment.centerLeft, Icons.done_rounded,
+            'Leída', t.success),
+        secondaryBackground: fondoSwipe(Alignment.centerRight,
+            Icons.delete_sweep_rounded, 'Descartar', t.danger),
+        confirmDismiss: (dir) async {
+          if (dir == DismissDirection.startToEnd) {
+            setState(() => notif.isRead = true);
+            return false; // solo se marca; la tarjeta permanece
+          }
+          return true;
+        },
+        onDismissed: (_) => setState(() => _notifs.remove(notif)),
+        child: Semantics(
+          button: true,
+          label: '${notif.type.label}${notif.isRead ? '' : ', sin leer'}. '
+              '${notif.title}. ${_timeAgo(notif.time)}. '
+              'Desliza para marcar como leída o descartar.',
+          child: ExcludeSemantics(
+            child: AppCard(
+              blur: false,
+              tint: notif.isRead ? null : color,
+              onTap: () => _mostrarDetalle(notif),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  IconMedallion(notif.type.icon,
+                      size: 46,
+                      colors: AppTokens.gradientOf(color),
+                      motion: notif.isRead ? IconMotion.none : notif.type.motion,
+                      orbit: !notif.isRead,
+                      ping: !notif.isRead),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: color.withValues(alpha: 0.14),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(notif.type.label,
+                                style: GoogleFonts.poppins(
+                                    fontSize: 10,
+                                    color: color,
+                                    fontWeight: FontWeight.w700)),
+                          ),
+                          const Spacer(),
+                          Text(_timeAgo(notif.time),
+                              style: GoogleFonts.poppins(
+                                  fontSize: 12, color: t.muted)),
+                          if (!notif.isRead) ...[
+                            const SizedBox(width: 8),
+                            _PuntoVivo(color: primary),
+                          ],
+                        ]),
+                        const SizedBox(height: 6),
+                        Text(notif.title,
+                            style: GoogleFonts.poppins(
+                                fontWeight: notif.isRead
+                                    ? FontWeight.w500
+                                    : FontWeight.w700,
+                                fontSize: 14)),
+                        const SizedBox(height: 4),
+                        Text(notif.body,
+                            style: GoogleFonts.poppins(
+                                fontSize: 12, color: t.muted, height: 1.4),
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildShimmer() {
+    return Semantics(
+      label: 'Cargando notificaciones',
+      child: ExcludeSemantics(
+        child: ListView.separated(
+          padding: const EdgeInsets.all(AppTokens.pagePadding),
+          itemCount: 5,
+          separatorBuilder: (_, __) => const SizedBox(height: 10),
+          itemBuilder: (_, __) => const SkeletonBox(height: 84),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmpty() => const EmptyState(
+        icon: Icons.notifications_off_rounded,
+        message: 'Sin notificaciones.\nCuando haya actividades o calificaciones '
+            'nuevas aparecerán aquí.',
+      );
+
+  Widget _buildError() => ErrorState(
+        message: 'No se pudieron cargar las notificaciones.',
+        onRetry: _cargarNotificaciones,
+      );
 
   String _timeAgo(DateTime t) {
     final diff = DateTime.now().difference(t);
@@ -757,56 +903,102 @@ class _NotificationBellState extends State<NotificationBell>
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        IconButton(
-          tooltip: 'Notificaciones',
-          // Bug 5 — campana con animación shake al recibir notificación nueva
-          icon: AnimatedBuilder(
-            animation: _shakeAnim,
-            builder: (_, child) => Transform.rotate(
-              angle: _shakeAnim.value,
-              child: child,
-            ),
-            child: const Icon(Icons.notifications_rounded, color: Colors.white),
-          ),
-          onPressed: () async {
-            // Capturar navigator antes de cualquier await
-            final nav = Navigator.of(context);
-            await _marcarLeidas();
-            await nav.push(
-              MaterialPageRoute(
-                builder: (_) => NotificationsPanel(
-                  userId: widget.userId,
-                  userRol: widget.userRol,
-                ),
-              ),
-            );
-          },
-        ),
-        if (_count > 0)
-          Positioned(
-            right: 6,
-            top: 6,
-            child: Container(
-              padding: const EdgeInsets.all(3),
-              decoration: const BoxDecoration(
-                color: Color(0xFFE53935),
-                shape: BoxShape.circle,
-              ),
-              constraints:
-                  const BoxConstraints(minWidth: 18, minHeight: 18),
-              child: Text(
-                _count > 9 ? '9+' : '$_count',
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w800),
-                textAlign: TextAlign.center,
+    // La campana suena sola al llegar una notificación y también al tocarla.
+    return AnimatedBuilder(
+      animation: _shakeAnim,
+      builder: (_, child) => Transform.rotate(
+        angle: _shakeAnim.value,
+        alignment: Alignment.topCenter,
+        child: child,
+      ),
+      child: AnimatedIconButton(
+        tooltip: 'Notificaciones',
+        icon: Icons.notifications_rounded,
+        reaction: IconReaction.ring,
+        color: Colors.white,
+        badge: _count,
+        onPressed: () async {
+          // Capturar navigator antes de cualquier await
+          final nav = Navigator.of(context);
+          await _marcarLeidas();
+          await nav.push(
+            MaterialPageRoute(
+              builder: (_) => NotificationsPanel(
+                userId: widget.userId,
+                userRol: widget.userRol,
               ),
             ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Entrada con deslizamiento y fundido; [delay] escalona listas.
+class _Entrada extends StatelessWidget {
+  const _Entrada({required this.child, this.delay = Duration.zero});
+  final Widget child;
+  final Duration delay;
+
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) return child;
+    final total = 420 + delay.inMilliseconds;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: Duration(milliseconds: total),
+      curve: Interval(delay.inMilliseconds / total, 1, curve: Curves.easeOutCubic),
+      builder: (_, v, c) => Opacity(
+        opacity: v.clamp(0.0, 1.0),
+        child: Transform.translate(offset: Offset(24 * (1 - v), 0), child: c),
+      ),
+      child: child,
+    );
+  }
+}
+
+/// Punto de "sin leer" con latido y onda.
+class _PuntoVivo extends StatefulWidget {
+  const _PuntoVivo({required this.color});
+  final Color color;
+
+  @override
+  State<_PuntoVivo> createState() => _PuntoVivoState();
+}
+
+class _PuntoVivoState extends State<_PuntoVivo>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1600))
+    ..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 16, height: 16,
+      child: AnimatedBuilder(
+        animation: _c,
+        builder: (_, __) => Stack(alignment: Alignment.center, children: [
+          Container(
+            width: 8 + 8 * _c.value, height: 8 + 8 * _c.value,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: widget.color.withValues(alpha: 0.4 * (1 - _c.value)),
+            ),
           ),
-      ],
+          Container(
+            width: 8, height: 8,
+            decoration: BoxDecoration(color: widget.color, shape: BoxShape.circle),
+          ),
+        ]),
+      ),
     );
   }
 }

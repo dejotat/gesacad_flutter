@@ -5,6 +5,9 @@ import '../../services/api_service.dart';
 import '../../models/course_model.dart';
 import '../../models/user_model.dart';
 import '../../widgets/course_card.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+import '../../widgets/ui/ui.dart';
+import '../../config/app_tokens.dart';
 
 /// Pantalla de gestión de cursos — diseño moderno con grid compacto.
 class AdminCourses extends StatefulWidget {
@@ -65,11 +68,11 @@ class _AdminCoursesState extends State<AdminCourses> {
           child: Container(
             constraints: const BoxConstraints(maxWidth: 480, maxHeight: 640),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: Theme.of(context).dialogTheme.backgroundColor,
               borderRadius: BorderRadius.circular(28),
               boxShadow: [
                 BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
+                    color: Colors.black.withValues(alpha: 0.2),
                     blurRadius: 40,
                     offset: const Offset(0, 16))
               ],
@@ -82,7 +85,7 @@ class _AdminCoursesState extends State<AdminCourses> {
                   padding: const EdgeInsets.all(22),
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Color(0xFF0052D4), Color(0xFF6FB1FC)],
+                      colors: [Color(0xFF1E40AF), Color(0xFF1D4ED8)],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -95,16 +98,17 @@ class _AdminCoursesState extends State<AdminCourses> {
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                        color: Colors.white.withValues(alpha: 0.2),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.add_circle_rounded,
-                          color: Colors.white, size: 24),
+                      child: const MotionIcon(Icons.add_circle_rounded,
+                          color: Colors.white, size: 24,
+                          motion: IconMotion.pulse, halo: true),
                     ),
                     const SizedBox(width: 14),
                     Column(crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                      Text('Crear Curso',
+                      Text('Crear Materia',
                           style: GoogleFonts.poppins(
                               color: Colors.white,
                               fontSize: 18,
@@ -131,13 +135,13 @@ class _AdminCoursesState extends State<AdminCourses> {
                             labelText: 'Nombre del curso',
                             labelStyle: GoogleFonts.poppins(fontSize: 13),
                             prefixIcon: const Icon(Icons.menu_book_rounded,
-                                color: Color(0xFF0052D4)),
+                                color: Color(0xFF1E40AF)),
                             border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(14)),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(14),
                               borderSide: const BorderSide(
-                                  color: Color(0xFF0052D4), width: 2),
+                                  color: Color(0xFF1E40AF), width: 2),
                             ),
                           ),
                           validator: (v) =>
@@ -151,13 +155,13 @@ class _AdminCoursesState extends State<AdminCourses> {
                             labelText: 'Código del curso',
                             labelStyle: GoogleFonts.poppins(fontSize: 13),
                             prefixIcon: const Icon(Icons.tag_rounded,
-                                color: Color(0xFF6FB1FC)),
+                                color: Color(0xFF1D4ED8)),
                             border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(14)),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(14),
                               borderSide: const BorderSide(
-                                  color: Color(0xFF6FB1FC), width: 2),
+                                  color: Color(0xFF1D4ED8), width: 2),
                             ),
                           ),
                           validator: (v) =>
@@ -168,7 +172,7 @@ class _AdminCoursesState extends State<AdminCourses> {
                             style: GoogleFonts.poppins(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 13,
-                                color: const Color(0xFF1E1B4B))),
+                                color: Theme.of(context).colorScheme.onSurface)),
                         const SizedBox(height: 8),
                         _teachers.isEmpty
                             ? _emptyChip('No hay profesores registrados')
@@ -183,7 +187,7 @@ class _AdminCoursesState extends State<AdminCourses> {
                                       borderRadius: BorderRadius.circular(14)),
                                   prefixIcon: const Icon(
                                       Icons.school_rounded,
-                                      color: Color(0xFF059669)),
+                                      color: Color(0xFF047857)),
                                   isDense: true,
                                 ),
                                 items: _teachers
@@ -203,20 +207,20 @@ class _AdminCoursesState extends State<AdminCourses> {
                               style: GoogleFonts.poppins(
                                   fontWeight: FontWeight.w700,
                                   fontSize: 13,
-                                  color: const Color(0xFF1E1B4B))),
+                                  color: Theme.of(context).colorScheme.onSurface)),
                           const Spacer(),
                           Container(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 2),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF2563EB).withOpacity(0.1),
+                              color: const Color(0xFF1D4ED8).withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Text(
                               '${selectedStudents.length} selec.',
                               style: GoogleFonts.poppins(
                                   fontSize: 11,
-                                  color: const Color(0xFF2563EB),
+                                  color: const Color(0xFF1D4ED8),
                                   fontWeight: FontWeight.w600),
                             ),
                           ),
@@ -229,7 +233,7 @@ class _AdminCoursesState extends State<AdminCourses> {
                                     const BoxConstraints(maxHeight: 180),
                                 decoration: BoxDecoration(
                                   border: Border.all(
-                                      color: Colors.grey.shade200, width: 1.5),
+                                      color: context.tokens.border, width: 1.5),
                                   borderRadius: BorderRadius.circular(14),
                                 ),
                                 child: ListView(
@@ -243,7 +247,7 @@ class _AdminCoursesState extends State<AdminCourses> {
                                             value: selectedStudents
                                                 .contains(s.id),
                                             activeColor:
-                                                const Color(0xFF2563EB),
+                                                const Color(0xFF1D4ED8),
                                             onChanged: (v) => setInner(() {
                                               if (v == true) {
                                                 selectedStudents.add(s.id);
@@ -282,27 +286,12 @@ class _AdminCoursesState extends State<AdminCourses> {
                     const SizedBox(width: 12),
                     Expanded(
                       flex: 2,
-                      child: Container(
-                        height: 48,
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF0052D4), Color(0xFF6FB1FC)],
-                          ),
-                          borderRadius: BorderRadius.circular(14),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFF0052D4).withOpacity(0.35),
-                              blurRadius: 12,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: Material(
-                          color: Colors.transparent,
-                          borderRadius: BorderRadius.circular(14),
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(14),
-                            onTap: () async {
+                      child: AppButton(
+                        label: 'Crear Curso',
+                        icon: Icons.add_circle_rounded,
+                        reaction: IconReaction.pop,
+                        expand: true,
+                        onPressed: () async {
                               if (!formKey.currentState!.validate()) return;
                               if (selectedTeacher == null) return;
                               Navigator.pop(ctx);
@@ -321,29 +310,12 @@ class _AdminCoursesState extends State<AdminCourses> {
                               await _load();
                               if (mounted) {
                                 ScaffoldMessenger.of(context)
-                                    .showSnackBar(const SnackBar(
+                                    .showSnackBar(SnackBar(
                                   content: Text('Curso creado exitosamente'),
-                                  backgroundColor: Colors.green,
+                                  backgroundColor: context.tokens.success,
                                 ));
                               }
                             },
-                            child: Center(
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.add_circle_rounded,
-                                      color: Colors.white, size: 18),
-                                  const SizedBox(width: 8),
-                                  Text('Crear Curso',
-                                      style: GoogleFonts.poppins(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 14)),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
                       ),
                     ),
                   ]),
@@ -369,9 +341,10 @@ class _AdminCoursesState extends State<AdminCourses> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration:
-                  BoxDecoration(color: Colors.red.shade50, shape: BoxShape.circle),
-              child: Icon(Icons.delete_forever_rounded,
-                  color: Colors.red.shade600, size: 32),
+                  BoxDecoration(color: context.tokens.danger.withValues(alpha: 0.10), shape: BoxShape.circle),
+              child: MotionIcon(Icons.delete_forever_rounded,
+                  color: context.tokens.danger, size: 32,
+                  motion: IconMotion.wiggle, halo: true),
             ),
             const SizedBox(height: 16),
             Text('Eliminar Curso',
@@ -381,7 +354,7 @@ class _AdminCoursesState extends State<AdminCourses> {
             Text(
               '¿Eliminar "${c.name}"?\nSe eliminarán todas sus actividades y matrículas.',
               style: GoogleFonts.poppins(
-                  fontSize: 13, color: Colors.grey.shade600),
+                  fontSize: 13, color: context.tokens.muted),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
@@ -395,17 +368,13 @@ class _AdminCoursesState extends State<AdminCourses> {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red.shade600,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
+                child: AppButton(
+                  label: 'Eliminar',
+                  icon: Icons.delete_forever_rounded,
+                  reaction: IconReaction.shake,
+                  style: AppButtonStyle.danger,
+                  expand: true,
                   onPressed: () => Navigator.pop(ctx, true),
-                  child: Text('Eliminar',
-                      style: GoogleFonts.poppins(
-                          fontWeight: FontWeight.w700, color: Colors.white)),
                 ),
               ),
             ]),
@@ -417,9 +386,9 @@ class _AdminCoursesState extends State<AdminCourses> {
       await ApiService().deleteCourse(c.id);
       await _load();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('Curso eliminado'),
-          backgroundColor: Colors.orange,
+          backgroundColor: context.tokens.warning,
         ));
       }
     }
@@ -484,11 +453,11 @@ class _AdminCoursesState extends State<AdminCourses> {
             child: Container(
               constraints: const BoxConstraints(maxWidth: 520, maxHeight: 680),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: Theme.of(context).dialogTheme.backgroundColor,
                 borderRadius: BorderRadius.circular(28),
                 boxShadow: [
                   BoxShadow(
-                      color: Colors.black.withOpacity(0.18),
+                      color: Colors.black.withValues(alpha: 0.18),
                       blurRadius: 40,
                       offset: const Offset(0, 16))
                 ],
@@ -499,7 +468,7 @@ class _AdminCoursesState extends State<AdminCourses> {
                   padding: const EdgeInsets.all(22),
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Color(0xFF059669), Color(0xFF0EA5E9)],
+                      colors: [Color(0xFF047857), Color(0xFF0369A1)],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -512,11 +481,12 @@ class _AdminCoursesState extends State<AdminCourses> {
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                        color: Colors.white.withValues(alpha: 0.2),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.edit_rounded,
-                          color: Colors.white, size: 22),
+                      child: const MotionIcon(Icons.edit_rounded,
+                          color: Colors.white, size: 22,
+                          motion: IconMotion.write),
                     ),
                     const SizedBox(width: 14),
                     Column(
@@ -551,7 +521,7 @@ class _AdminCoursesState extends State<AdminCourses> {
                             labelText: 'Nombre del curso',
                             labelStyle: GoogleFonts.poppins(fontSize: 13),
                             prefixIcon: const Icon(Icons.menu_book_rounded,
-                                color: Color(0xFF059669)),
+                                color: Color(0xFF047857)),
                             border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(14)),
                           ),
@@ -564,7 +534,7 @@ class _AdminCoursesState extends State<AdminCourses> {
                             labelText: 'Código',
                             labelStyle: GoogleFonts.poppins(fontSize: 13),
                             prefixIcon: const Icon(Icons.tag_rounded,
-                                color: Color(0xFF0EA5E9)),
+                                color: Color(0xFF0369A1)),
                             border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(14)),
                           ),
@@ -585,7 +555,7 @@ class _AdminCoursesState extends State<AdminCourses> {
                                       borderRadius: BorderRadius.circular(14)),
                                   prefixIcon: const Icon(
                                       Icons.person_rounded,
-                                      color: Color(0xFF059669)),
+                                      color: Color(0xFF047857)),
                                 ),
                                 hint: Text('Seleccionar profesor',
                                     style: GoogleFonts.poppins(fontSize: 13)),
@@ -609,13 +579,13 @@ class _AdminCoursesState extends State<AdminCourses> {
                                 horizontal: 8, vertical: 2),
                             decoration: BoxDecoration(
                               color:
-                                  const Color(0xFF059669).withOpacity(0.1),
+                                  const Color(0xFF047857).withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Text('${selectedStudents.length} selec.',
                                 style: GoogleFonts.poppins(
                                     fontSize: 11,
-                                    color: const Color(0xFF059669),
+                                    color: const Color(0xFF047857),
                                     fontWeight: FontWeight.w600)),
                           ),
                         ]),
@@ -642,14 +612,14 @@ class _AdminCoursesState extends State<AdminCourses> {
                           height: 160,
                           decoration: BoxDecoration(
                             border: Border.all(
-                                color: Colors.grey.shade200, width: 1.5),
+                                color: context.tokens.border, width: 1.5),
                             borderRadius: BorderRadius.circular(14),
                           ),
                           child: visibleStudents.isEmpty
                               ? Center(
                                   child: Text('Sin resultados',
                                       style: GoogleFonts.poppins(
-                                          color: Colors.grey)))
+                                          color: context.tokens.muted)))
                               : ListView.builder(
                                   itemCount: visibleStudents.length,
                                   itemBuilder: (_, i) {
@@ -659,7 +629,7 @@ class _AdminCoursesState extends State<AdminCourses> {
                                     return CheckboxListTile(
                                       dense: true,
                                       value: sel,
-                                      activeColor: const Color(0xFF059669),
+                                      activeColor: const Color(0xFF047857),
                                       title: Text(s.username,
                                           style: GoogleFonts.poppins(
                                               fontSize: 13)),
@@ -693,27 +663,12 @@ class _AdminCoursesState extends State<AdminCourses> {
                     const SizedBox(width: 12),
                     Expanded(
                       flex: 2,
-                      child: Container(
-                        height: 48,
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF059669), Color(0xFF0EA5E9)],
-                          ),
-                          borderRadius: BorderRadius.circular(14),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFF059669).withOpacity(0.35),
-                              blurRadius: 12,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: Material(
-                          color: Colors.transparent,
-                          borderRadius: BorderRadius.circular(14),
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(14),
-                            onTap: () async {
+                      child: AppButton(
+                        label: 'Guardar cambios',
+                        icon: Icons.save_rounded,
+                        reaction: IconReaction.bounce,
+                        expand: true,
+                        onPressed: () async {
                               Navigator.pop(ctx);
                               await ApiService().editCourse(
                                   c.id,
@@ -728,29 +683,12 @@ class _AdminCoursesState extends State<AdminCourses> {
                               await _load();
                               if (mounted) {
                                 ScaffoldMessenger.of(context)
-                                    .showSnackBar(const SnackBar(
+                                    .showSnackBar(SnackBar(
                                   content: Text('Curso actualizado'),
-                                  backgroundColor: Colors.green,
+                                  backgroundColor: context.tokens.success,
                                 ));
                               }
                             },
-                            child: Center(
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.save_rounded,
-                                      color: Colors.white, size: 18),
-                                  const SizedBox(width: 8),
-                                  Text('Guardar cambios',
-                                      style: GoogleFonts.poppins(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 14)),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
                       ),
                     ),
                   ]),
@@ -767,13 +705,13 @@ class _AdminCoursesState extends State<AdminCourses> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
+        color: context.tokens.border.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: context.tokens.border),
       ),
       child: Text(text,
           style: GoogleFonts.poppins(
-              fontSize: 13, color: Colors.grey.shade500)),
+              fontSize: 13, color: context.tokens.muted)),
     );
   }
 
@@ -781,116 +719,105 @@ class _AdminCoursesState extends State<AdminCourses> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F4FF),
       appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-        flexibleSpace: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Color(0xFF0052D4), Color(0xFF6FB1FC)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-        ),
-        title: Text('Gestión de Cursos',
-            style: GoogleFonts.poppins(
-                color: Colors.white, fontWeight: FontWeight.w700)),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+        title: const Row(mainAxisSize: MainAxisSize.min, children: [
+          MotionIcon(PhosphorIconsRegular.books,
+              size: 22, motion: IconMotion.float),
+          SizedBox(width: 8),
+          Flexible(child: Text('Gestión de Cursos', overflow: TextOverflow.ellipsis)),
+        ]),
+        leading: AnimatedIconButton(
+          tooltip: 'Regresar',
+          icon: Icons.arrow_back_rounded,
+          reaction: IconReaction.nudge,
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
-          Container(
-            margin: const EdgeInsets.only(right: 16, top: 8, bottom: 8),
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              '${_courses.length} cursos',
-              style: GoogleFonts.poppins(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600),
+          Semantics(
+            label: '${_courses.length} cursos',
+            child: ExcludeSemantics(
+              child: Container(
+                margin: const EdgeInsets.only(right: 16, top: 10, bottom: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  '${_courses.length} cursos',
+                  style: GoogleFonts.poppins(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600),
+                ),
+              ),
             ),
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showAddCourse,
-        backgroundColor: const Color(0xFF0052D4),
-        elevation: 6,
-        icon: const Icon(Icons.add_rounded, color: Colors.white),
-        label: Text('Nuevo Curso',
-            style: GoogleFonts.poppins(
-                color: Colors.white, fontWeight: FontWeight.w700)),
+        icon: const MotionIcon(PhosphorIconsRegular.plus,
+            size: 22, motion: IconMotion.tada),
+        label: Text('Nueva Materia',
+            style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
       ),
-      body: _loading
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const CircularProgressIndicator(color: Color(0xFF0052D4)),
-                  const SizedBox(height: 16),
-                  Text('Cargando cursos...',
-                      style: GoogleFonts.poppins(color: Colors.grey)),
-                ],
+      body: LogoBackdrop(child: _loading
+          ? Semantics(
+              label: 'Cargando cursos',
+              child: ExcludeSemantics(
+                child: GridView.count(
+                  padding: const EdgeInsets.all(16),
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 14,
+                  mainAxisSpacing: 14,
+                  childAspectRatio: 1.1,
+                  children: List.generate(
+                      4, (_) => const SkeletonBox(height: 160)),
+                ),
               ),
             )
           : _courses.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.menu_book_outlined,
-                          size: 80, color: Colors.grey.shade300),
-                      const SizedBox(height: 16),
-                      Text('No hay cursos registrados',
-                          style: GoogleFonts.poppins(
-                              color: Colors.grey.shade400,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600)),
-                      const SizedBox(height: 8),
-                      Text('Usa el botón + para crear uno',
-                          style: GoogleFonts.poppins(
-                              color: Colors.grey.shade400, fontSize: 13)),
-                    ],
-                  ),
+              ? const EmptyState(
+                  icon: PhosphorIconsRegular.books,
+                  message: 'No hay cursos registrados.\nUsa el botón "Nueva Materia" para crear uno.',
                 )
-              : LayoutBuilder(builder: (ctx, constraints) {
-                  final cross = constraints.maxWidth > 1100
-                      ? 5
-                      : constraints.maxWidth > 800
-                          ? 4
-                          : constraints.maxWidth > 550
-                              ? 3
-                              : constraints.maxWidth > 380
-                                  ? 2
-                                  : 1;
-                  return GridView.builder(
-                    padding: const EdgeInsets.all(16).copyWith(bottom: 90),
-                    gridDelegate:
-                        SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: cross,
-                      crossAxisSpacing: 14,
-                      mainAxisSpacing: 14,
-                      childAspectRatio: 1.1,
-                    ),
-                    itemCount: _courses.length,
-                    itemBuilder: (ctx, i) => CourseCard(
-                      course: _courses[i],
-                      onTap: () {},
-                      onEdit: () => _showEditCourse(_courses[i]),
-                      onDelete: () => _deleteCourse(_courses[i]),
-                      index: i,
-                      hideOpenButton: true, // Admin no necesita abrir el curso
-                    ),
-                  );
-                }),
+              : Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1200),
+                    child: LayoutBuilder(builder: (ctx, constraints) {
+                      final cross = constraints.maxWidth > 1100
+                          ? 5
+                          : constraints.maxWidth > 800
+                              ? 4
+                              : constraints.maxWidth > 550
+                                  ? 3
+                                  : constraints.maxWidth > 380
+                                      ? 2
+                                      : 1;
+                      return GridView.builder(
+                        padding: const EdgeInsets.all(16).copyWith(bottom: 90),
+                        gridDelegate:
+                            SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: cross,
+                          crossAxisSpacing: 14,
+                          mainAxisSpacing: 14,
+                          childAspectRatio: 1.1,
+                        ),
+                        itemCount: _courses.length,
+                        itemBuilder: (ctx, i) => CourseCard(
+                          course: _courses[i],
+                          onTap: () {},
+                          onEdit: () => _showEditCourse(_courses[i]),
+                          onDelete: () => _deleteCourse(_courses[i]),
+                          index: i,
+                          hideOpenButton: true, // Admin no necesita abrir el curso
+                        ),
+                      );
+                    }),
+                  ),
+                )),
     );
   }
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -5,7 +6,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../models/activity_model.dart';
 import '../../services/api_service.dart';
+import '../../services/connectivity_service.dart';
+import '../../services/offline_queue.dart';
+import '../../widgets/offline_banner.dart';
 import '../../helpers/file_viewer_helper.dart';
+import '../../widgets/ui/ui.dart';
+import '../../config/app_tokens.dart';
 
 /// Pantalla de detalle de actividad para el estudiante — estilo Google Classroom.
 ///
@@ -47,6 +53,9 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
   bool _clearingSubmission = false; // CU-05 FA-04: true mientras se limpia una entrega anterior
   int _uploadedCount = 0;
 
+  /// Hay archivos de esta actividad guardados en el dispositivo esperando conexión.
+  bool _queuedLocally = false;
+
   // ── Archivos pendientes (seleccionados, aún NO enviados) ──────────────────
   final List<PlatformFile> _pendingFiles = [];
   final List<Uint8List> _pendingBytes = [];
@@ -65,10 +74,41 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
     // Re-consultar estado actual: evita "Sin enviar" cuando ya hay entrega
     // en el servidor pero el padre pasó un modelo desactualizado.
     _refreshActivityState();
+    _queuedLocally = OfflineQueue.instance
+        .submissionsFor(widget.activity.id, widget.userId)
+        .isNotEmpty;
+    OfflineQueue.instance.operations.addListener(_onQueueChanged);
   }
+
+  /// Cuando la cola termina de enviar la entrega, se consulta el estado real.
+  void _onQueueChanged() {
+    if (!mounted || !_queuedLocally) return;
+    final quedan = OfflineQueue.instance
+        .submissionsFor(widget.activity.id, widget.userId)
+        .isNotEmpty;
+    if (!quedan) {
+      setState(() => _queuedLocally = false);
+      _refreshActivityState();
+    } else {
+      setState(() {}); // actualiza la lista de archivos en espera
+    }
+  }
+
+  /// Guarda el archivo [i] en la cola para enviarlo al volver la conexión.
+  Future<void> _encolar(int i, String comentario, {bool uncertain = false}) =>
+      OfflineQueue.instance.enqueueSubmission(
+        activityId: _act.id,
+        userId: widget.userId,
+        fileName: _pendingFiles[i].name,
+        bytes: _pendingBytes[i],
+        comment: comentario,
+        uncertain: uncertain,
+        label: 'Entrega: ${_act.tittle} · ${_pendingFiles[i].name}',
+      );
 
   @override
   void dispose() {
+    OfflineQueue.instance.operations.removeListener(_onQueueChanged);
     _commentCtrl.dispose();
     super.dispose();
   }
@@ -91,7 +131,7 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
 
   Future<void> _pickFile() async {
     if (_act.isPastDue) {
-      _showSnack('El plazo de entrega ha vencido', Colors.red);
+      _showSnack('El plazo de entrega ha vencido', context.tokens.danger);
       return;
     }
     final result = await FilePicker.platform.pickFiles(
@@ -103,18 +143,18 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
     final file = result.files.first;
     final Uint8List? bytes = file.bytes;
     if (bytes == null) {
-      _showSnack('No se pudo leer el archivo seleccionado', Colors.red);
+      _showSnack('No se pudo leer el archivo seleccionado', context.tokens.danger);
       return;
     }
     if (file.size > _maxFileSizeBytes) {
       final mb = (file.size / 1024 / 1024).toStringAsFixed(1);
-      _showSnack('El archivo ($mb MB) supera el límite de 5 MB', Colors.red);
+      _showSnack('El archivo ($mb MB) supera el límite de 5 MB', context.tokens.danger);
       return;
     }
     // Verificar si ya existe el mismo archivo en la lista pendiente.
     final yaExiste = _pendingFiles.any((f) => f.name == file.name);
     if (yaExiste) {
-      _showSnack('Ya agregaste ese archivo', Colors.orange);
+      _showSnack('Ya agregaste ese archivo', context.tokens.warning);
       return;
     }
     setState(() {
@@ -134,7 +174,7 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
 
   Future<void> _enviarEntrega() async {
     if (_pendingFiles.isEmpty) {
-      _showSnack('Selecciona al menos un archivo antes de enviar', Colors.orange);
+      _showSnack('Selecciona al menos un archivo antes de enviar', context.tokens.warning);
       return;
     }
     setState(() { _uploading = true; _uploadedCount = 0; });
@@ -147,16 +187,25 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
     );
 
     int exitosos = 0;
+    int encolados = 0;
     final comment = _commentCtrl.text.trim();
+    final conn = ConnectivityService.instance;
 
     for (int i = 0; i < _pendingFiles.length; i++) {
+      final comentario = (i == 0) ? comment : ''; // comentario solo en el primer archivo
+      // Sin conexión conocida: guardar directo, sin esperar un timeout de 30 s.
+      if (!conn.online.value) {
+        await _encolar(i, comentario);
+        encolados++;
+        continue;
+      }
       try {
         final statusCode = await ApiService().addResourceBytes(
           _act.id,
           widget.userId,
           _pendingBytes[i],
           _pendingFiles[i].name,
-          comment: (i == 0) ? comment : '', // comentario solo en el primer archivo
+          comment: comentario,
         );
         developer.log(
           '[ActivityDetailScreen] Archivo ${_pendingFiles[i].name} → '
@@ -173,10 +222,33 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
           name: 'GESACAD.Upload',
           error: e,
         );
+        if (isNetworkError(e)) {
+          // Un timeout pudo llegar al servidor: la cola lo confirma antes de reenviar.
+          await _encolar(i, comentario, uncertain: e is TimeoutException);
+          encolados++;
+        }
       }
     }
 
     if (!mounted) return;
+
+    if (encolados > 0) {
+      setState(() {
+        _uploading = false;
+        _queuedLocally = true;
+        if (exitosos > 0) _uploadSuccess = true;
+        _pendingFiles.clear();
+        _pendingBytes.clear();
+      });
+      _showSnack(
+          exitosos > 0
+              ? '$exitosos enviado(s); $encolados guardado(s) en tu dispositivo '
+                  'y se enviarán al recuperar la conexión.'
+              : 'Sin conexión: tu entrega quedó guardada y se enviará '
+                  'automáticamente al recuperar internet.',
+          context.tokens.warning);
+      return;
+    }
 
     if (exitosos > 0) {
       setState(() {
@@ -187,12 +259,12 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
           ? '¡${exitosos == 1 ? "Archivo enviado" : "$exitosos archivos enviados"} exitosamente! 🎉'
           : '$exitosos de ${_pendingFiles.length} archivos enviados. Verifica tu conexión.';
       _showSnack(txt,
-          exitosos == _pendingFiles.length ? const Color(0xFF2E7D32) : Colors.orange);
+          exitosos == _pendingFiles.length ? context.tokens.success : context.tokens.warning);
       // Actualizar el estado desde el servidor.
       _refreshActivityState();
     } else {
       setState(() => _uploading = false);
-      _showSnack('Error al enviar. Verifica tu conexión e intenta de nuevo.', Colors.red);
+      _showSnack('Error al enviar. Verifica tu conexión e intenta de nuevo.', context.tokens.danger);
     }
   }
 
@@ -215,7 +287,7 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final a = _act;
-    const primary = Color(0xFF1A237E);
+    final primary = Theme.of(context).colorScheme.primary;
 
     // Determinar estado compuesto: entregado si servidor dice sí, o si acabamos
     // de enviar exitosamente en esta sesión.
@@ -223,32 +295,20 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
     final puedeEntregar = !a.isPastDue && !yaEntrego;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
       appBar: AppBar(
-        flexibleSpace: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Color(0xFF1A237E), Color(0xFF3949AB)],
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-            ),
-          ),
-        ),
-        backgroundColor: Colors.transparent,
         title: Semantics(
           label: 'Detalle de actividad: ${a.tittle}',
           child: Text(a.tittle,
               overflow: TextOverflow.ellipsis,
               style: GoogleFonts.poppins(
                   color: Colors.white,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                   fontSize: 15)),
         ),
-        iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           if (!_refreshing)
             IconButton(
-              icon: const Icon(Icons.refresh_rounded, color: Colors.white),
+              icon: const Icon(Icons.refresh_rounded),
               tooltip: 'Actualizar estado',
               onPressed: _refreshActivityState,
             ),
@@ -260,6 +320,9 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
               ? const Center(child: CircularProgressIndicator())
               : SingleChildScrollView(
                   padding: const EdgeInsets.all(16),
+                  child: Center(
+                  child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 760),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -271,7 +334,7 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
                       _buildCard(
                         title: 'Descripción',
                         icon: Icons.description_rounded,
-                        iconColor: Colors.blue.shade700,
+                        iconColor: context.tokens.info,
                         child: Text(
                           a.description.isEmpty
                               ? 'Sin descripción adicional.'
@@ -288,7 +351,7 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
                         _buildCard(
                           title: 'Material del docente',
                           icon: Icons.folder_open_rounded,
-                          iconColor: Colors.deepOrange.shade600,
+                          iconColor: context.tokens.warning,
                           child: _buildTeacherFiles(a.content!, primary),
                         ),
                       if (a.content != null && a.content!.isNotEmpty)
@@ -298,7 +361,7 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
                       _buildCard(
                         title: 'Estado de la entrega',
                         icon: Icons.assignment_turned_in_rounded,
-                        iconColor: Colors.teal,
+                        iconColor: context.tokens.info,
                         child: _buildMoodleTable(a, yaEntrego),
                       ),
                       const SizedBox(height: 12),
@@ -314,11 +377,74 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
                       const SizedBox(height: 80),
                     ],
                   ),
+                  ),
+                  ),
                 ),
           // Nota: marca de agua eliminada — los elementos blancos del
           // AnimatedLogo son invisibles sobre fondo claro. IEEE 830 §3.3.2.
         ],
       ),
+    );
+  }
+
+  /// Entrega guardada localmente: se enviará sola al volver la conexión.
+  Widget _buildQueuedCard() {
+    final t = context.tokens;
+    final ops =
+        OfflineQueue.instance.submissionsFor(_act.id, widget.userId);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AppCard(
+          blur: false,
+          tint: t.warning,
+          padding: const EdgeInsets.all(18),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            IconMedallion(Icons.cloud_upload_rounded,
+                size: 48,
+                colors: AppTokens.gradientOf(t.warning),
+                motion: IconMotion.float,
+                ping: true),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Entrega guardada en tu dispositivo',
+                    style: GoogleFonts.poppins(
+                        fontSize: 14, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                Text(
+                    'Se enviará automáticamente cuando recuperes la conexión. '
+                    'No cierres sesión hasta que se sincronice.',
+                    style: GoogleFonts.poppins(
+                        fontSize: 12, color: t.muted, height: 1.45)),
+                const SizedBox(height: 8),
+                for (final o in ops)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Row(children: [
+                      Icon(Icons.attach_file_rounded, size: 14, color: t.muted),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(o.payload['fileName'] as String,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.poppins(fontSize: 12)),
+                      ),
+                    ]),
+                  ),
+              ]),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 12),
+        AppButton(
+          label: 'Ver estado de sincronización',
+          icon: Icons.sync_rounded,
+          reaction: IconReaction.spin,
+          style: AppButtonStyle.tonal,
+          expand: true,
+          onPressed: mostrarCentroSync,
+        ),
+      ],
     );
   }
 
@@ -330,6 +456,9 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
     if (_uploading) {
       return _buildUploadingIndicator();
     }
+
+    // ── Guardado en el dispositivo, esperando conexión ───────────────────
+    if (_queuedLocally) return _buildQueuedCard();
 
     // ── Éxito reciente (archivos enviados en esta sesión) ─────────────────
     if (_uploadSuccess) {
@@ -352,7 +481,7 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
               button: true,
               child: TextButton.icon(
                 style: TextButton.styleFrom(
-                    foregroundColor: Colors.red.shade600),
+                    foregroundColor: context.tokens.danger),
                 icon: const Icon(Icons.undo_rounded, size: 16),
                 label: Text('Anular entrega',
                     style: GoogleFonts.poppins(fontSize: 12)),
@@ -371,20 +500,20 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
         return Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: Colors.orange.shade50,
+            color: context.tokens.warning.withValues(alpha: 0.10),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.orange.shade200),
+            border: Border.all(color: context.tokens.warning.withValues(alpha: 0.35)),
           ),
           child: Row(children: [
-            const SizedBox(
+            SizedBox(
               width: 22, height: 22,
               child: CircularProgressIndicator(strokeWidth: 2.5,
-                  color: Color(0xFF1A237E)),
+                  color: Theme.of(context).colorScheme.primary),
             ),
             const SizedBox(width: 14),
             Text('Procesando solicitud...',
                 style: GoogleFonts.poppins(
-                    fontSize: 13, color: Colors.grey.shade700)),
+                    fontSize: 13, color: context.tokens.muted)),
           ]),
         );
       }
@@ -426,7 +555,7 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
               button: true,
               child: TextButton.icon(
                 style: TextButton.styleFrom(
-                  foregroundColor: Colors.red.shade600,
+                  foregroundColor: context.tokens.danger,
                 ),
                 icon: const Icon(Icons.undo_rounded, size: 16),
                 label: Text('Anular entrega',
@@ -441,13 +570,13 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
               padding: const EdgeInsets.only(top: 4),
               child: Row(children: [
                 Icon(Icons.lock_rounded,
-                    size: 13, color: Colors.grey.shade500),
+                    size: 13, color: context.tokens.muted),
                 const SizedBox(width: 6),
                 Text(
                   'El docente ya calificó esta entrega.',
                   style: GoogleFonts.poppins(
                       fontSize: 11,
-                      color: Colors.grey.shade500,
+                      color: context.tokens.muted,
                       fontStyle: FontStyle.italic),
                 ),
               ]),
@@ -459,7 +588,7 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
                 'No se pueden editar entregas después de la fecha límite.',
                 style: GoogleFonts.poppins(
                     fontSize: 11,
-                    color: Colors.red.shade600,
+                    color: context.tokens.danger,
                     fontStyle: FontStyle.italic),
               ),
             ),
@@ -476,18 +605,18 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.red.shade50,
+        color: context.tokens.danger.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.red.shade200),
+        border: Border.all(color: context.tokens.danger.withValues(alpha: 0.35)),
       ),
       child: Row(children: [
-        Icon(Icons.lock_clock_rounded, color: Colors.red.shade700, size: 22),
+        Icon(Icons.lock_clock_rounded, color: context.tokens.danger, size: 22),
         const SizedBox(width: 12),
         Expanded(
           child: Text(
             'El plazo de entrega ha vencido. Ya no es posible enviar archivos.',
             style: GoogleFonts.poppins(
-                fontSize: 13, color: Colors.red.shade800),
+                fontSize: 13, color: context.tokens.danger),
           ),
         ),
       ]),
@@ -508,15 +637,15 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color: Colors.blue.shade50,
+                color: context.tokens.info.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.blue.shade200),
+                border: Border.all(color: context.tokens.info.withValues(alpha: 0.35)),
               ),
               child: Row(children: [
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: _fileColor(f.name).withOpacity(0.12),
+                    color: _fileColor(f.name).withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(_fileIcon(f.name),
@@ -531,20 +660,20 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
                           style: GoogleFonts.poppins(
                               fontWeight: FontWeight.w700,
                               fontSize: 13,
-                              color: Colors.blue.shade900),
+                              color: context.tokens.info),
                           overflow: TextOverflow.ellipsis),
                       Text(
                         '${(f.size / 1024).toStringAsFixed(0)} KB  •  '
                         '${f.extension?.toUpperCase() ?? 'FILE'}',
                         style: GoogleFonts.poppins(
-                            fontSize: 11, color: Colors.grey.shade600),
+                            fontSize: 11, color: context.tokens.muted),
                       ),
                     ],
                   ),
                 ),
                 IconButton(
                   tooltip: 'Quitar archivo',
-                  icon: Icon(Icons.close_rounded, color: Colors.red.shade400, size: 18),
+                  icon: Icon(Icons.close_rounded, color: context.tokens.danger, size: 18),
                   onPressed: () => _removePendingFile(i),
                 ),
               ]),
@@ -576,17 +705,17 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
             decoration: InputDecoration(
               labelText: 'Comentario para el profesor (opcional)',
               labelStyle: GoogleFonts.poppins(
-                  fontSize: 13, color: Colors.grey.shade600),
+                  fontSize: 13, color: context.tokens.muted),
               hintText: 'Ej: Este es mi avance del proyecto final...',
               hintStyle: GoogleFonts.poppins(
-                  fontSize: 12, color: Colors.grey.shade400),
+                  fontSize: 12, color: context.tokens.muted),
               border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.grey.shade300)),
+                  borderSide: BorderSide(color: context.tokens.border)),
               focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(
-                      color: Color(0xFF1A237E), width: 2)),
+                  borderSide: BorderSide(
+                      color: Theme.of(context).colorScheme.primary, width: 2)),
               contentPadding: const EdgeInsets.all(14),
               prefixIcon: const Icon(Icons.comment_rounded, size: 20),
             ),
@@ -603,7 +732,7 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14)),
                 elevation: 4,
-                shadowColor: primary.withOpacity(0.4),
+                shadowColor: primary.withValues(alpha: 0.4),
               ),
               icon: const Icon(Icons.send_rounded),
               label: Text('Enviar entrega',
@@ -616,7 +745,7 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
           Text(
             'El archivo se enviará al profesor para su calificación.',
             style:
-                GoogleFonts.poppins(fontSize: 11, color: Colors.grey.shade500),
+                GoogleFonts.poppins(fontSize: 11, color: context.tokens.muted),
             textAlign: TextAlign.center,
           ),
         ] else ...[
@@ -630,7 +759,7 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14)),
                 elevation: 4,
-                shadowColor: primary.withOpacity(0.4),
+                shadowColor: primary.withValues(alpha: 0.4),
               ),
               icon: const Icon(Icons.attach_file_rounded),
               label: Text('Agregar entrega',
@@ -643,7 +772,7 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
           Text(
             'Formatos: PDF, DOC, DOCX, PNG, JPG, ZIP, XLSX, PPTX  •  Máx. 5 MB',
             style: GoogleFonts.poppins(
-                fontSize: 11, color: Colors.grey.shade500),
+                fontSize: 11, color: context.tokens.muted),
             textAlign: TextAlign.center,
           ),
         ],
@@ -655,14 +784,14 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A237E).withOpacity(0.04),
+        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(12),
         border:
-            Border.all(color: const Color(0xFF1A237E).withOpacity(0.15)),
+            Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15)),
       ),
       child: Column(children: [
-        const CircularProgressIndicator(
-            strokeWidth: 3, color: Color(0xFF1A237E)),
+        CircularProgressIndicator(
+            strokeWidth: 3, color: Theme.of(context).colorScheme.primary),
         const SizedBox(height: 14),
         Text(
           _pendingFiles.length > 1
@@ -670,65 +799,55 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
               : 'Enviando "${_pendingFiles.isNotEmpty ? _pendingFiles[0].name : "archivo"}"...',
           style: GoogleFonts.poppins(
               fontSize: 13,
-              color: const Color(0xFF1A237E),
+              color: Theme.of(context).colorScheme.primary,
               fontWeight: FontWeight.w600),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 4),
         Text('Por favor espera, no cierres esta pantalla',
             style: GoogleFonts.poppins(
-                fontSize: 11, color: Colors.grey.shade500)),
+                fontSize: 11, color: context.tokens.muted)),
       ]),
     );
   }
 
   Widget _buildSuccessCard() {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.green.shade600, Colors.green.shade400],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.green.withOpacity(0.3),
-              blurRadius: 14,
-              offset: const Offset(0, 5)),
-        ],
-      ),
-      child: Row(children: [
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.25),
-            shape: BoxShape.circle,
+    final t = context.tokens;
+    return Semantics(
+      liveRegion: true,
+      child: AppCard(
+        blur: false,
+        tint: t.success,
+        padding: const EdgeInsets.all(18),
+        child: Row(children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: t.success.withValues(alpha: 0.16),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.check_circle_rounded, color: t.success, size: 28),
           ),
-          child: const Icon(Icons.check_circle_rounded,
-              color: Colors.white, size: 28),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                _uploadedCount == 1
-                    ? '¡Entrega enviada exitosamente!'
-                    : '¡$_uploadedCount archivos enviados exitosamente!',
-                style: GoogleFonts.poppins(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 14)),
-              Text('El profesor recibirá tu trabajo para calificarlo.',
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _uploadedCount == 1
+                      ? '¡Entrega enviada exitosamente!'
+                      : '¡$_uploadedCount archivos enviados exitosamente!',
                   style: GoogleFonts.poppins(
-                      color: Colors.white.withOpacity(0.8), fontSize: 11)),
-            ],
+                      color: t.success,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14)),
+                Text('El profesor recibirá tu trabajo para calificarlo.',
+                    style: GoogleFonts.poppins(color: t.muted, fontSize: 12)),
+              ],
+            ),
           ),
-        ),
-      ]),
+        ]),
+      ),
     );
   }
 
@@ -746,14 +865,14 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
       children: [
         Text(
           'El docente adjuntó ${urls.length == 1 ? "el siguiente archivo" : "${urls.length} archivos"}:',
-          style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey.shade600),
+          style: GoogleFonts.poppins(fontSize: 12, color: context.tokens.muted),
         ),
         const SizedBox(height: 8),
         ...urls.asMap().entries.map((e) =>
           FileViewerHelper.buildFileCard(
             e.value,
             index: e.key + 1,
-            primaryColor: Colors.deepOrange.shade600,
+            primaryColor: context.tokens.warning,
           ),
         ),
       ],
@@ -781,9 +900,9 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
     if (a.gpa == null) return const SizedBox();
     final aprobado = a.gpa! >= 3.0;
     final colorEstado =
-        aprobado ? Colors.green.shade700 : Colors.red.shade700;
+        aprobado ? context.tokens.success : context.tokens.danger;
     final bgEstado =
-        aprobado ? Colors.green.shade50 : Colors.red.shade50;
+        aprobado ? context.tokens.success.withValues(alpha: 0.10) : context.tokens.danger.withValues(alpha: 0.10);
     final iconEstado =
         aprobado ? Icons.check_circle_rounded : Icons.cancel_rounded;
     return Container(
@@ -792,7 +911,7 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
       decoration: BoxDecoration(
         color: bgEstado,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: colorEstado.withOpacity(0.4)),
+        border: Border.all(color: colorEstado.withValues(alpha: 0.4)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -837,7 +956,7 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Icon(Icons.comment_outlined,
-                    color: colorEstado.withOpacity(0.7), size: 16),
+                    color: colorEstado.withValues(alpha: 0.7), size: 16),
                 const SizedBox(width: 6),
                 Text(
                   'Retroalimentación:',
@@ -856,7 +975,7 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
                 a.teacherComment!,
                 style: GoogleFonts.poppins(
                   fontSize: 13,
-                  color: Colors.grey.shade800,
+                  color: context.tokens.muted,
                   height: 1.5,
                 ),
               ),
@@ -891,7 +1010,7 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: Text('Cancelar',
-                style: GoogleFonts.poppins(color: Colors.grey.shade600)),
+                style: GoogleFonts.poppins(color: context.tokens.muted)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
@@ -917,7 +1036,7 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
                 });
                 _showSnack(
                     'Entrega eliminada. Ahora puedes subir un nuevo archivo.',
-                    Colors.blue.shade700);
+                    context.tokens.info);
                 // Recargar datos del servidor para que el formulario de subida
                 // aparezca (sin recarga, _act sigue mostrando la entrega vieja)
                 await _refreshActivityState();
@@ -926,7 +1045,7 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
                 _showSnack(
                     'No se pudo reemplazar la entrega. '
                     'Verifica que el plazo no haya vencido.',
-                    Colors.red);
+                    context.tokens.danger);
               }
             },
             child: Text('Reemplazar',
@@ -956,11 +1075,11 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: Text('Cancelar',
-                style: GoogleFonts.poppins(color: Colors.grey.shade600)),
+                style: GoogleFonts.poppins(color: context.tokens.muted)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red.shade600,
+              backgroundColor: context.tokens.danger,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10)),
@@ -982,7 +1101,7 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
                 ok
                     ? 'Entrega anulada. Puedes volver a enviar tu trabajo.'
                     : 'Entrega anulada localmente. Verifica tu conexión.',
-                ok ? Colors.orange : Colors.orange.shade300);
+                ok ? context.tokens.warning : context.tokens.warning.withValues(alpha: 0.35));
               // Recargar del servidor para reflejar el estado limpio en la UI
               await _refreshActivityState();
             },
@@ -1002,14 +1121,14 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
         padding:
             const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
-          color: Colors.green.shade100,
+          color: context.tokens.success.withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.green.shade300),
+          border: Border.all(color: context.tokens.success.withValues(alpha: 0.35)),
         ),
         child: Text('Entregado',
             style: GoogleFonts.poppins(
                 fontSize: 11,
-                color: Colors.green.shade800,
+                color: context.tokens.success,
                 fontWeight: FontWeight.w700)),
       );
     }
@@ -1018,28 +1137,28 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
         padding:
             const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
-          color: Colors.red.shade50,
+          color: context.tokens.danger.withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.red.shade200),
+          border: Border.all(color: context.tokens.danger.withValues(alpha: 0.35)),
         ),
         child: Text('Plazo vencido',
             style: GoogleFonts.poppins(
                 fontSize: 11,
-                color: Colors.red.shade700,
+                color: context.tokens.danger,
                 fontWeight: FontWeight.w700)),
       );
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.orange.shade50,
+        color: context.tokens.warning.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.orange.shade200),
+        border: Border.all(color: context.tokens.warning.withValues(alpha: 0.35)),
       ),
       child: Text('Asignado',
           style: GoogleFonts.poppins(
               fontSize: 11,
-              color: Colors.orange.shade800,
+              color: context.tokens.warning,
               fontWeight: FontWeight.w700)),
     );
   }
@@ -1051,7 +1170,7 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
     Color tiempoColor;
     if (a.isPastDue) {
       tiempoRestante = 'El plazo de entrega ha vencido';
-      tiempoColor = Colors.red.shade700;
+      tiempoColor = context.tokens.danger;
     } else if (yaEntrego) {
       try {
         final nowCol  = DateTime.now().toUtc().subtract(const Duration(hours: 5));
@@ -1069,10 +1188,10 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
         } else {
           tiempoRestante = 'Entregado hace $mins minuto${mins == 1 ? '' : 's'}';
         }
-        tiempoColor = Colors.green.shade700;
+        tiempoColor = context.tokens.success;
       } catch (_) {
         tiempoRestante = 'Entregado';
-        tiempoColor = Colors.green.shade700;
+        tiempoColor = context.tokens.success;
       }
     } else {
       try {
@@ -1086,23 +1205,23 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
         if (dias > 0) {
           tiempoRestante = '$dias día${dias == 1 ? '' : 's'} y '
               '$horas hora${horas == 1 ? '' : 's'}';
-          tiempoColor = Colors.teal;
+          tiempoColor = context.tokens.info;
         } else if (horas > 0) {
           // Menos de 1 día: mostrar horas y minutos exactos
           tiempoRestante = '$horas hora${horas == 1 ? '' : 's'} y '
               '$mins minuto${mins == 1 ? '' : 's'}';
-          tiempoColor = Colors.orange.shade700;
+          tiempoColor = context.tokens.warning;
         } else if (mins > 0) {
           // Menos de 1 hora: urgente
           tiempoRestante = '$mins minuto${mins == 1 ? '' : 's'} restantes';
-          tiempoColor = Colors.red.shade600;
+          tiempoColor = context.tokens.danger;
         } else {
           tiempoRestante = 'Cierra en menos de un minuto';
-          tiempoColor = Colors.red.shade600;
+          tiempoColor = context.tokens.danger;
         }
       } catch (_) {
         tiempoRestante = a.closingDate.split('T')[0];
-        tiempoColor = Colors.grey.shade700;
+        tiempoColor = context.tokens.muted;
       }
     }
 
@@ -1112,48 +1231,48 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
         1: FlexColumnWidth(),
       },
       border: TableBorder.all(
-          color: Colors.grey.shade200,
+          color: context.tokens.border,
           borderRadius: BorderRadius.circular(8)),
       children: [
         _tableRow('Estado de la entrega',
             yaEntrego
-                ? _tableValue('Enviado para calificar', Colors.green.shade700,
-                    bg: Colors.green.shade50)
+                ? _tableValue('Enviado para calificar', context.tokens.success,
+                    bg: context.tokens.success.withValues(alpha: 0.10))
                 : a.isPastDue
                     ? _tableValue('No entregado (plazo vencido)',
-                        Colors.red.shade700, bg: Colors.red.shade50)
-                    : _tableValue('Sin enviar', Colors.orange.shade700,
-                        bg: Colors.orange.shade50)),
+                        context.tokens.danger, bg: context.tokens.danger.withValues(alpha: 0.10))
+                    : _tableValue('Sin enviar', context.tokens.warning,
+                        bg: context.tokens.warning.withValues(alpha: 0.10))),
         _tableRow('Estado de la calificación',
             a.gpa != null
                 ? _tableValue(
                     '${a.gpa!.toStringAsFixed(2)} / 5.00  •  '
                     '${a.gpa! >= 4.0 ? 'Excelente' : a.gpa! >= 3.0 ? 'Aprobado' : 'Reprobado'}',
                     a.gpa! >= 3.0
-                        ? Colors.green.shade700
-                        : Colors.red.shade700,
+                        ? context.tokens.success
+                        : context.tokens.danger,
                     bg: a.gpa! >= 3.0
-                        ? Colors.green.shade50
-                        : Colors.red.shade50)
+                        ? context.tokens.success.withValues(alpha: 0.10)
+                        : context.tokens.danger.withValues(alpha: 0.10))
                 : Text('Sin calificar',
                     style: GoogleFonts.poppins(
-                        fontSize: 13, color: Colors.grey.shade600))),
+                        fontSize: 13, color: context.tokens.muted))),
         _tableRow('Tiempo restante',
             Text(tiempoRestante,
                 style: GoogleFonts.poppins(fontSize: 13, color: tiempoColor))),
         _tableRow('Apertura',
             Text(a.startDate.split('T')[0],
                 style: GoogleFonts.poppins(
-                    fontSize: 13, color: Colors.grey.shade700))),
+                    fontSize: 13, color: context.tokens.muted))),
         _tableRow('Cierre',
             Text(a.closingDate.split('T')[0],
                 style: GoogleFonts.poppins(
-                    fontSize: 13, color: Colors.grey.shade700))),
+                    fontSize: 13, color: context.tokens.muted))),
         if (yaEntrego && a.dateResolution != null)
           _tableRow('Última modificación',
               Text(a.dateResolution!.split('T')[0],
                   style: GoogleFonts.poppins(
-                      fontSize: 13, color: Colors.grey.shade700))),
+                      fontSize: 13, color: context.tokens.muted))),
         _tableRow('Archivos enviados',
             yaEntrego && (a.resolution ?? '').isNotEmpty
                 ? (() {
@@ -1209,7 +1328,7 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
                       )
                     : Text('—',
                         style: GoogleFonts.poppins(
-                            fontSize: 13, color: Colors.grey.shade400)))),
+                            fontSize: 13, color: context.tokens.muted)))),
       ],
     );
   }
@@ -1218,23 +1337,13 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
 
   Widget _buildHeader(ActivityModel a, Color primary) {
     final typeColor = _tipoColor(a.type);
-    return Container(
+    return AppCard(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.06),
-              blurRadius: 12,
-              offset: const Offset(0, 4))
-        ],
-      ),
       child: Row(children: [
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: typeColor.withOpacity(0.12),
+            color: typeColor.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(_tipoIcono(a.type), color: typeColor, size: 30),
@@ -1246,15 +1355,13 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
             children: [
               Text(a.tittle,
                   style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.w700, fontSize: 17)),
+                      fontWeight: FontWeight.w600, fontSize: 17)),
               const SizedBox(height: 4),
-              Row(children: [
+              Wrap(spacing: 8, runSpacing: 4, children: [
                 _chip(_tipoLabel(a.type), typeColor),
-                const SizedBox(width: 8),
                 _chip('${(a.weighting * 100).toStringAsFixed(0)}%',
-                    Colors.indigo),
-                const SizedBox(width: 8),
-                _chip('Semana ${a.week}', Colors.grey.shade600),
+                    Theme.of(context).colorScheme.primary),
+                _chip('Semana ${a.week}', context.tokens.muted),
               ]),
             ],
           ),
@@ -1279,20 +1386,20 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.blue.shade50,
+          color: context.tokens.info.withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.blue.shade200),
+          border: Border.all(color: context.tokens.info.withValues(alpha: 0.35)),
         ),
         child: Row(children: [
           Icon(FileViewerHelper.fileIcon(url), color: FileViewerHelper.fileColor(url), size: 22),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(name, style: GoogleFonts.poppins(fontSize: 13, color: Colors.blue.shade800,
+            Text(name, style: GoogleFonts.poppins(fontSize: 13, color: context.tokens.info,
                 fontWeight: FontWeight.w600, decoration: TextDecoration.underline,
-                decorationColor: Colors.blue.shade300), overflow: TextOverflow.ellipsis),
-            Text('Toca para visualizar', style: GoogleFonts.poppins(fontSize: 10, color: Colors.blue.shade300)),
+                decorationColor: context.tokens.info.withValues(alpha: 0.35)), overflow: TextOverflow.ellipsis),
+            Text('Toca para visualizar', style: GoogleFonts.poppins(fontSize: 10, color: context.tokens.info.withValues(alpha: 0.35))),
           ])),
-          Icon(Icons.open_in_new_rounded, color: Colors.blue.shade400, size: 16),
+          Icon(Icons.open_in_new_rounded, color: context.tokens.info, size: 16),
         ]),
       ),
     );
@@ -1305,33 +1412,24 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
     required Widget child,
     Widget? titleTrailing,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 3))
-        ],
-      ),
+    return AppCard(
+      padding: EdgeInsets.zero,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
           decoration: BoxDecoration(
               border: Border(
                   bottom:
-                      BorderSide(color: Colors.grey.shade100, width: 1))),
+                      BorderSide(color: context.tokens.border.withValues(alpha: 0.4), width: 1))),
           child: Row(children: [
             Icon(icon, color: iconColor, size: 20),
             const SizedBox(width: 8),
             Expanded(
               child: Text(title,
                   style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                       fontSize: 14,
-                      color: Colors.grey.shade800)),
+                      color: Theme.of(context).colorScheme.onSurface)),
             ),
             if (titleTrailing != null) titleTrailing,
           ]),
@@ -1344,13 +1442,13 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
   TableRow _tableRow(String label, Widget value) {
     return TableRow(children: [
       Container(
-        color: Colors.grey.shade50,
+        color: context.tokens.border.withValues(alpha: 0.4),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         child: Text(label,
             style: GoogleFonts.poppins(
                 fontWeight: FontWeight.w600,
                 fontSize: 12,
-                color: Colors.grey.shade700)),
+                color: context.tokens.muted)),
       ),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -1363,7 +1461,7 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: bg ?? textColor.withOpacity(0.08),
+        color: bg ?? textColor.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(text,
@@ -1378,7 +1476,7 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(text,
@@ -1405,13 +1503,13 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
   Color _fileColor(String name) {
     final ext = name.split('.').last.toLowerCase();
     switch (ext) {
-      case 'pdf': return Colors.red.shade700;
-      case 'doc': case 'docx': return Colors.blue.shade700;
-      case 'zip': return Colors.orange.shade700;
-      case 'png': case 'jpg': case 'jpeg': return Colors.teal.shade700;
-      case 'xlsx': case 'xls': return Colors.green.shade700;
-      case 'pptx': case 'ppt': return Colors.deepOrange.shade700;
-      default: return Colors.blueGrey.shade700;
+      case 'pdf': return context.tokens.danger;
+      case 'doc': case 'docx': return context.tokens.info;
+      case 'zip': return context.tokens.warning;
+      case 'png': case 'jpg': case 'jpeg': return context.tokens.info;
+      case 'xlsx': case 'xls': return context.tokens.success;
+      case 'pptx': case 'ppt': return context.tokens.warning;
+      default: return context.tokens.muted;
     }
   }
 
@@ -1419,10 +1517,10 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
 
   Color _tipoColor(String tipo) {
     switch (tipo) {
-      case 'midterm': return Colors.orange;
-      case 'project': return Colors.blue;
-      case 'resource': return Colors.green;
-      default: return Colors.purple;
+      case 'midterm': return context.tokens.warning;
+      case 'project': return context.tokens.info;
+      case 'resource': return context.tokens.success;
+      default: return context.tokens.typeOtro;
     }
   }
 

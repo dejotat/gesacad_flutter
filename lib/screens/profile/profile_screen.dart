@@ -1,3 +1,5 @@
+import '../../config/app_tokens.dart';
+import '../../widgets/ui/ui.dart';
 import 'package:gesacad/utils/platform_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -239,9 +241,9 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   }
 
   List<Color> get _rolGradient {
-    if (_rol == 'Admin') return [const Color(0xFF7C3AED), const Color(0xFFDB2777)];
-    if (_rol == 'Teacher') return [const Color(0xFF059669), const Color(0xFF0EA5E9)];
-    return [const Color(0xFF2563EB), const Color(0xFF7C3AED)];
+    if (_rol == 'Admin') return [const Color(0xFF3730A3), const Color(0xFF4F46E5)];
+    if (_rol == 'Teacher') return [const Color(0xFF065F46), const Color(0xFF059669)];
+    return [const Color(0xFF1E3A8A), const Color(0xFF1D4ED8)];
   }
 
   IconData get _rolIcon {
@@ -263,30 +265,21 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFF),
       appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-        flexibleSpace: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(colors: themeType.gradient, begin: Alignment.topLeft, end: Alignment.bottomRight),
-          ),
-        ),
         leading: IconButton(
           tooltip: 'Regresar',
-          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+          icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text('Mi Perfil', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w700)),
-        centerTitle: true,
+        title: const Text('Mi Perfil'),
         actions: [
           if (_saved)
             Container(
               margin: const EdgeInsets.only(right: 14, top: 8, bottom: 8),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
+              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(20)),
               child: Row(children: [
-                const Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 16),
+                const Icon(Icons.check_circle_rounded, color: Colors.white, size: 16),
                 const SizedBox(width: 4),
                 Text('Guardado', style: GoogleFonts.poppins(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
               ]),
@@ -296,6 +289,9 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
       body: FadeTransition(
         opacity: _fade,
         child: SingleChildScrollView(
+          child: Center(
+          child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 640),
           child: Column(
             children: [
               // Header con avatar
@@ -340,7 +336,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                       decoration: BoxDecoration(
                         gradient: LinearGradient(colors: themeType.gradient, begin: Alignment.topLeft, end: Alignment.bottomRight),
                         borderRadius: BorderRadius.circular(16),
-                        boxShadow: [BoxShadow(color: primary.withOpacity(0.4), blurRadius: 16, offset: const Offset(0, 6))],
+                        boxShadow: [BoxShadow(color: primary.withValues(alpha: 0.30), blurRadius: 16, offset: const Offset(0, 6))],
                       ),
                       child: Material(
                         color: Colors.transparent,
@@ -370,6 +366,8 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
               ),
             ],
           ),
+          ),
+          ),
         ),
       ),
     );
@@ -378,13 +376,9 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   Widget _buildAvatarHeader(AppThemeType themeType, Color primary) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 28, 20, 28),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [
-          themeType.gradient[0].withOpacity(0.08),
-          themeType.gradient[1].withOpacity(0.04),
-        ], begin: Alignment.topLeft, end: Alignment.bottomRight),
-      ),
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
+      decoration: glassDecoration(context, radius: 24),
       child: Column(children: [
         Semantics(
           label: 'Foto de perfil. Toca para seleccionar una nueva foto desde tu galería.',
@@ -397,8 +391,8 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: LinearGradient(colors: _rolGradient, begin: Alignment.topLeft, end: Alignment.bottomRight),
-                boxShadow: [BoxShadow(color: primary.withOpacity(0.35), blurRadius: 24, offset: const Offset(0, 8))],
-                border: Border.all(color: Colors.white, width: 4),
+                boxShadow: [BoxShadow(color: primary.withValues(alpha: 0.30), blurRadius: 24, offset: const Offset(0, 8))],
+                border: Border.all(color: Colors.white.withValues(alpha: 0.9), width: 3),
               ),
               child: _photoBytes != null
                   ? ClipOval(child: ExcludeSemantics(child: Image.memory(_photoBytes!, fit: BoxFit.cover, width: 110, height: 110)))
@@ -411,7 +405,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                 gradient: LinearGradient(colors: _rolGradient),
                 shape: BoxShape.circle,
                 border: Border.all(color: Colors.white, width: 2.5),
-                boxShadow: [BoxShadow(color: primary.withOpacity(0.3), blurRadius: 8)],
+                
               ),
               child: const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 15),
             ))),
@@ -419,7 +413,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         )),
         const SizedBox(height: 12),
         Text(_nameCtrl.text.isNotEmpty ? _nameCtrl.text : 'Tu nombre',
-            style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w700, color: const Color(0xFF1E1B4B))),
+            style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurface)),
         const SizedBox(height: 6),
         Semantics(
           label: 'Tu rol: $_rolLabel',
@@ -428,7 +422,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           decoration: BoxDecoration(
             gradient: LinearGradient(colors: _rolGradient),
             borderRadius: BorderRadius.circular(20),
-            boxShadow: [BoxShadow(color: primary.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 3))],
+            
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             ExcludeSemantics(child: Icon(_rolIcon, color: Colors.white, size: 14)),
@@ -437,26 +431,21 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           ]),
         )),
         const SizedBox(height: 6),
-        Text('Toca la foto para cambiarla', style: GoogleFonts.poppins(fontSize: 11, color: Colors.grey.shade400)),
+        Text('Toca la foto para cambiarla', style: GoogleFonts.poppins(fontSize: 12, color: context.tokens.muted)),
       ]),
     );
   }
 
   Widget _sectionTitle(String title, IconData icon, Color primary) => Row(children: [
     Container(padding: const EdgeInsets.all(7), decoration: BoxDecoration(
-      color: primary.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+      color: primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
       child: Icon(icon, color: primary, size: 18)),
     const SizedBox(width: 10),
-    Text(title, style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: const Color(0xFF1E1B4B))),
+    Text(title, style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurface)),
   ]);
 
-  Widget _card(bool isDark, {required List<Widget> children}) => Container(
+  Widget _card(bool isDark, {required List<Widget> children}) => AppCard(
     padding: const EdgeInsets.all(20),
-    decoration: BoxDecoration(
-      color: isDark ? const Color(0xFF1E1E2E) : Colors.white,
-      borderRadius: BorderRadius.circular(20),
-      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 16, offset: const Offset(0, 4))],
-    ),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
   );
 
@@ -470,19 +459,9 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     style: GoogleFonts.poppins(fontSize: 14),
     decoration: InputDecoration(
       labelText: label,
-      labelStyle: GoogleFonts.poppins(color: Colors.grey.shade500, fontSize: 13),
       prefixIcon: Icon(icon, color: primary, size: 20),
       helperText: helper,
-      helperStyle: GoogleFonts.poppins(fontSize: 11),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: primary, width: 2),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey.shade200, width: 1.5),
-      ),
+      helperStyle: GoogleFonts.poppins(fontSize: 12),
     ),
     validator: validator,
   );
@@ -494,11 +473,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     decoration: InputDecoration(
       labelText: label,
       alignLabelWithHint: true,
-      labelStyle: GoogleFonts.poppins(color: Colors.grey.shade500, fontSize: 13),
       prefixIcon: Padding(padding: const EdgeInsets.only(bottom: 48), child: Icon(icon, color: primary, size: 20)),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: primary, width: 2)),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200, width: 1.5)),
     ),
   );
 }

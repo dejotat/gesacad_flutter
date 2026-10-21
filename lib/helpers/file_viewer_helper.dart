@@ -1,6 +1,7 @@
 import 'package:gesacad/utils/platform_utils.dart';
 import 'package:flutter/material.dart';
 import '../config/api_config.dart';
+import '../config/app_tokens.dart';
 
 /// Helper centralizado para visualización y descarga de archivos de Cloudinary.
 ///
@@ -169,14 +170,14 @@ class FileViewerHelper {
   static Color fileColor(String rawUrl) {
     final ext = detectExtension(rawUrl);
     switch (ext) {
-      case 'pdf':  return const Color(0xFFD32F2F);
-      case 'doc':  case 'docx': return const Color(0xFF1565C0);
-      case 'xls':  case 'xlsx': return const Color(0xFF2E7D32);
-      case 'ppt':  case 'pptx': return const Color(0xFFE65100);
-      case 'png':  case 'jpg': case 'jpeg': case 'gif': return const Color(0xFF00695C);
-      case 'zip':  case 'rar': case '7z': return const Color(0xFF6A1B9A);
-      case 'raw':  return const Color(0xFF1565C0);
-      default:     return const Color(0xFF455A64);
+      case 'pdf':  return const Color(0xFFDC2626);
+      case 'doc':  case 'docx': return const Color(0xFF2563EB);
+      case 'xls':  case 'xlsx': return const Color(0xFF16A34A);
+      case 'ppt':  case 'pptx': return const Color(0xFFD97706);
+      case 'png':  case 'jpg': case 'jpeg': case 'gif': return const Color(0xFF0D9488);
+      case 'zip':  case 'rar': case '7z': return const Color(0xFF7C3AED);
+      case 'raw':  return const Color(0xFF2563EB);
+      default:     return const Color(0xFF64748B);
     }
   }
 
@@ -203,7 +204,7 @@ class FileViewerHelper {
     int index = 1,
     bool showDownload = true,
     bool isLocal = false,
-    Color primaryColor = const Color(0xFF1A237E),
+    Color? primaryColor,
   }) {
     final name     = isLocal ? rawUrl : extractName(rawUrl, index: index);
     final icon     = fileIcon(rawUrl);
@@ -213,110 +214,107 @@ class FileViewerHelper {
     final isZipFile = isZip(ext);
     final canOpen  = !isLocal && !isZipFile;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withOpacity(0.25), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-              color: color.withOpacity(0.08),
-              blurRadius: 8,
-              offset: const Offset(0, 3)),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(14),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: canOpen ? () => abrirArchivo(rawUrl) : null,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            child: Row(children: [
-              // Ícono del tipo
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.10),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, color: color, size: 24),
-              ),
-              const SizedBox(width: 12),
-              // Nombre y tipo
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: isLocal
-                            ? Colors.grey.shade600
-                            : const Color(0xFF1A1A2E),
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
+    return Builder(builder: (context) {
+      final t = context.tokens;
+      final onSurface = Theme.of(context).colorScheme.onSurface;
+      return Semantics(
+        button: canOpen,
+        label: '$label: $name. ${isLocal ? 'Listo para enviar' : isZipFile ? 'Descargar para ver' : 'Toca para abrir'}',
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          decoration: BoxDecoration(
+            color: t.glass,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withValues(alpha: 0.30)),
+          ),
+          child: Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(14),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: canOpen ? () => abrirArchivo(rawUrl) : null,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                child: Row(children: [
+                  // Ícono del tipo
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    const SizedBox(height: 3),
-                    Row(children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 1),
-                        decoration: BoxDecoration(
-                          color: color.withOpacity(0.10),
-                          borderRadius: BorderRadius.circular(6),
+                    child: Icon(icon, color: color, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  // Nombre y tipo
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: isLocal ? t.muted : onSurface,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
                         ),
-                        child: Text(label,
-                            style: TextStyle(
-                                fontSize: 9,
-                                color: color,
-                                fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 3),
+                        Wrap(
+                          spacing: 6,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: color.withValues(alpha: 0.14),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(label,
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: color,
+                                      fontWeight: FontWeight.w600)),
+                            ),
+                            Text(
+                              isLocal
+                                  ? 'Listo para enviar'
+                                  : isZipFile
+                                      ? 'Descargar para ver'
+                                      : 'Toca para abrir',
+                              style: TextStyle(fontSize: 12, color: t.muted),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Botones
+                  if (!isLocal) ...[
+                    if (canOpen)
+                      IconButton(
+                        tooltip: 'Abrir',
+                        icon: Icon(Icons.open_in_new_rounded,
+                            color: color, size: 20),
+                        onPressed: () => abrirArchivo(rawUrl),
                       ),
-                      const SizedBox(width: 6),
-                      Text(
-                        isLocal
-                            ? 'Listo para enviar'
-                            : isZipFile
-                                ? 'Descargar para ver'
-                                : 'Toca para abrir',
-                        style: TextStyle(
-                            fontSize: 10, color: Colors.grey.shade400),
+                    if (showDownload)
+                      IconButton(
+                        tooltip: 'Descargar',
+                        icon: Icon(Icons.download_rounded,
+                            color: t.muted, size: 20),
+                        onPressed: () => descargarArchivo(rawUrl, index: index),
                       ),
-                    ]),
                   ],
-                ),
+                ]),
               ),
-              // Botones
-              if (!isLocal) ...[
-                if (canOpen)
-                  Tooltip(
-                    message: 'Abrir',
-                    child: IconButton(
-                      icon: Icon(Icons.open_in_new_rounded,
-                          color: color, size: 20),
-                      onPressed: () => abrirArchivo(rawUrl),
-                    ),
-                  ),
-                if (showDownload)
-                  Tooltip(
-                    message: 'Descargar',
-                    child: IconButton(
-                      icon: Icon(Icons.download_rounded,
-                          color: Colors.grey.shade400, size: 20),
-                      onPressed: () =>
-                          descargarArchivo(rawUrl, index: index),
-                    ),
-                  ),
-              ],
-            ]),
+            ),
           ),
         ),
-      ),
-    );
+      );
+    });
   }
 }

@@ -1,19 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+import '../config/app_tokens.dart';
 import '../models/activity_model.dart';
+import '../utils/activity_type.dart';
+import 'ui/ui.dart';
 
-/// Widget de tarjeta para mostrar una actividad evaluable en la lista del curso.
+/// Tarjeta de actividad en la lista de un curso.
 ///
-/// Muestra el título, tipo, ponderado, estado de entrega y calificación.
-/// Soporta acción opcional de eliminación (solo 'Teacher' propietario).
-/// Implementa [Semantics] para compatibilidad con TalkBack (CU-07/RNF03).
+/// Muestra tipo, ponderado y estado (entregada, calificada, plazo vencido).
+/// Es la misma para estudiantes y profesores; [onDelete] solo lo pasa el profesor.
+///
+/// Accesibilidad (CU-07): la tarjeta se anuncia como un solo botón con el estado.
 class ActivityCard extends StatelessWidget {
-  /// Modelo de la actividad a mostrar.
   final ActivityModel activity;
-
-  /// Callback ejecutado al tocar la tarjeta (navega al detalle de la actividad).
   final VoidCallback onTap;
-
-  /// Callback de eliminación. Si es null, no se muestra el botón de eliminar.
   final VoidCallback? onDelete;
 
   const ActivityCard({
@@ -23,164 +24,109 @@ class ActivityCard extends StatelessWidget {
     this.onDelete,
   });
 
-  /// Color identificador del tipo de actividad.
-  Color get _typeColor {
-    switch (activity.type) {
-      case 'midterm':
-        return Colors.orange;
-      case 'project':
-        return Colors.blue;
-      case 'resource':
-        return Colors.green;
-      default:
-        return Colors.purple;
-    }
-  }
-
-  /// Etiqueta en español del tipo de actividad.
-  String get _typeLabel {
-    switch (activity.type) {
-      case 'midterm':
-        return 'Parcial';
-      case 'project':
-        return 'Proyecto';
-      case 'resource':
-        return 'Recurso';
-      default:
-        return 'Otro';
-    }
-  }
-
-  /// Ícono representativo del tipo de actividad.
-  IconData get _typeIcon {
-    switch (activity.type) {
-      case 'midterm':
-        return Icons.quiz_outlined;
-      case 'project':
-        return Icons.folder_outlined;
-      case 'resource':
-        return Icons.description_outlined;
-      default:
-        return Icons.assignment_outlined;
-    }
-  }
-
   /// Descripción accesible del estado actual de la actividad para TalkBack (CU-07).
-  String get _semanticLabel {
+  String _semanticLabel(String typeLabel) {
     final weightStr =
         '${(activity.weighting * 100).toStringAsFixed(0)} por ciento';
+    final base = 'Actividad ${activity.tittle}, tipo $typeLabel, ponderado $weightStr';
     if (activity.gpa != null) {
-      return 'Actividad ${activity.tittle}, tipo $_typeLabel, ponderado $weightStr, calificación ${activity.gpa!.toStringAsFixed(1)} de 5.';
+      return '$base, calificación ${activity.gpa!.toStringAsFixed(1)} de 5.';
     }
-    if (activity.isDelivered) {
-      return 'Actividad ${activity.tittle}, tipo $_typeLabel, ponderado $weightStr, entregada, pendiente de calificación.';
-    }
-    if (activity.isPastDue) {
-      return 'Actividad ${activity.tittle}, tipo $_typeLabel, ponderado $weightStr, plazo vencido.';
-    }
-    return 'Actividad ${activity.tittle}, tipo $_typeLabel, ponderado $weightStr, pendiente de entrega.';
+    if (activity.isDelivered) return '$base, entregada, pendiente de calificación.';
+    if (activity.isPastDue) return '$base, plazo vencido.';
+    return '$base, pendiente de entrega.';
   }
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final info = ActivityTypeInfo.of(activity.type);
+    final color = ActivityTypeInfo.colorOf(activity.type, t);
+
     return Semantics(
-      label: _semanticLabel,
+      label: _semanticLabel(info.label),
       hint: 'Toca dos veces para ver el detalle de la actividad',
       button: true,
-      child: Card(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        elevation: 2,
-        child: ListTile(
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          leading: CircleAvatar(
-            backgroundColor: _typeColor.withOpacity(0.15),
-            child: Icon(_typeIcon, color: _typeColor, size: 22),
-          ),
-          title: Text(
-            activity.tittle,
-            style: const TextStyle(fontWeight: FontWeight.w600),
-          ),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 4),
-              Row(
+      excludeSemantics: onDelete == null,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+            horizontal: AppTokens.pagePadding, vertical: 5),
+        child: AppCard(
+          blur: false,
+          onTap: onTap,
+          padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
+          child: Row(children: [
+            IconMedallion(info.icon,
+                size: 46,
+                colors: AppTokens.gradientOf(color),
+                motion: info.motion,
+                orbit: false),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: _typeColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(_typeLabel,
-                        style: TextStyle(color: _typeColor, fontSize: 11)),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${(activity.weighting * 100).toStringAsFixed(0)}%',
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
+                  Text(activity.tittle,
+                      maxLines: 2, overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.poppins(
+                          fontSize: 14, fontWeight: FontWeight.w600,
+                          color: onSurface)),
+                  const SizedBox(height: 6),
+                  Wrap(spacing: 8, runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                    _pill(info.label, color),
+                    Text('${(activity.weighting * 100).toStringAsFixed(0)}%',
+                        style: GoogleFonts.poppins(
+                            fontSize: 12, color: t.muted)),
+                    if (activity.gpa != null)
+                      _pill('Nota ${activity.gpa!.toStringAsFixed(1)} / 5.0',
+                          t.success, icon: PhosphorIconsFill.checkCircle)
+                    else if (activity.isDelivered)
+                      _pill('Entregado', t.info,
+                          icon: PhosphorIconsRegular.paperPlaneTilt)
+                    else if (activity.isPastDue)
+                      _pill('Plazo vencido', t.danger,
+                          icon: PhosphorIconsRegular.clock),
+                  ]),
                 ],
               ),
-              if (activity.isPastDue) ...[
-                const SizedBox(height: 4),
-                const Text('⏰ Plazo vencido',
-                    style: TextStyle(color: Colors.red, fontSize: 11)),
-              ],
-              if (activity.gpa != null) ...[
-                // Calificado: badge azul/morado con la nota visible
-                const SizedBox(height: 4),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF6A1B9A), Color(0xFF1565C0)],
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.grade_rounded, color: Colors.white, size: 12),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Calificado · ${activity.gpa!.toStringAsFixed(1)} / 5.0',
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700),
-                    ),
-                  ]),
-                ),
-              ] else if (activity.isDelivered) ...[
-                // Entregado pero aún sin calificar
-                const SizedBox(height: 4),
-                const Text('✅ Entregado',
-                    style: TextStyle(color: Colors.green, fontSize: 11)),
-              ],
-            ],
-          ),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (onDelete != null)
-                Semantics(
-                  label: 'Eliminar actividad ${activity.tittle}',
-                  button: true,
-                  child: IconButton(
-                    icon: const Icon(Icons.delete_outline, color: Colors.red),
-                    onPressed: onDelete,
-                    tooltip: 'Eliminar actividad',
-                  ),
-                ),
-              const Icon(Icons.chevron_right, color: Colors.grey),
-            ],
-          ),
-          onTap: onTap,
+            ),
+            if (onDelete != null)
+              AnimatedIconButton(
+                icon: PhosphorIconsRegular.trash,
+                color: t.danger,
+                reaction: IconReaction.shake,
+                onPressed: onDelete,
+                tooltip: 'Eliminar actividad ${activity.tittle}',
+              ),
+            ExcludeSemantics(
+              child: Icon(PhosphorIconsRegular.caretRight,
+                  color: t.muted, size: 18),
+            ),
+            const SizedBox(width: 6),
+          ]),
         ),
       ),
     );
   }
+
+  Widget _pill(String text, Color color, {IconData? icon}) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (icon != null) ...[
+            Icon(icon, size: 12, color: color),
+            const SizedBox(width: 4),
+          ],
+          Text(text,
+              style: GoogleFonts.poppins(
+                  fontSize: 12, fontWeight: FontWeight.w600, color: color)),
+        ]),
+      );
 }

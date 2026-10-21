@@ -1,3 +1,6 @@
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+import '../../config/app_tokens.dart';
+import '../../widgets/ui/ui.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -96,7 +99,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
     final numFinal = numero.startsWith('57') ? numero : '57$numero';
     final mensaje  = Uri.encodeComponent(
       '¡Hola $adminUsername! Soy el usuario "$usuario" de GESACAD '
-      '(Unicomfacauca) y necesito restablecer mi contraseña. ¡Gracias!',
+      '(Colegio Santander) y necesito restablecer mi contraseña. ¡Gracias!',
     );
     final uri = Uri.parse('https://wa.me/$numFinal?text=$mensaje');
     if (await canLaunchUrl(uri)) {
@@ -108,48 +111,22 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
   Widget build(BuildContext context) {
     final themeType = AppSettings.currentTheme.value;
     return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: themeType.gradient,
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+      appBar: AppBar(
+        title: const Text('Recuperar Contraseña'),
+        leading: IconButton(
+          icon: const Icon(PhosphorIconsRegular.arrowLeft),
+          tooltip: 'Regresar al inicio de sesión',
+          onPressed: () => Navigator.pop(context),
         ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              // Barra superior
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                child: Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-                      tooltip: 'Regresar al inicio de sesión',
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                    Text('Recuperar Contraseña',
-                        style: GoogleFonts.poppins(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 17)),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: Center(
-                  child: FadeTransition(
-                    opacity: _fade,
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 24, vertical: 20),
-                      child: _sent ? _buildSuccessCard() : _buildFormCard(themeType),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+      ),
+      body: SafeArea(
+        child: Center(
+          child: FadeTransition(
+            opacity: _fade,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+              child: _sent ? _buildSuccessCard() : _buildFormCard(themeType),
+            ),
           ),
         ),
       ),
@@ -157,18 +134,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
   }
 
   Widget _buildFormCard(AppThemeType themeType) {
-    return Container(
+    return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 440),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.18),
-              blurRadius: 28,
-              offset: const Offset(0, 10)),
-        ],
-      ),
+      child: AppCard(
+      radius: 24,
       padding: const EdgeInsets.all(30),
       child: Form(
         key: _formKey,
@@ -180,10 +149,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
               child: Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: themeType.primaryColor.withOpacity(0.08),
+                  color: themeType.primaryColor.withValues(alpha: 0.12),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(Icons.lock_reset_rounded,
+                child: Icon(PhosphorIconsRegular.lockKeyOpen,
                     size: 46, color: themeType.primaryColor),
               ),
             ),
@@ -200,7 +169,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
               'y te enviaremos instrucciones para restablecer tu contraseña.',
               textAlign: TextAlign.center,
               style: GoogleFonts.poppins(
-                  fontSize: 13, color: Colors.grey.shade500, height: 1.5),
+                  fontSize: 13, color: context.tokens.muted, height: 1.5),
             ),
             const SizedBox(height: 28),
             TextFormField(
@@ -209,8 +178,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
               style: GoogleFonts.poppins(fontSize: 15),
               decoration: InputDecoration(
                 labelText: 'Usuario o correo institucional',
-                labelStyle: GoogleFonts.poppins(color: Colors.grey.shade600),
-                prefixIcon: Icon(Icons.alternate_email_rounded,
+                prefixIcon: Icon(PhosphorIconsRegular.at,
                     color: themeType.primaryColor),
                 helperText: 'Ej: jperez o jperez@unicomfacauca.edu.co',
               ),
@@ -232,10 +200,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                 style: ElevatedButton.styleFrom(
                   backgroundColor: themeType.primaryColor,
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
-                  elevation: 4,
-                  shadowColor: themeType.primaryColor.withOpacity(0.4),
                 ),
                 child: _loading
                     ? const SizedBox(
@@ -243,7 +207,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                         child: CircularProgressIndicator(
                             strokeWidth: 2.5, color: Colors.white))
                     : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                        const Icon(Icons.send_rounded, size: 18),
+                        const Icon(PhosphorIconsRegular.paperPlaneTilt, size: 18),
                         const SizedBox(width: 10),
                         Text('Enviar instrucciones',
                             style: GoogleFonts.poppins(
@@ -263,19 +227,20 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.amber.shade50,
+                color: context.tokens.warning.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.amber.shade200),
+                border: Border.all(
+                    color: context.tokens.warning.withValues(alpha: 0.35)),
               ),
               child: Row(children: [
-                Icon(Icons.info_outline_rounded,
-                    color: Colors.amber.shade700, size: 18),
+                Icon(PhosphorIconsRegular.info,
+                    color: context.tokens.warning, size: 18),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Si no recibes el correo, contacta al administrador del sistema.',
                     style: GoogleFonts.poppins(
-                        fontSize: 11, color: Colors.amber.shade800),
+                        fontSize: 12, color: context.tokens.warning),
                   ),
                 ),
               ]),
@@ -283,33 +248,26 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
           ],
         ),
       ),
+      ),
     );
   }
 
   Widget _buildSuccessCard() {
-    return Container(
+    return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 440),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.18),
-              blurRadius: 28,
-              offset: const Offset(0, 10)),
-        ],
-      ),
+      child: AppCard(
+      radius: 24,
       padding: const EdgeInsets.all(36),
       child: Column(
         children: [
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: Colors.green.shade50,
+              color: context.tokens.success.withValues(alpha: 0.12),
               shape: BoxShape.circle,
             ),
-            child: Icon(Icons.mark_email_read_rounded,
-                size: 56, color: Colors.green.shade600),
+            child: Icon(PhosphorIconsRegular.envelopeSimpleOpen,
+                size: 56, color: context.tokens.success),
           ),
           const SizedBox(height: 24),
           Text('¡Instrucciones enviadas!',
@@ -317,7 +275,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
               style: GoogleFonts.poppins(
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
-                  color: Colors.green.shade700)),
+                  color: context.tokens.success)),
           const SizedBox(height: 12),
           Text(
             'Revisa tu correo institucional. Si la cuenta '
@@ -326,21 +284,21 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
             'próximos 5 minutos.',
             textAlign: TextAlign.center,
             style: GoogleFonts.poppins(
-                fontSize: 13, color: Colors.grey.shade600, height: 1.6),
+                fontSize: 13, color: context.tokens.muted, height: 1.6),
           ),
           const SizedBox(height: 28),
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: Colors.grey.shade50,
+              color: context.tokens.border.withValues(alpha: 0.4),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(children: [
-              _tipRow(Icons.folder_open_rounded, 'Revisa la carpeta de Spam'),
+              _tipRow(PhosphorIconsRegular.folderOpen, 'Revisa la carpeta de Spam'),
               const SizedBox(height: 8),
-              _tipRow(Icons.timer_outlined, 'El enlace expira en 24 horas'),
+              _tipRow(PhosphorIconsRegular.timer, 'El enlace expira en 24 horas'),
               const SizedBox(height: 8),
-              _tipRow(Icons.support_agent_rounded,
+              _tipRow(PhosphorIconsRegular.headset,
                   '¿Sin correo? Contacta al administrador'),
             ]),
           ),
@@ -351,7 +309,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
             Text('Contactar directamente al administrador:',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.poppins(
-                    fontSize: 12, color: Colors.grey.shade500)),
+                    fontSize: 12, color: context.tokens.muted)),
             const SizedBox(height: 8),
             ..._adminsConTelefono.map((admin) {
               final nombre = admin['username'] as String? ?? 'Admin';
@@ -364,15 +322,12 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                   child: ElevatedButton.icon(
                     // Llamar _abrirWhatsApp con los datos del admin específico
                     onPressed: () => _abrirWhatsApp(tel, nombre),
-                    icon: const Icon(Icons.chat_rounded, size: 20),
+                    icon: const Icon(PhosphorIconsRegular.whatsappLogo, size: 20),
                     label: Text('WhatsApp a $nombre',
                         style: GoogleFonts.poppins(fontWeight: FontWeight.w700)),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF25D366),
                       foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14)),
-                      elevation: 3,
                     ),
                   ),
                 ),
@@ -385,26 +340,23 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
             height: 50,
             child: OutlinedButton.icon(
               onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.login_rounded, size: 18),
+              icon: const Icon(PhosphorIconsRegular.signIn, size: 18),
               label: Text('Volver al inicio de sesión',
                   style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
-              style: OutlinedButton.styleFrom(
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
-              ),
             ),
           ),
         ],
+      ),
       ),
     );
   }
 
   Widget _tipRow(IconData icon, String text) {
     return Row(children: [
-      Icon(icon, size: 16, color: Colors.grey.shade500),
+      Icon(icon, size: 16, color: context.tokens.muted),
       const SizedBox(width: 8),
       Text(text,
-          style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey.shade600)),
+          style: GoogleFonts.poppins(fontSize: 12, color: context.tokens.muted)),
     ]);
   }
 }

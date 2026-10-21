@@ -1,6 +1,13 @@
+import 'dart:ui' show ImageFilter;
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+import '../config/api_config.dart';
+import '../config/app_tokens.dart';
+import '../widgets/dev_server_badge.dart';
 import 'dart:async';
 import 'dart:developer' as developer;
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
+import '../services/connectivity_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
@@ -13,7 +20,9 @@ import 'student/student_home.dart';
 import 'auth/forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  /// Aviso inicial (p. ej. "Tu sesión expiró").
+  final String? mensaje;
+  const LoginScreen({super.key, this.mensaje});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -26,7 +35,7 @@ class _LoginScreenState extends State<LoginScreen>
   final _passCtrl = TextEditingController();
   bool _showPass = false;
   bool _loading = false;
-  String? _serverError;
+  late String? _serverError = widget.mensaje;
 
   final FocusNode _userFocus = FocusNode();
   final FocusNode _passFocus = FocusNode();
@@ -112,6 +121,14 @@ class _LoginScreenState extends State<LoginScreen>
 
   String _mapLoginError(Map<String, dynamic> res) {
     final code = res['response']?.toString().toUpperCase() ?? '';
+    // Demasiados intentos fallidos: el servidor indica cuánto esperar.
+    if (code == 'TOO_MANY_ATTEMPTS') {
+      return res['message']?.toString() ??
+          'Demasiados intentos. Espera unos minutos e inténtalo de nuevo.';
+    }
+    if (code == 'UPDATE_REQUIRED') {
+      return 'Esta versión de la app ya no es compatible. Actualízala para continuar.';
+    }
     if (code.contains('USER_NOT_FOUND') || code.contains('USERORPASSINVALID') || code.isEmpty)
       return 'Usuario no encontrado. Verifica tu nombre de usuario.';
     if (code.contains('WRONG_PASSWORD') || code.contains('INCORRECT'))
@@ -119,6 +136,15 @@ class _LoginScreenState extends State<LoginScreen>
     if (code.contains('INACTIVE') || code.contains('DISABLED'))
       return 'Cuenta inactiva. Contacta al administrador del sistema.';
     return 'Usuario o contraseña incorrectos. Verifica tus datos.';
+  }
+
+  /// En depuración indica a qué servidor se intentó entrar: la causa más común de
+  /// "no entra" es usar usuarios de producción contra un servidor local (o al revés).
+  String _pistaServidor({bool sinRed = false}) {
+    if (!kDebugMode) return '';
+    return sinRed
+        ? '\n\nServidor: ${ApiConfig.baseUrl}\nSi es local, inicia el backend con "npm start" en la carpeta Backend.'
+        : '\n\nServidor: ${ApiConfig.baseUrl}\nCada servidor tiene sus propios usuarios.';
   }
 
   // ── Login con usuario/contraseña ──────────────────────────────────────────
@@ -160,6 +186,7 @@ class _LoginScreenState extends State<LoginScreen>
           userId,
           res['name'] as String? ?? _userCtrl.text.trim(),
           res['rol'] as String,
+          token: res['token'] as String?,
         );
         // Precarga foto y perfil en caché sin bloquear el login.
         // El home la mostrará en cuanto llegue (~1-2s después de navegar).
@@ -173,14 +200,16 @@ class _LoginScreenState extends State<LoginScreen>
         if (!mounted) return;
         Navigator.pushReplacement(context, slideRoute(home));
       } else {
-        setState(() => _serverError = _mapLoginError(res));
+        setState(() => _serverError = _mapLoginError(res) + _pistaServidor());
       }
     } on TimeoutException {
       if (mounted) setState(() => _serverError =
-          'El servidor tardó demasiado. Verifica tu conexión a internet.');
-    } catch (_) {
-      if (mounted) setState(() => _serverError =
-          'No se pudo conectar al servidor. Verifica tu conexión a internet.');
+          'El servidor tardó demasiado. Verifica tu conexión a internet.${_pistaServidor(sinRed: true)}');
+    } catch (e) {
+      if (mounted) setState(() => _serverError = isNetworkError(e)
+          ? 'Sin conexión. Para iniciar sesión necesitas internet; '
+            'después podrás consultar tus datos sin conexión.${_pistaServidor(sinRed: true)}'
+          : 'No se pudo conectar al servidor. Verifica tu conexión a internet.${_pistaServidor(sinRed: true)}');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -197,19 +226,11 @@ class _LoginScreenState extends State<LoginScreen>
         builder: (_, child) {
           final t = _bgAnim.value; // 0.0 → 1.0 → 0.0 (reverse: true)
 
-          // Paleta azul/morado: interpola suavemente entre dos estados de color
-          final c1 = Color.lerp(
-              const Color(0xFF1A237E), // azul índigo profundo
-              const Color(0xFF4A148C), // morado profundo
-              t)!;
-          final c2 = Color.lerp(
-              const Color(0xFF6A1B9A), // morado medio
-              const Color(0xFF1565C0), // azul medio
-              t)!;
-          final c3 = Color.lerp(
-              const Color(0xFF283593), // azul oscuro
-              const Color(0xFF7B1FA2), // violeta
-              t)!;
+          // Paleta del tema activo: interpola suavemente entre sus dos tonos
+          final g  = themeType.gradient;
+          final c1 = Color.lerp(g[0], g[1], t)!;
+          final c2 = Color.lerp(g[1], themeType.secondaryColor, t)!;
+          final c3 = Color.lerp(g[0], g[1], 1 - t)!;
 
           // La alineación también se desplaza para dar sensación de movimiento
           final begin = AlignmentTween(
@@ -305,18 +326,8 @@ class _LoginScreenState extends State<LoginScreen>
                               position: _slide,
                               child: FadeTransition(
                                 opacity: _fade,
-                                child: Container(
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(28),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.22),
-                                    blurRadius: 36,
-                                    offset: const Offset(0, 12),
-                                  ),
-                                ],
-                              ),
+                                child: _glassPanel(
+                              themeType,
                               child: Padding(
                                 padding: EdgeInsets.all(padCard),
                                 child: Form(
@@ -337,7 +348,7 @@ class _LoginScreenState extends State<LoginScreen>
                                       Text(
                                         'Ingresa tus credenciales institucionales',
                                         style: GoogleFonts.poppins(
-                                            color: Colors.grey.shade500,
+                                            color: context.tokens.muted,
                                             fontSize: 12),
                                         textAlign: TextAlign.center,
                                       ),
@@ -353,7 +364,7 @@ class _LoginScreenState extends State<LoginScreen>
                                               controller: _userCtrl,
                                               focusNode: _userFocus,
                                               label: 'Usuario',
-                                              icon: Icons.person_outline_rounded,
+                                              icon: PhosphorIconsRegular.user,
                                               helper: 'Nombre de usuario institucional',
                                               validator: _validateUsername,
                                               action: TextInputAction.next,
@@ -379,6 +390,9 @@ class _LoginScreenState extends State<LoginScreen>
                                         const SizedBox(height: 14),
                                         _buildError(_serverError!),
                                       ],
+
+                                      // Solo en depuración: a qué servidor está conectada la app.
+                                      if (kDebugMode) const DevServerBadge(),
 
                                       // Enlace ¿Olvidaste tu contraseña?
                                       Align(
@@ -442,7 +456,7 @@ class _LoginScreenState extends State<LoginScreen>
                                                       : Row(
                                                           mainAxisAlignment: MainAxisAlignment.center,
                                                           children: [
-                                                            const Icon(Icons.login_rounded,
+                                                            const Icon(PhosphorIconsRegular.signIn,
                                                                 color: Colors.white, size: 20),
                                                             const SizedBox(width: 10),
                                                             Text(
@@ -465,14 +479,14 @@ class _LoginScreenState extends State<LoginScreen>
                                   ),
                                 ),
                               ),
-                            ),      // cierra Container
+                            ),      // cierra panel de vidrio
                               ),    // cierra FadeTransition del formulario
                             ),      // cierra SlideTransition del formulario
                             const SizedBox(height: 22),
 
                             // ── Pie de página ──────────────────────────────
                             Text(
-                              'Corporación Universitaria Unicomfacauca',
+                              'Colegio Santander',
                               style: GoogleFonts.poppins(
                                   color: Colors.white54,
                                   fontSize: esMobil ? 9 : 11),
@@ -498,6 +512,39 @@ class _LoginScreenState extends State<LoginScreen>
         );                          // cierra Scaffold
   }
 
+
+  /// Panel de vidrio del formulario: translúcido con desenfoque del fondo animado.
+  Widget _glassPanel(AppThemeType themeType, {required Widget child}) {
+    final dark = themeType.isDark;
+    final r = BorderRadius.circular(28);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: r,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.25),
+            blurRadius: 40,
+            offset: const Offset(0, 14),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: r,
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: dark ? const Color(0xCC1E293B) : const Color(0xE6FFFFFF),
+              borderRadius: r,
+              border: Border.all(
+                  color: Colors.white.withValues(alpha: dark ? 0.12 : 0.8)),
+            ),
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _buildField({
     required TextEditingController controller,
@@ -585,15 +632,12 @@ class _LoginScreenState extends State<LoginScreen>
     final passed = [c1, c2, c3, c4, c5, c6].where((c) => c).length;
 
     // Color de las barras según cuántos criterios se cumplen
+    final tk = context.tokens;
     final barColor = passed <= 2
-        ? Colors.red
-        : passed <= 3
-            ? Colors.orange
-            : passed <= 4
-                ? Colors.yellow.shade700
-                : passed <= 5
-                    ? Colors.lightGreen
-                    : Colors.green;
+        ? tk.danger
+        : passed <= 4
+            ? tk.warning
+            : tk.success;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -613,16 +657,16 @@ class _LoginScreenState extends State<LoginScreen>
             decoration: InputDecoration(
               labelText: 'Contraseña',
               helperText: 'Ingresa tu contraseña institucional',
-              prefixIcon: Icon(Icons.lock_outline_rounded, color: primary),
+              prefixIcon: Icon(PhosphorIconsRegular.lock, color: primary),
               suffixIcon: Semantics(
                 label: _showPass ? 'Ocultar contraseña' : 'Mostrar contraseña',
                 button: true,
                 child: IconButton(
                   icon: Icon(
                     _showPass
-                        ? Icons.visibility_off_rounded
-                        : Icons.visibility_rounded,
-                    color: Colors.grey.shade500,
+                        ? PhosphorIconsRegular.eyeSlash
+                        : PhosphorIconsRegular.eye,
+                    color: context.tokens.muted,
                   ),
                   onPressed: () => setState(() => _showPass = !_showPass),
                 ),
@@ -643,7 +687,7 @@ class _LoginScreenState extends State<LoginScreen>
                 margin: const EdgeInsets.symmetric(horizontal: 2),
                 height: 4,
                 decoration: BoxDecoration(
-                  color: i < passed ? barColor : Colors.grey.shade200,
+                  color: i < passed ? barColor : context.tokens.border,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -669,17 +713,17 @@ class _LoginScreenState extends State<LoginScreen>
       child: Row(children: [
         Icon(
           met
-              ? Icons.check_circle_rounded
-              : Icons.radio_button_unchecked_rounded,
+              ? PhosphorIconsFill.checkCircle
+              : PhosphorIconsRegular.circle,
           size: 15,
-          color: met ? Colors.green : Colors.grey.shade400,
+          color: met ? context.tokens.success : context.tokens.muted,
         ),
         const SizedBox(width: 6),
         Text(
           text,
           style: GoogleFonts.poppins(
             fontSize: 11,
-            color: met ? Colors.green.shade700 : Colors.grey.shade500,
+            color: met ? context.tokens.success : context.tokens.muted,
           ),
         ),
       ]),
@@ -693,16 +737,19 @@ class _LoginScreenState extends State<LoginScreen>
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Colors.red.shade50,
+          color: context.tokens.danger.withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.red.shade200),
+          border: Border.all(
+              color: context.tokens.danger.withValues(alpha: 0.35)),
         ),
         child: Row(children: [
-          Icon(Icons.error_outline_rounded, color: Colors.red.shade600, size: 18),
+          Icon(PhosphorIconsRegular.warningCircle,
+              color: context.tokens.danger, size: 18),
           const SizedBox(width: 10),
           Expanded(
             child: Text(msg,
-                style: GoogleFonts.poppins(color: Colors.red.shade700, fontSize: 13)),
+                style: GoogleFonts.poppins(
+                    color: context.tokens.danger, fontSize: 13)),
           ),
         ]),
       ),

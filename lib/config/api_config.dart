@@ -1,17 +1,20 @@
-/// Configuración central de URLs del backend GESACAD (Node.js + MySQL en Railway).
+/// Configuración central de URLs del backend GESACAD (Node.js + MySQL en Render + Clever Cloud).
 ///
-/// Todos los endpoints corresponden al servidor Express desplegado en Railway.
+/// Todos los endpoints corresponden al servidor Express desplegado en Render.
 /// Para desarrollo local, cambiar [baseUrl] según el entorno indicado en los comentarios.
 class ApiConfig {
   /// URL base del servidor backend.
   ///
-  /// Opciones según entorno:
-  ///  - Producción Railway : https://gesacad-backend-production.up.railway.app
-  ///  - WEB local (PC)     : http://localhost:8081
-  ///  - Emulador Android   : http://10.0.2.2:8081
-  ///  - Celular (WiFi)     : http://192.168.X.X:8081
-  static const String baseUrl =
-      'https://gesacad-backend-production.up.railway.app';
+  /// Por defecto apunta a producción (Render). Para desarrollo NO edites este
+  /// archivo: pasa la URL al ejecutar la app, así nunca se commitea una URL local.
+  ///
+  ///  - WEB local (PC)     : flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:8081
+  ///  - Emulador Android   : flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8081
+  ///  - Celular (WiFi)     : flutter run --dart-define=API_BASE_URL=http://192.168.X.X:8081
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'https://gesacad-backend.onrender.com',
+  );
 
   // ---------------------------------------------------------------------------
   // RF01 — Autenticación (CU-01)

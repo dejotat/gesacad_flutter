@@ -1,8 +1,10 @@
 import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
+import 'ui/ui.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/gemini_service.dart';
+import '../config/app_tokens.dart';
 
 /// Modelo de un mensaje individual en el chat.
 class _Mensaje {
@@ -124,10 +126,11 @@ class _ChatbotWidgetState extends State<ChatbotWidget> {
     return FloatingActionButton(
       heroTag:         'chatbot_gesacad',
       onPressed:       _abrirChat,
-      backgroundColor: const Color(0xFF4F46E5),
+      backgroundColor: Theme.of(context).colorScheme.primary,
       foregroundColor: Colors.white,
       tooltip:         'Asistente GESACAD',
-      child: const Icon(Icons.smart_toy_rounded),
+      child: const MotionIcon(Icons.smart_toy_rounded,
+          color: Colors.white, size: 26, motion: IconMotion.tada, halo: true),
     );
   }
 }
@@ -189,18 +192,19 @@ class _ChatSheetState extends State<_ChatSheet> {
 
     return Container(
       height: MediaQuery.of(context).size.height * 0.78,
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      decoration: BoxDecoration(
+        color: Theme.of(context).dialogTheme.backgroundColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        border: Border.all(color: context.tokens.glassBorder),
       ),
       child: Column(
         children: [
           // ── Encabezado ─────────────────────────────────────────────────
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
+                colors: [Theme.of(context).colorScheme.primary, Theme.of(context).colorScheme.primary],
                 begin: Alignment.topLeft,
                 end:   Alignment.bottomRight,
               ),
@@ -210,7 +214,7 @@ class _ChatSheetState extends State<_ChatSheet> {
               Container(
                 padding:    const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color:        Colors.white.withOpacity(0.2),
+                  color:        Colors.white.withValues(alpha: 0.2),
                   shape:        BoxShape.circle,
                 ),
                 child: const Icon(Icons.smart_toy_rounded,
@@ -233,14 +237,17 @@ class _ChatSheetState extends State<_ChatSheet> {
                 ),
               ),
               // Botón limpiar conversación
-              IconButton(
-                icon:    const Icon(Icons.delete_outline_rounded,
-                    color: Colors.white70),
+              AnimatedIconButton(
+                icon:    Icons.delete_outline_rounded,
+                color:   Colors.white,
+                reaction: IconReaction.shake,
                 tooltip: 'Limpiar conversación',
                 onPressed: widget.mensajes.isEmpty ? null : widget.onLimpiar,
               ),
-              IconButton(
-                icon:     const Icon(Icons.close_rounded, color: Colors.white),
+              AnimatedIconButton(
+                icon:     Icons.close_rounded,
+                color:    Colors.white,
+                reaction: IconReaction.spin,
                 tooltip:  'Cerrar',
                 onPressed: () => Navigator.pop(context),
               ),
@@ -274,11 +281,8 @@ class _ChatSheetState extends State<_ChatSheet> {
               bottom: MediaQuery.of(context).viewInsets.bottom + 12,
             ),
             decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(0.06),
-                    blurRadius: 8, offset: const Offset(0, -2)),
-              ],
+              color: context.tokens.glass,
+              border: Border(top: BorderSide(color: context.tokens.border)),
             ),
             child: Row(children: [
               Expanded(
@@ -293,9 +297,9 @@ class _ChatSheetState extends State<_ChatSheet> {
                   decoration: InputDecoration(
                     hintText:      'Escribe tu pregunta...',
                     hintStyle:     GoogleFonts.poppins(
-                        fontSize: 13, color: Colors.grey.shade400),
+                        fontSize: 13, color: context.tokens.muted),
                     filled:        true,
-                    fillColor:     Colors.grey.shade50,
+                    fillColor:     context.tokens.border.withValues(alpha: 0.4),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(20),
                       borderSide:   BorderSide.none,
@@ -312,8 +316,8 @@ class _ChatSheetState extends State<_ChatSheet> {
                   heroTag:         'chat_send',
                   onPressed:       widget.enviando ? null : _enviar,
                   backgroundColor: widget.enviando
-                      ? Colors.grey.shade300
-                      : const Color(0xFF4F46E5),
+                      ? context.tokens.border
+                      : Theme.of(context).colorScheme.primary,
                   foregroundColor: Colors.white,
                   child: widget.enviando
                       ? const SizedBox(
@@ -347,11 +351,11 @@ class _ChatSheetState extends State<_ChatSheet> {
         Container(
           padding:    const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color:        const Color(0xFF4F46E5).withOpacity(0.08),
+            color:        Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
             shape:        BoxShape.circle,
           ),
-          child: const Icon(Icons.smart_toy_rounded,
-              size: 48, color: Color(0xFF4F46E5)),
+          child: Icon(Icons.smart_toy_rounded,
+              size: 48, color: Theme.of(context).colorScheme.primary),
         ),
         const SizedBox(height: 16),
         Text('¡Hola! Soy el Asistente GESACAD',
@@ -362,7 +366,7 @@ class _ChatSheetState extends State<_ChatSheet> {
         Text('Puedo ayudarte con información sobre Unicomfacauca, '
             'tus cursos y el uso de la plataforma.',
             style: GoogleFonts.poppins(
-                fontSize: 12, color: Colors.grey.shade600),
+                fontSize: 12, color: context.tokens.muted),
             textAlign: TextAlign.center),
         const SizedBox(height: 20),
         Align(
@@ -371,7 +375,7 @@ class _ChatSheetState extends State<_ChatSheet> {
               style: GoogleFonts.poppins(
                   fontWeight: FontWeight.w600,
                   fontSize: 12,
-                  color: Colors.grey.shade600)),
+                  color: context.tokens.muted)),
         ),
         const SizedBox(height: 8),
         ...sugerencias.map((s) => Padding(
@@ -387,13 +391,13 @@ class _ChatSheetState extends State<_ChatSheet> {
                   padding: const EdgeInsets.symmetric(
                       horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
-                    color:        Colors.grey.shade50,
+                    color:        context.tokens.border.withValues(alpha: 0.4),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade200),
+                    border: Border.all(color: context.tokens.border),
                   ),
                   child: Text(s,
                       style: GoogleFonts.poppins(
-                          fontSize: 12, color: Colors.grey.shade700)),
+                          fontSize: 12, color: context.tokens.muted)),
                 ),
               ),
             )),
@@ -415,9 +419,9 @@ class _ChatSheetState extends State<_ChatSheet> {
           if (!esUsuario) ...[
             CircleAvatar(
               radius:          15,
-              backgroundColor: const Color(0xFF4F46E5).withOpacity(0.12),
-              child: const Icon(Icons.smart_toy_rounded,
-                  size: 16, color: Color(0xFF4F46E5)),
+              backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
+              child: Icon(Icons.smart_toy_rounded,
+                  size: 16, color: Theme.of(context).colorScheme.primary),
             ),
             const SizedBox(width: 6),
           ],
@@ -427,10 +431,10 @@ class _ChatSheetState extends State<_ChatSheet> {
                   horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
                 color: esUsuario
-                    ? const Color(0xFF4F46E5)
+                    ? Theme.of(context).colorScheme.primary
                     : msg.esError
-                        ? Colors.red.shade50
-                        : Colors.grey.shade100,
+                        ? context.tokens.danger.withValues(alpha: 0.10)
+                        : context.tokens.border.withValues(alpha: 0.4),
                 borderRadius: BorderRadius.only(
                   topLeft:     const Radius.circular(16),
                   topRight:    const Radius.circular(16),
@@ -453,8 +457,8 @@ class _ChatSheetState extends State<_ChatSheet> {
                   : _buildTextoConLinks(
                       msg.texto,
                       msg.esError
-                          ? Colors.red.shade700
-                          : Colors.grey.shade800,
+                          ? context.tokens.danger
+                          : Theme.of(context).colorScheme.onSurface,
                     ),
             ),
           ),
@@ -462,7 +466,7 @@ class _ChatSheetState extends State<_ChatSheet> {
             const SizedBox(width: 6),
             CircleAvatar(
               radius:          15,
-              backgroundColor: const Color(0xFF4F46E5),
+              backgroundColor: Theme.of(context).colorScheme.primary,
               child: const Icon(Icons.person_rounded,
                   size: 16, color: Colors.white),
             ),
@@ -517,9 +521,9 @@ class _ChatSheetState extends State<_ChatSheet> {
             url,
             style: GoogleFonts.poppins(
               fontSize:   13,
-              color:      Colors.blue.shade600,
+              color:      context.tokens.info,
               decoration: TextDecoration.underline,
-              decorationColor: Colors.blue.shade600,
+              decorationColor: context.tokens.info,
               height:     1.45,
             ),
           ),
@@ -552,15 +556,15 @@ class _ChatSheetState extends State<_ChatSheet> {
         children: [
           CircleAvatar(
             radius:          15,
-            backgroundColor: const Color(0xFF4F46E5).withOpacity(0.12),
-            child: const Icon(Icons.smart_toy_rounded,
-                size: 16, color: Color(0xFF4F46E5)),
+            backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
+            child: Icon(Icons.smart_toy_rounded,
+                size: 16, color: Theme.of(context).colorScheme.primary),
           ),
           const SizedBox(width: 6),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color:        Colors.grey.shade100,
+              color:        context.tokens.border.withValues(alpha: 0.4),
               borderRadius: const BorderRadius.only(
                 topLeft:     Radius.circular(16),
                 topRight:    Radius.circular(16),
@@ -571,13 +575,13 @@ class _ChatSheetState extends State<_ChatSheet> {
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               Text('Escribiendo',
                   style: GoogleFonts.poppins(
-                      fontSize: 12, color: Colors.grey.shade500)),
+                      fontSize: 12, color: context.tokens.muted)),
               const SizedBox(width: 6),
-              const SizedBox(
+              SizedBox(
                 width:  20,
                 height: 12,
                 child:  CircularProgressIndicator(
-                    strokeWidth: 2, color: Color(0xFF4F46E5)),
+                    strokeWidth: 2, color: Theme.of(context).colorScheme.primary),
               ),
             ]),
           ),

@@ -2,12 +2,15 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
+import 'connectivity_service.dart';
 import '../models/user_model.dart';
 import '../models/course_model.dart';
 import '../models/activity_model.dart';
+import '../models/evaluation_models.dart';
 
 /// Servicio centralizado de llamadas HTTP al backend GESACAD (Node.js + MySQL).
 ///
@@ -45,18 +48,35 @@ class ApiService {
   // Reintenta automáticamente 1 vez tras 2s si falla por TimeoutException o red.
   // ⚠️  NO aplicar a mutaciones (POST/DELETE/PUT): reintentar un INSERT duplica datos.
   Future<http.Response> _conRetry(Future<http.Response> Function() fn) async {
+    final conn = ConnectivityService.instance;
     for (int i = 0; i < 2; i++) {
       try {
-        return await fn();
-      } on TimeoutException {
-        if (i == 1) rethrow;
-        await Future.delayed(const Duration(seconds: 2));
+        final res = await fn();
+        conn.reportSuccess();
+        return res;
       } catch (e) {
-        if (i == 1) rethrow;
+        // Ya sabemos que no hay red: no tiene sentido esperar 2 s para reintentar.
+        final ultimo = i == 1 || (isNetworkError(e) && !conn.online.value);
+        if (ultimo) {
+          conn.reportFailure(e);
+          rethrow;
+        }
         await Future.delayed(const Duration(seconds: 2));
       }
     }
     throw Exception('Sin conexión al servidor');
+  }
+
+  /// Si el servidor respondió con error, lanza [ApiMessageException] con SU mensaje
+  /// (p. ej. "La contraseña debe tener al menos un símbolo") para mostrarlo tal cual.
+  void _lanzarSiError(http.Response res) {
+    if (res.statusCode >= 200 && res.statusCode < 300) return;
+    String mensaje = 'No se pudo completar la acción (código ${res.statusCode}).';
+    try {
+      final d = jsonDecode(res.body);
+      if (d is Map && d['message'] != null) mensaje = d['message'].toString();
+    } catch (_) {}
+    throw ApiMessageException(res.statusCode, mensaje);
   }
 
   /// Realiza un GET con retry (alias de _conRetry para compatibilidad).
@@ -70,7 +90,11 @@ class ApiService {
     try {
       await http.get(Uri.parse('$_base/health'))
           .timeout(const Duration(seconds: 8));
-    } catch (_) {} // silencioso — el error no interesa, solo queremos despertar el dyno
+      ConnectivityService.instance.reportSuccess();
+    } catch (e) {
+      // Sin error visible: solo se registra el estado para mostrar el aviso.
+      ConnectivityService.instance.reportFailure(e);
+    }
   }
 
   /// Guarda datos en SharedPreferences bajo la clave 'apicache_$key'.
@@ -90,6 +114,37 @@ class ApiService {
       return prefs.getString('apicache_$key');
     } catch (_) {
       return null;
+    }
+  }
+
+  /// GET con **caché persistente de respaldo** (modo sin conexión).
+  ///
+  /// - Con red: responde con el servidor y guarda la respuesta (solo si 200).
+  /// - Sin red (o servidor caído): devuelve la última respuesta guardada como
+  ///   un 200 sintético, para que los llamadores no necesiten cambios.
+  /// - Si ya se sabe que no hay conexión y existe copia, la sirve de inmediato
+  ///   sin esperar timeouts.
+  /// - Sin red y sin copia: relanza el error original.
+  ///
+  /// [allowCache] en `false` fuerza dato fresco (p. ej. confirmar una entrega
+  /// antes de reenviarla): nunca devuelve datos guardados.
+  /// Solo para lecturas: jamás usar con POST/PUT/DELETE.
+  Future<http.Response> _getCached(String key, Uri uri,
+      {bool allowCache = true}) async {
+    if (allowCache && !ConnectivityService.instance.online.value) {
+      final guardado = await _leerDePrefs(key);
+      if (guardado != null) return http.Response(guardado, 200);
+    }
+    try {
+      final res = await _getConRetry(uri);
+      if (res.statusCode == 200) await _guardarEnPrefs(key, res.body);
+      return res;
+    } catch (e) {
+      if (allowCache && isNetworkError(e)) {
+        final guardado = await _leerDePrefs(key);
+        if (guardado != null) return http.Response(guardado, 200);
+      }
+      rethrow;
     }
   }
 
@@ -118,35 +173,40 @@ class ApiService {
   /// La clave de éxito es `'LOGIN_SUCCESFULLY'` (un solo 'L' — typo del
   /// servidor conservado intencionalmente para compatibilidad).
   Future<Map<String, dynamic>> login(String username, String password) async {
+    developer.log('[ApiService] login → username=$username', name: 'GESACAD.Auth');
+
+    // Ruta nueva: POST con la contraseña en el CUERPO (no en la URL, que queda en
+    // registros de acceso e historiales) y respuesta con un token de sesión.
+    final res = await _conRetry(() => http
+        .post(
+          Uri.parse('$_base/auth/login'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'username': username, 'password': password}),
+        )
+        .timeout(_timeout));
+
+    developer.log('[ApiService] login response → statusCode=${res.statusCode}',
+        name: 'GESACAD.Auth');
+
+    // Servidor antiguo sin /auth/login (Express responde 404 en HTML): se usa el
+    // inicio de sesión anterior para no dejar fuera a nadie durante el despliegue.
+    if (res.statusCode == 404 && !res.body.trimLeft().startsWith('{')) {
+      return _loginAntiguo(username, password);
+    }
+    final decoded = jsonDecode(res.body);
+    return decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
+  }
+
+  /// Inicio de sesión ANTERIOR (GET con la contraseña en la URL). Solo como respaldo
+  /// ante un servidor sin la ruta nueva.
+  Future<Map<String, dynamic>> _loginAntiguo(String username, String password) async {
     // Encodear ambos parámetros para evitar crash con caracteres especiales.
-    final encodedUser = Uri.encodeComponent(username);
-    final encodedPass = Uri.encodeComponent(password);
-    final uri = Uri.parse('$_base${ApiConfig.login}/$encodedUser/$encodedPass');
-
-    developer.log(
-      '[ApiService] login → username=$username',
-      name: 'GESACAD.Auth',
-    );
-
-    // Mejora 4: retry en login — crítico para el primer cold start de Railway
+    final uri = Uri.parse(
+        '$_base${ApiConfig.login}/${Uri.encodeComponent(username)}/${Uri.encodeComponent(password)}');
     final res = await _conRetry(() => http.get(uri).timeout(_timeout));
-
-    developer.log(
-      '[ApiService] login response → statusCode=${res.statusCode} '
-      'body=${res.body.length > 120 ? res.body.substring(0, 120) : res.body}',
-      name: 'GESACAD.Auth',
-    );
-
     final decoded = jsonDecode(res.body);
     // El backend retorna lista vacía cuando el usuario no existe — normalizar a Map.
-    if (decoded is List) {
-      developer.log(
-        '[ApiService] login → servidor retornó lista (usuario no encontrado)',
-        name: 'GESACAD.Auth',
-      );
-      return <String, dynamic>{};
-    }
-    return decoded as Map<String, dynamic>;
+    return decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
   }
 
   // ---------------------------------------------------------------------------
@@ -155,9 +215,7 @@ class ApiService {
 
   /// Obtiene el listado completo de usuarios del sistema (solo Admin — RF03).
   Future<List<UserModel>> getUsers() async {
-    final res = await http
-        .get(Uri.parse('$_base${ApiConfig.getUsers}'))
-        .timeout(_timeout);
+    final res = await _getCached('users_all', Uri.parse('$_base${ApiConfig.getUsers}'));
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     final list = data['users'] as List;
     return list
@@ -176,6 +234,7 @@ class ApiService {
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'username': username, 'password': password, 'rol': rol}),
     );
+    _lanzarSiError(res);
     return jsonDecode(res.body).toString();
   }
 
@@ -186,6 +245,7 @@ class ApiService {
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'userId': userId}),
     );
+    _lanzarSiError(res);
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     return data['response']?.toString() ?? '';
   }
@@ -201,24 +261,23 @@ class ApiService {
       body: jsonEncode(
           {'id': id, 'username': username, 'password': password, 'rol': rol}),
     );
+    _lanzarSiError(res);
     return jsonDecode(res.body).toString();
   }
 
   /// Obtiene la cantidad total de usuarios agrupados por rol.
   /// Usado en el dashboard del Administrador (CU-06 / RF05).
   Future<Map<String, dynamic>> getQuantityUsers() async {
-    final res = await http
-        .get(Uri.parse('$_base${ApiConfig.getQuantityUsers}'))
-        .timeout(_timeout);
+    final res = await _getCached(
+        'qty_users', Uri.parse('$_base${ApiConfig.getQuantityUsers}'));
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   /// Obtiene la cantidad total de matriculados por curso.
   /// Usado en el dashboard del Administrador (CU-06 / RF05).
   Future<Map<String, dynamic>> getQuantityRecords() async {
-    final res = await http
-        .get(Uri.parse('$_base${ApiConfig.getQuantityRecords}'))
-        .timeout(_timeout);
+    final res = await _getCached(
+        'qty_records', Uri.parse('$_base${ApiConfig.getQuantityRecords}'));
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
@@ -274,7 +333,9 @@ class ApiService {
 
     // Si hay datos en prefs, actualizar en background y retornar los cacheados
     if (prefsData != null) {
-      unawaited(fetchFromBackend().catchError((_) => <CourseModel>[]));
+      if (ConnectivityService.instance.online.value) {
+        unawaited(fetchFromBackend().catchError((_) => <CourseModel>[]));
+      }
       return prefsData;
     }
 
@@ -288,9 +349,8 @@ class ApiService {
   /// Si el endpoint no existe, retorna lista vacía sin lanzar excepción.
   Future<List<CourseModel>> getAllCourses() async {
     try {
-      final res = await _conRetry(() => http
-          .get(Uri.parse('$_base${ApiConfig.getAllCourses}'))
-          .timeout(_timeout));
+      final res = await _getCached(
+          'allcourses', Uri.parse('$_base${ApiConfig.getAllCourses}'));
       if (res.statusCode != 200) return [];
       final decoded = jsonDecode(res.body);
       if (decoded is! List) return [];
@@ -379,7 +439,9 @@ class ApiService {
     }
 
     if (prefsData != null) {
-      unawaited(fetchFromBackend().catchError((_) => <ActivityModel>[]));
+      if (ConnectivityService.instance.online.value) {
+        unawaited(fetchFromBackend().catchError((_) => <ActivityModel>[]));
+      }
       return prefsData;
     }
 
@@ -391,13 +453,18 @@ class ApiService {
   /// - [activityId]: ID de la actividad.
   /// - [userId]: ID del estudiante (null para vista de profesor o admin).
   /// - [userRol]: rol del solicitante para construir la ruta correcta.
+  ///
+  /// Con [fresh] se ignora el caché sin conexión y se exige respuesta del servidor.
   Future<ActivityModel?> getActivityContent(
-      int activityId, int? userId, String userRol) async {
+      int activityId, int? userId, String userRol,
+      {bool fresh = false}) async {
     final path = userId != null
         ? '$_base${ApiConfig.getActivityContent}/$activityId/$userId/$userRol'
         : '$_base${ApiConfig.getActivityContent}/$activityId/$userRol';
     // Mejora 4: retry — actividad es crítica para el flujo del estudiante
-    final res = await _conRetry(() => http.get(Uri.parse(path)).timeout(_timeout));
+    final res = await _getCached(
+        'actc_${activityId}_${userId ?? 0}_$userRol', Uri.parse(path),
+        allowCache: !fresh);
     final list = jsonDecode(res.body) as List;
     if (list.isEmpty) return null;
     return ActivityModel.fromJson(list[0] as Map<String, dynamic>);
@@ -498,7 +565,14 @@ class ApiService {
     request.fields['originalFileName'] = fileName;
     // Enviar comentario al backend (requiere columna 'comment' en la tabla resolutions).
     if (comment.isNotEmpty) request.fields['comment'] = comment;
-    final streamed = await request.send().timeout(_timeout);
+    final http.StreamedResponse streamed;
+    try {
+      streamed = await request.send().timeout(_timeout);
+    } catch (e) {
+      ConnectivityService.instance.reportFailure(e);
+      rethrow;
+    }
+    ConnectivityService.instance.reportSuccess();
     developer.log(
       '[ApiService] addResourceBytes response → statusCode=${streamed.statusCode}',
       name: 'GESACAD.Api',
@@ -537,9 +611,8 @@ class ApiService {
   /// Obtiene todas las entregas (resoluciones) de una actividad para calificar.
   Future<List<Map<String, dynamic>>> getResolutions(int activityId) async {
     // Mejora 4: retry — crítico para que el profesor vea entregas
-    final res = await _conRetry(() => http
-        .get(Uri.parse('$_base${ApiConfig.getResolutions}/$activityId'))
-        .timeout(_timeout));
+    final res = await _getCached(
+        'resols_$activityId', Uri.parse('$_base${ApiConfig.getResolutions}/$activityId'));
     return List<Map<String, dynamic>>.from(jsonDecode(res.body) as List);
   }
 
@@ -547,17 +620,29 @@ class ApiService {
   ///
   /// - [gpa]: nota entre 0.0 y 5.0 (escala universitaria colombiana; ≥ 3.0 aprueba).
   /// - [teacherComment]: retroalimentación opcional del docente al estudiante.
-  Future<void> gradeActivity(int userId, int activityId, double gpa,
+  ///
+  /// Devuelve el código HTTP (la cola sin conexión lo necesita para decidir si
+  /// reintenta). Lanza si no hay red.
+  Future<int> gradeActivity(int userId, int activityId, double gpa,
       {String teacherComment = ''}) async {
     final body = <String, dynamic>{'GPA': gpa};
     if (teacherComment.trim().isNotEmpty) {
       body['teacherComment'] = teacherComment.trim();
     }
-    await http.patch(
-      Uri.parse('$_base${ApiConfig.gradeActivity}/$userId/$activityId'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(body),
-    );
+    try {
+      final res = await http
+          .patch(
+            Uri.parse('$_base${ApiConfig.gradeActivity}/$userId/$activityId'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(body),
+          )
+          .timeout(_timeout);
+      ConnectivityService.instance.reportSuccess();
+      return res.statusCode;
+    } catch (e) {
+      ConnectivityService.instance.reportFailure(e);
+      rethrow;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -569,9 +654,8 @@ class ApiService {
   /// Retorna un mapa con claves 'teacher' (Map o null) y 'students' (List).
   Future<Map<String, dynamic>> getCourseMembers(int courseId) async {
     try {
-      final res = await http
-          .get(Uri.parse('$_base${ApiConfig.getCourseMembers}/$courseId/members'))
-          .timeout(_timeout);
+      final res = await _getCached('members_$courseId',
+          Uri.parse('$_base${ApiConfig.getCourseMembers}/$courseId/members'));
       if (res.statusCode == 200) {
         return jsonDecode(res.body) as Map<String, dynamic>;
       }
@@ -606,9 +690,8 @@ class ApiService {
   /// Obtiene el reporte de calificaciones de un estudiante en un curso.
   Future<List<Map<String, dynamic>>> getGrades(
       int courseId, int userId) async {
-    final res = await http
-        .get(Uri.parse('$_base${ApiConfig.getGrades}/$courseId/$userId'))
-        .timeout(_timeout);
+    final res = await _getCached('grades_${courseId}_$userId',
+        Uri.parse('$_base${ApiConfig.getGrades}/$courseId/$userId'));
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     return List<Map<String, dynamic>>.from(data['data'] as List? ?? []);
   }
@@ -712,9 +795,8 @@ class ApiService {
   /// aún en el backend, hace fallback a getUsers() y filtra por rol 'Student'.
   Future<List<UserModel>> getStudents() async {
     try {
-      final res = await http
-          .get(Uri.parse('$_base${ApiConfig.getStudents}'))
-          .timeout(_timeout);
+      final res = await _getCached(
+          'students', Uri.parse('$_base${ApiConfig.getStudents}'));
       if (res.statusCode == 200) {
         final body = jsonDecode(res.body);
         if (body is List && body.isNotEmpty) {
@@ -735,9 +817,8 @@ class ApiService {
   /// aún en el backend, hace fallback a getUsers() y filtra por rol 'Teacher'.
   Future<List<UserModel>> getTeachers() async {
     try {
-      final res = await http
-          .get(Uri.parse('$_base${ApiConfig.getTeachers}'))
-          .timeout(_timeout);
+      final res = await _getCached(
+          'teachers', Uri.parse('$_base${ApiConfig.getTeachers}'));
       if (res.statusCode == 200) {
         final body = jsonDecode(res.body);
         if (body is List && body.isNotEmpty) {
@@ -760,9 +841,8 @@ class ApiService {
   /// o null si ocurre un error de red.
   Future<Map<String, dynamic>?> getUserProfile(int userId) async {
     try {
-      final res = await http
-          .get(Uri.parse('$_base${ApiConfig.getProfile}/$userId'))
-          .timeout(_timeout);
+      final res = await _getCached('profile_$userId',
+          Uri.parse('$_base${ApiConfig.getProfile}/$userId'));
       if (res.statusCode == 200) {
         return jsonDecode(res.body) as Map<String, dynamic>;
       }
@@ -809,9 +889,8 @@ class ApiService {
   /// Combina: actividades nuevas, calificaciones publicadas y logs del sistema.
   Future<List<Map<String, dynamic>>> getNotifications(int userId, String rol) async {
     try {
-      final res = await http
-          .get(Uri.parse('$_base/users/getNotifications/$userId/$rol'))
-          .timeout(_timeout);
+      final res = await _getCached('notifs_${userId}_$rol',
+          Uri.parse('$_base/users/getNotifications/$userId/$rol'));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         return List<Map<String, dynamic>>.from(data['notifications'] ?? []);
@@ -822,6 +901,198 @@ class ApiService {
     return [];
   }
 
+
+  // ---------------------------------------------------------------------------
+  // CU-08 — Evaluación docente
+  // ---------------------------------------------------------------------------
+  // Lecturas: con caché de respaldo (se pueden consultar sin conexión).
+  // Escrituras del Admin: requieren conexión y lanzan [EvalApiException] con el
+  // mensaje del servidor. El envío del estudiante pasa por la cola sin conexión.
+
+  /// Convierte una respuesta de error del módulo en [EvalApiException].
+  Never _evalError(http.Response res) {
+    String code = 'ERROR';
+    String message = 'No se pudo completar la acción (código ${res.statusCode}).';
+    var json = false;
+    try {
+      final d = jsonDecode(res.body);
+      if (d is Map) {
+        json = true;
+        code = d['error']?.toString() ?? code;
+        message = d['message']?.toString() ?? message;
+      }
+    } catch (_) {}
+    // Un 404 que NO es JSON lo devuelve Express cuando la ruta no existe: el
+    // servidor al que apunta la app todavía no tiene el módulo de evaluación.
+    if (res.statusCode == 404 && !json) {
+      code = 'MODULO_NO_DISPONIBLE';
+      message = 'El servidor no tiene habilitada la evaluación docente (error 404). '
+          'Hay que desplegar la última versión del backend.';
+      if (kDebugMode) {
+        message += '\n\nEn desarrollo, ejecuta la app apuntando a tu backend local:\n'
+            'flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:8081';
+      }
+    }
+    throw EvalApiException(res.statusCode, code, message);
+  }
+
+  Future<dynamic> _evalGet(String key, String path) async {
+    final res = await _getCached(key, Uri.parse('$_base/evaluations$path'));
+    if (res.statusCode != 200) _evalError(res);
+    return jsonDecode(res.body);
+  }
+
+  Future<http.Response> _evalWrite(String method, String path,
+      [Map<String, dynamic>? body]) async {
+    final uri = Uri.parse('$_base/evaluations$path');
+    const headers = {'Content-Type': 'application/json'};
+    try {
+      final http.Response res;
+      switch (method) {
+        case 'POST':
+          res = await http.post(uri, headers: headers, body: jsonEncode(body ?? {})).timeout(_timeout);
+        case 'PUT':
+          res = await http.put(uri, headers: headers, body: jsonEncode(body ?? {})).timeout(_timeout);
+        default:
+          res = await http.delete(uri, headers: headers).timeout(_timeout);
+      }
+      ConnectivityService.instance.reportSuccess();
+      return res;
+    } catch (e) {
+      ConnectivityService.instance.reportFailure(e);
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> _evalMutate(String method, String path,
+      [Map<String, dynamic>? body]) async {
+    final res = await _evalWrite(method, path, body);
+    if (res.statusCode < 200 || res.statusCode >= 300) _evalError(res);
+    final d = res.body.isEmpty ? {} : jsonDecode(res.body);
+    return d is Map<String, dynamic> ? d : {};
+  }
+
+  // ── Estudiante ──
+  Future<List<EvalPending>> getPendingEvaluations(int studentId) async {
+    final d = await _evalGet('eval_pending_$studentId', '/pending/$studentId');
+    return (d as List).map((e) => EvalPending.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<EvalForm> getEvaluationForm(int targetId, int studentId) async {
+    final d = await _evalGet('eval_form_${targetId}_$studentId',
+        '/targets/$targetId/form/$studentId');
+    return EvalForm.fromJson(d as Map<String, dynamic>);
+  }
+
+  /// Envía las respuestas. Devuelve el código HTTP (no lanza por 4xx/5xx) para
+  /// que la cola decida si reintenta. Lanza solo si no hay red.
+  /// [answers]: `[{questionId, value?, comment?}]`.
+  Future<EvalSubmitResult> submitEvaluation(
+      int targetId, int studentId, List<Map<String, dynamic>> answers) async {
+    final res = await _evalWrite('POST', '/targets/$targetId/submit',
+        {'studentId': studentId, 'answers': answers});
+    String? code, message;
+    try {
+      final d = jsonDecode(res.body);
+      if (d is Map) {
+        code = d['error']?.toString();
+        message = d['message']?.toString();
+      }
+    } catch (_) {}
+    return EvalSubmitResult(res.statusCode, code: code, message: message);
+  }
+
+  // ── Admin ──
+  Future<List<EvalPeriod>> getEvalPeriods(int adminId) async {
+    final d = await _evalGet('eval_periods_$adminId', '/periods?adminId=$adminId');
+    return (d as List).map((e) => EvalPeriod.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<EvalPeriod> getEvalPeriod(int periodId, int adminId) async {
+    final d = await _evalGet('eval_period_${periodId}_$adminId',
+        '/periods/$periodId?adminId=$adminId');
+    return EvalPeriod.fromJson(d as Map<String, dynamic>);
+  }
+
+  /// Crea un borrador; devuelve su id.
+  Future<int> createEvalPeriod(int adminId, String name,
+      {DateTime? opensAt, DateTime? closesAt, int? minResponses,
+      int? copyFromPeriodId}) async {
+    final d = await _evalMutate('POST', '/periods', {
+      'adminId': adminId,
+      'name': name,
+      if (opensAt != null) 'opensAt': opensAt.toUtc().toIso8601String(),
+      if (closesAt != null) 'closesAt': closesAt.toUtc().toIso8601String(),
+      if (minResponses != null) 'minResponses': minResponses,
+      if (copyFromPeriodId != null) 'copyFromPeriodId': copyFromPeriodId,
+    });
+    return d['id'] as int;
+  }
+
+  Future<void> updateEvalPeriod(int periodId, int adminId,
+      {String? name, DateTime? opensAt, DateTime? closesAt, int? minResponses}) async {
+    await _evalMutate('PUT', '/periods/$periodId', {
+      'adminId': adminId,
+      if (name != null) 'name': name,
+      if (opensAt != null) 'opensAt': opensAt.toUtc().toIso8601String(),
+      if (closesAt != null) 'closesAt': closesAt.toUtc().toIso8601String(),
+      if (minResponses != null) 'minResponses': minResponses,
+    });
+  }
+
+  Future<void> saveEvalQuestions(
+      int periodId, int adminId, List<EvalQuestion> questions) async {
+    await _evalMutate('PUT', '/periods/$periodId/questions', {
+      'adminId': adminId,
+      'questions': questions.map((q) => q.toJson()).toList(),
+    });
+  }
+
+  /// Árbol docente → curso → estudiantes con la selección actual del periodo.
+  Future<EvalCandidates> getEvalCandidates(int periodId, int adminId) async {
+    final d = await _evalGet('eval_cand_${periodId}_$adminId',
+        '/periods/$periodId/candidates?adminId=$adminId');
+    return EvalCandidates.fromJson(d as Map<String, dynamic>);
+  }
+
+  /// Guarda quiénes participan. Sin [selection] vuelve al modo "todos".
+  /// [selection]: `[{courseId, studentIds: [..]}]`. Solo en borrador.
+  Future<void> saveEvalScope(int periodId, int adminId,
+          {List<Map<String, dynamic>>? selection}) =>
+      _evalMutate('PUT', '/periods/$periodId/scope', {
+        'adminId': adminId,
+        if (selection == null) 'mode': 'all' else 'selection': selection,
+      });
+
+  /// Suma participantes a un periodo YA PUBLICADO y vigente (no quita a nadie).
+  /// [selection]: `[{courseId, studentIds: [..]}]`. Devuelve `{added, newCourses}`.
+  Future<Map<String, dynamic>> addEvalParticipants(
+          int periodId, int adminId, List<Map<String, dynamic>> selection) =>
+      _evalMutate('POST', '/periods/$periodId/scope/add',
+          {'adminId': adminId, 'selection': selection});
+
+  /// Publica el periodo. Devuelve cuántos cursos entraron y cuántos se omitieron.
+  Future<Map<String, dynamic>> publishEvalPeriod(int periodId, int adminId) =>
+      _evalMutate('POST', '/periods/$periodId/publish', {'adminId': adminId});
+
+  Future<void> closeEvalPeriod(int periodId, int adminId) =>
+      _evalMutate('POST', '/periods/$periodId/close', {'adminId': adminId});
+
+  Future<void> deleteEvalPeriod(int periodId, int adminId) =>
+      _evalMutate('DELETE', '/periods/$periodId?adminId=$adminId');
+
+  Future<EvalPeriodResults> getEvalResults(int periodId, int adminId) async {
+    final d = await _evalGet('eval_results_${periodId}_$adminId',
+        '/periods/$periodId/results?adminId=$adminId');
+    return EvalPeriodResults.fromJson(d as Map<String, dynamic>);
+  }
+
+  // ── Docente ──
+  Future<List<EvalPeriodResults>> getTeacherEvalResults(int teacherId) async {
+    final d = await _evalGet('eval_teacher_$teacherId', '/teacher/$teacherId/results');
+    return (d as List).map((e) => EvalPeriodResults.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
 }
 
 /// Entrada de caché con datos y timestamp para invalidación por TTL.
@@ -830,4 +1101,14 @@ class _CacheEntry {
   final DateTime ts;
   _CacheEntry(this.data) : ts = DateTime.now();
   bool get expired => DateTime.now().difference(ts) > ApiService._cacheTtl;
+}
+
+/// Error devuelto por el servidor con un mensaje apto para el usuario.
+class ApiMessageException implements Exception {
+  const ApiMessageException(this.status, this.message);
+  final int status;
+  final String message;
+
+  @override
+  String toString() => message;
 }

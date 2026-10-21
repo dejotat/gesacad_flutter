@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+import '../config/app_tokens.dart';
 import '../services/settings_service.dart';
+import '../widgets/ui/ui.dart';
 
 /// Pantalla de ajustes y "Acerca de" GESACAD.
 ///
@@ -13,490 +16,334 @@ class SettingsScreen extends StatelessWidget {
 
   static const String version = '1.1.2';
   static const String developer = 'Jorge Tunubala';
-  static const String institution = 'Corporación Universitaria Unicomfacauca';
+  static const String institution = 'Colegio Santander';
   static const String year = '2026';
 
   @override
   Widget build(BuildContext context) {
-    final primary = Theme.of(context).colorScheme.primary;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Ajustes y Acerca de',
-            style: GoogleFonts.poppins(
-                color: Colors.white, fontWeight: FontWeight.w700)),
-        leading: IconButton(
-          tooltip: 'Regresar',
-          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-        flexibleSpace: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: AppSettings.currentTheme.value.gradient,
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-            ),
-          ),
-        ),
-        backgroundColor: Colors.transparent,
-      ),
+      appBar: AppBar(title: const Text('Ajustes y Acerca de')),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // -- Hero del app --
-            _buildAppHero(context, primary),
-            const SizedBox(height: 28),
-
-            // -- Accesibilidad --
-            _sectionTitle('Accesibilidad', Icons.accessibility_new_rounded, primary),
-            const SizedBox(height: 12),
-            _buildTalkBackCard(context, primary, isDark),
-            const SizedBox(height: 28),
-
-            // -- Temas --
-            _sectionTitle('Apariencia', Icons.palette_rounded, primary),
-            const SizedBox(height: 12),
-            _buildThemePicker(context, isDark),
-            const SizedBox(height: 28),
-
-            // -- Acerca de --
-            _sectionTitle('Acerca de', Icons.info_outline_rounded, primary),
-            const SizedBox(height: 12),
-            _buildAboutCard(context, primary, isDark),
-            const SizedBox(height: 28),
-
-            // -- Créditos --
-            _sectionTitle('Créditos', Icons.people_rounded, primary),
-            const SizedBox(height: 12),
-            _buildCreditsCard(context, primary, isDark),
-            const SizedBox(height: 40),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _sectionTitle(String title, IconData icon, Color primary) {
-    return Row(
-      children: [
-        Icon(icon, color: primary, size: 20),
-        const SizedBox(width: 8),
-        Text(title,
-            style: GoogleFonts.poppins(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: primary)),
-      ],
-    );
-  }
-
-  Widget _buildAppHero(BuildContext context, Color primary) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(28),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: AppSettings.currentTheme.value.gradient,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: primary.withOpacity(0.4),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
-              shape: BoxShape.circle,
-              border:
-                  Border.all(color: Colors.white.withOpacity(0.3), width: 2),
-            ),
-            child: const Icon(Icons.school_rounded,
-                color: Colors.white, size: 52),
-          ),
-          const SizedBox(height: 16),
-          Text('GESACAD',
-              style: GoogleFonts.poppins(
-                  color: Colors.white,
-                  fontSize: 32,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 4)),
-          const SizedBox(height: 4),
-          Text('Sistema de Gestión Académica',
-              style: GoogleFonts.poppins(
-                  color: Colors.white70, fontSize: 14, letterSpacing: 1)),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text('Versión $version',
-                style: GoogleFonts.poppins(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTalkBackCard(
-      BuildContext context, Color primary, bool isDark) {
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E2E) : Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.06),
-              blurRadius: 12,
-              offset: const Offset(0, 4)),
-        ],
-      ),
-      child: ValueListenableBuilder<bool>(
-        valueListenable: AppSettings.talkBackEnabled,
-        builder: (context, enabled, _) {
-          return Padding(
-            padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(AppTokens.pagePadding),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: (enabled ? primary : Colors.grey)
-                            .withOpacity(0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        enabled
-                            ? Icons.record_voice_over_rounded
-                            : Icons.voice_over_off_rounded,
-                        color: enabled ? primary : Colors.grey,
-                        size: 26,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('TalkBack',
-                              style: GoogleFonts.poppins(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 16)),
-                          Text(
-                            enabled
-                                ? 'Activado — hover lee en voz alta'
-                                : 'Desactivado — sin lectura de voz',
-                            style: GoogleFonts.poppins(
-                                fontSize: 12,
-                                color: enabled
-                                    ? primary
-                                    : Colors.grey),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Switch(
-                      value: enabled,
-                      onChanged: (v) => AppSettings.setTalkBack(v),
-                    ),
-                  ],
-                ),
-                if (enabled) ...[
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: primary.withOpacity(0.07),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.lightbulb_outline_rounded,
-                            color: primary, size: 18),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Hover: pasa el cursor sobre cualquier elemento para escucharlo. '
-                            'Botón 🔊: lee toda la pantalla. '
-                            'Desactiva el switch para silenciar.',
-                            style: GoogleFonts.poppins(
-                                fontSize: 12, color: primary),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                _buildAppHero(context),
+                const SizedBox(height: AppTokens.sectionGap),
+                const SectionTitle('Accesibilidad',
+                    icon: PhosphorIconsRegular.personArmsSpread),
+                const SizedBox(height: 12),
+                _buildTalkBackCard(context),
+                const SizedBox(height: AppTokens.sectionGap),
+                const SectionTitle('Apariencia',
+                    icon: PhosphorIconsRegular.palette),
+                const SizedBox(height: 12),
+                _buildThemePicker(context),
+                const SizedBox(height: AppTokens.sectionGap),
+                const SectionTitle('Acerca de', icon: PhosphorIconsRegular.info),
+                const SizedBox(height: 12),
+                _buildAboutCard(context),
+                const SizedBox(height: AppTokens.sectionGap),
+                const SectionTitle('Créditos', icon: PhosphorIconsRegular.users),
+                const SizedBox(height: 12),
+                _buildCreditsCard(context),
+                const SizedBox(height: 40),
               ],
             ),
-          );
-        },
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildThemePicker(BuildContext context, bool isDark) {
-    return ValueListenableBuilder<AppThemeType>(
-      valueListenable: AppSettings.currentTheme,
-      builder: (_, current, __) {
-        return Container(
+  Widget _buildAppHero(BuildContext context) {
+    return PageHeader(
+      title: 'GESACAD',
+      subtitle: 'Sistema de Gestión Académica',
+      leading: ExcludeSemantics(
+        child: Container(
+          width: 56, height: 56,
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1E1E2E) : Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06),
-                blurRadius: 16, offset: const Offset(0, 4))],
+            shape: BoxShape.circle,
+            color: Colors.white.withValues(alpha: 0.18),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.4)),
           ),
+          child: const Icon(PhosphorIconsRegular.graduationCap,
+              color: Colors.white, size: 28),
+        ),
+      ),
+      chips: const [HeaderChip(PhosphorIconsRegular.hash, 'Versión $version')],
+    );
+  }
+
+  Widget _buildTalkBackCard(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final t = context.tokens;
+    return ValueListenableBuilder<bool>(
+      valueListenable: AppSettings.talkBackEnabled,
+      builder: (context, enabled, _) {
+        final accent = enabled ? cs.primary : t.muted;
+        return AppCard(
           padding: const EdgeInsets.all(20),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            // Tema activo destacado
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: current.gradient,
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+          child: Column(children: [
+            Row(children: [
+              Container(
+                width: 48, height: 48,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(AppTokens.radiusControl),
                 ),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [BoxShadow(
-                  color: current.primaryColor.withOpacity(0.4),
-                  blurRadius: 16, offset: const Offset(0, 6))],
+                child: Icon(
+                  enabled
+                      ? PhosphorIconsRegular.speakerHigh
+                      : PhosphorIconsRegular.speakerSlash,
+                  color: accent,
+                  size: 26,
+                ),
               ),
-              child: Row(children: [
-                Text(current.emoji, style: const TextStyle(fontSize: 24)),
-                const SizedBox(width: 12),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Tema activo', style: GoogleFonts.poppins(
-                      color: Colors.white70, fontSize: 10)),
-                  Text(current.label, style: GoogleFonts.poppins(
-                      color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
-                ])),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    shape: BoxShape.circle,
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('TalkBack',
+                      style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w600, fontSize: 16)),
+                  Text(
+                    enabled
+                        ? 'Activado — el cursor lee en voz alta'
+                        : 'Desactivado — sin lectura de voz',
+                    style: GoogleFonts.poppins(fontSize: 12, color: accent),
                   ),
-                  child: Icon(current.icon, color: Colors.white, size: 20),
+                ]),
+              ),
+              Semantics(
+                label: 'TalkBack',
+                toggled: enabled,
+                child: Switch(
+                  value: enabled,
+                  onChanged: (v) => AppSettings.setTalkBack(v),
                 ),
-              ]),
-            ),
-            const SizedBox(height: 18),
-            Text('Elige un tema', style: GoogleFonts.poppins(
-                fontSize: 13, fontWeight: FontWeight.w600,
-                color: Colors.grey.shade600)),
-            const SizedBox(height: 12),
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
-              childAspectRatio: 2.4,
-              children: AppThemeType.values.map((t) {
-                final selected = t == current;
-                return GestureDetector(
-                  onTap: () => AppSettings.setTheme(t),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 220),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: t.gradient,
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                      ),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: selected ? Colors.white : Colors.transparent,
-                        width: 2.5,
-                      ),
-                      boxShadow: selected
-                          ? [BoxShadow(color: t.primaryColor.withOpacity(0.5),
-                              blurRadius: 12, offset: const Offset(0, 4))]
-                          : [BoxShadow(color: t.primaryColor.withOpacity(0.15),
-                              blurRadius: 6, offset: const Offset(0, 2))],
+              ),
+            ]),
+            if (enabled) ...[
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: cs.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(AppTokens.radiusControl),
+                ),
+                child: Row(children: [
+                  Icon(PhosphorIconsRegular.lightbulb,
+                      color: cs.primary, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Pasa el cursor sobre cualquier elemento para escucharlo. '
+                      'El botón de altavoz lee toda la pantalla. '
+                      'Desactiva el interruptor para silenciar.',
+                      style: GoogleFonts.poppins(fontSize: 12, color: t.muted),
                     ),
-                    child: Stack(children: [
-                      Positioned(top: 0, left: 0, right: 0, child: Container(
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.18),
-                          borderRadius: const BorderRadius.vertical(
-                              top: Radius.circular(12)),
-                        ),
-                      )),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 8),
-                        child: Row(children: [
-                          Text(t.emoji, style: const TextStyle(fontSize: 16)),
-                          const SizedBox(width: 6),
-                          Expanded(child: Text(t.label,
-                              style: GoogleFonts.poppins(color: Colors.white,
-                                  fontSize: 10, fontWeight: FontWeight.w700),
-                              maxLines: 1, overflow: TextOverflow.ellipsis)),
-                          if (selected)
-                            const Icon(Icons.check_circle_rounded,
-                                color: Colors.white, size: 16),
-                        ]),
-                      ),
-                    ]),
                   ),
-                );
-              }).toList(),
-            ),
+                ]),
+              ),
+            ],
           ]),
         );
       },
     );
   }
 
-    Widget _buildAboutCard(BuildContext context, Color primary, bool isDark) {
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E2E) : Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.06),
-              blurRadius: 12,
-              offset: const Offset(0, 4)),
-        ],
-      ),
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        children: [
-          _infoRow(Icons.info_rounded, 'Nombre', 'GESACAD', primary),
-          _divider(),
-          _infoRow(Icons.tag_rounded, 'Versión', version, primary),
-          _divider(),
-          _infoRow(Icons.calendar_today_rounded, 'Año', year, primary),
-          _divider(),
-          _infoRow(Icons.school_rounded, 'Institución', institution, primary),
-          _divider(),
-          _infoRow(Icons.devices_rounded, 'Plataformas',
-              'Android · iOS · Web · Windows', primary),
-          _divider(),
-          _infoRow(Icons.code_rounded, 'Tecnología',
-              'Flutter 3 · Dart · Node.js · MySQL', primary),
-        ],
-      ),
+  Widget _buildThemePicker(BuildContext context) {
+    final t = context.tokens;
+    return ValueListenableBuilder<AppThemeType>(
+      valueListenable: AppSettings.currentTheme,
+      builder: (_, current, __) {
+        return AppCard(
+          padding: const EdgeInsets.all(20),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Elige un tema',
+                style: GoogleFonts.poppins(
+                    fontSize: 13, fontWeight: FontWeight.w500, color: t.muted)),
+            const SizedBox(height: 12),
+            LayoutBuilder(builder: (ctx, c) {
+              final cols = c.maxWidth > 520 ? 3 : 2;
+              const gap = 10.0;
+              final w = (c.maxWidth - gap * (cols - 1)) / cols;
+              return Wrap(
+                spacing: gap,
+                runSpacing: gap,
+                children: [
+                  for (final theme in AppThemeType.values)
+                    SizedBox(
+                      width: w,
+                      child: _themeTile(context, theme, theme == current),
+                    ),
+                ],
+              );
+            }),
+          ]),
+        );
+      },
     );
   }
 
-  Widget _buildCreditsCard(
-      BuildContext context, Color primary, bool isDark) {
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E2E) : Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.06),
-              blurRadius: 12,
-              offset: const Offset(0, 4)),
-        ],
-      ),
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        children: [
-          _creditCard(Icons.person_rounded, developer,
-              'Desarrollador principal', primary),
-          const SizedBox(height: 12),
-          _creditCard(Icons.business_rounded, institution,
-              'Institución patrocinadora', primary),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(14),
+  /// Muestra de un tema: degradado en vidrio con su nombre y marca de selección.
+  Widget _themeTile(BuildContext context, AppThemeType type, bool selected) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: 'Tema ${type.label}${selected ? ', seleccionado' : ''}',
+      child: ExcludeSemantics(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppTokens.radiusControl),
+          onTap: () => AppSettings.setTheme(type),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
             decoration: BoxDecoration(
-              color: primary.withOpacity(0.06),
-              borderRadius: BorderRadius.circular(12),
+              gradient: LinearGradient(
+                colors: type.gradient,
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+              ),
+              borderRadius: BorderRadius.circular(AppTokens.radiusControl),
+              border: Border.all(
+                color: selected
+                    ? Colors.white
+                    : Colors.white.withValues(alpha: 0.25),
+                width: selected ? 2.5 : 1,
+              ),
+              boxShadow: selected
+                  ? [BoxShadow(
+                      color: type.primaryColor.withValues(alpha: 0.45),
+                      blurRadius: 14,
+                      offset: const Offset(0, 5))]
+                  : null,
             ),
-            child: Row(
-              children: [
-                Icon(Icons.favorite_rounded, color: Colors.red.shade400, size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Desarrollado con Flutter para la comunidad académica de Unicomfacauca.',
-                    style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey.shade600),
-                  ),
-                ),
-              ],
-            ),
+            child: Row(children: [
+              Icon(type.icon, color: Colors.white, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(type.label,
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.poppins(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600)),
+              ),
+              if (selected)
+                const Icon(PhosphorIconsFill.checkCircle,
+                    color: Colors.white, size: 18),
+            ]),
           ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _infoRow(IconData icon, String label, String value, Color primary) {
+  Widget _buildAboutCard(BuildContext context) {
+    return AppCard(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      child: Column(children: [
+        _infoRow(context, PhosphorIconsRegular.info, 'Nombre', 'GESACAD'),
+        _divider(context),
+        _infoRow(context, PhosphorIconsRegular.hash, 'Versión', version),
+        _divider(context),
+        _infoRow(context, PhosphorIconsRegular.calendarBlank, 'Año', year),
+        _divider(context),
+        _infoRow(context, PhosphorIconsRegular.buildings, 'Institución',
+            institution),
+        _divider(context),
+        _infoRow(context, PhosphorIconsRegular.devices, 'Plataformas',
+            'Android · Web'),
+        _divider(context),
+        _infoRow(context, PhosphorIconsRegular.code, 'Tecnología',
+            'Flutter · Node.js · MySQL'),
+      ]),
+    );
+  }
+
+  Widget _buildCreditsCard(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final t = context.tokens;
+    return AppCard(
+      padding: const EdgeInsets.all(20),
+      child: Column(children: [
+        _creditRow(context, PhosphorIconsRegular.user, developer,
+            'Desarrollador principal'),
+        const SizedBox(height: 14),
+        _creditRow(context, PhosphorIconsRegular.buildings, institution,
+            'Institución'),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: cs.primary.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(AppTokens.radiusControl),
+          ),
+          child: Row(children: [
+            Icon(PhosphorIconsFill.heart, color: t.danger, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Desarrollado con Flutter para la comunidad académica de $institution.',
+                style: GoogleFonts.poppins(fontSize: 12, color: t.muted),
+              ),
+            ),
+          ]),
+        ),
+      ]),
+    );
+  }
+
+  Widget _infoRow(BuildContext context, IconData icon, String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        children: [
-          Icon(icon, color: primary, size: 20),
-          const SizedBox(width: 12),
-          Text(label,
-              style: GoogleFonts.poppins(
-                  fontSize: 13, color: Colors.grey.shade500)),
-          const Spacer(),
-          Text(value,
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Row(children: [
+        Icon(icon, color: Theme.of(context).colorScheme.primary, size: 20),
+        const SizedBox(width: 12),
+        Text(label,
+            style: GoogleFonts.poppins(
+                fontSize: 13, color: context.tokens.muted)),
+        const Spacer(),
+        Flexible(
+          child: Text(value,
               style: GoogleFonts.poppins(
                   fontSize: 13, fontWeight: FontWeight.w600),
               textAlign: TextAlign.right),
-        ],
-      ),
+        ),
+      ]),
     );
   }
 
-  Widget _divider() => Divider(height: 1, color: Colors.grey.shade100);
+  Widget _divider(BuildContext context) =>
+      Divider(height: 1, color: context.tokens.border);
 
-  Widget _creditCard(IconData icon, String name, String role, Color primary) {
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: primary.withOpacity(0.1),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon, color: primary, size: 22),
+  Widget _creditRow(BuildContext context, IconData icon, String name, String role) {
+    final primary = Theme.of(context).colorScheme.primary;
+    return Row(children: [
+      Container(
+        width: 44, height: 44,
+        decoration: BoxDecoration(
+          color: primary.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(AppTokens.radiusControl),
         ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(name,
-                  style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.w700, fontSize: 14)),
-              Text(role,
-                  style: GoogleFonts.poppins(
-                      fontSize: 12, color: Colors.grey.shade500)),
-            ],
-          ),
-        ),
-      ],
-    );
+        child: Icon(icon, color: primary, size: 22),
+      ),
+      const SizedBox(width: 14),
+      Expanded(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(name,
+              style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.w600, fontSize: 14)),
+          Text(role,
+              style: GoogleFonts.poppins(
+                  fontSize: 12, color: context.tokens.muted)),
+        ]),
+      ),
+    ]);
   }
 }

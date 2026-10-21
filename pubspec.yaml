@@ -1,7 +1,7 @@
 name: gesacad
 description: >
   GESACAD - Sistema de Gestión Académica Universitaria
-  Corporación Universitaria Unicomfacauca
+  Colegio Santader
   Implementa CU-01 a CU-07 del IEEE 830.
 
 publish_to: 'none'
@@ -39,13 +39,21 @@ dependencies:
   # Calendario académico interactivo (CU-09: calendario)
   table_calendar: ^3.1.0
 
+  # Íconos coherentes (reemplazan emojis y Icons.* mezclados)
+  phosphor_flutter: ^2.1.0
+
   url_launcher: ^6.3.2
+
+  # Archivos de entregas guardadas mientras no hay conexión (cola offline)
+  path_provider: ^2.1.5
   flutter_tts: ^4.2.5
   image_picker: ^1.2.2
 
   # TalkBack usa la Web Speech API nativa del navegador (sin paquete externo)
 
 dev_dependencies:
+  flutter_test:
+    sdk: flutter
   flutter_lints: ^3.0.0
   flutter_launcher_icons: ^0.14.1
 
