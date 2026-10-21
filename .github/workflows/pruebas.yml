@@ -1,0 +1,28 @@
+name: Pruebas de la app
+
+# Corre en cada push a main y en cada pull request.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.41.2
+          cache: true
+
+      - run: flutter pub get
+
+      # Solo los ERRORES rompen el análisis (los avisos de estilo ya existentes no).
+      - run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - run: flutter test
