@@ -227,7 +227,9 @@ class _MotionIconState extends State<MotionIcon> with TickerProviderStateMixin {
 
     if (widget.halo && _loop != null && color != null) {
       final sz = widget.size;
-      body = Stack(alignment: Alignment.center, children: [
+      // El halo solo se DIBUJA más grande (Transform): si crecieran sus medidas, el
+      // contenedor cambiaría de tamaño en cada cuadro y movería todo lo de alrededor.
+      body = Stack(alignment: Alignment.center, clipBehavior: Clip.none, children: [
         AnimatedBuilder(
           animation: _loop!,
           builder: (_, __) {
@@ -235,14 +237,17 @@ class _MotionIconState extends State<MotionIcon> with TickerProviderStateMixin {
             final waves = math.max(1, (_period.inMilliseconds / 2000).round());
             final k = (_loop!.value * waves) % 1.0;
             return IgnorePointer(
-              child: Container(
-                width: sz * (1.0 + 0.9 * k),
-                height: sz * (1.0 + 0.9 * k),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: color.withValues(alpha: 0.38 * (1 - k)),
-                    width: 2,
+              child: Transform.scale(
+                scale: 1.0 + 0.9 * k,
+                child: Container(
+                  width: sz,
+                  height: sz,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: color.withValues(alpha: 0.38 * (1 - k)),
+                      width: 2 / (1.0 + 0.9 * k),
+                    ),
                   ),
                 ),
               ),

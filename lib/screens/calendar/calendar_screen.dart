@@ -3,15 +3,18 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:table_calendar/table_calendar.dart';
-import '../../services/api_service.dart';
 import '../../services/settings_service.dart';
 import '../../widgets/talk_widget.dart';
+import '../../models/calendar_models.dart';
+import '../../services/calendar_service.dart';
+import '../../utils/colombia_holidays.dart';
+import 'calendar_widgets.dart';
 
 /// Tipo de evento del calendario académico.
 import '../../config/app_tokens.dart';
 import '../../widgets/ui/ui.dart';
 
-enum EventType { exam, assignment, class_, holiday, event, notification }
+enum EventType { exam, assignment, class_, holiday, event, notification, meeting, evaluation }
 
 extension EventTypeExt on EventType {
   Color get color {
@@ -22,6 +25,8 @@ extension EventTypeExt on EventType {
       case EventType.holiday:      return const Color(0xFF7C3AED);
       case EventType.event:        return const Color(0xFFD97706);
       case EventType.notification: return const Color(0xFF0891B2);
+      case EventType.meeting:      return const Color(0xFFDB2777);
+      case EventType.evaluation:   return const Color(0xFF4F46E5);
     }
   }
 
@@ -33,6 +38,8 @@ extension EventTypeExt on EventType {
       case EventType.holiday:      return [const Color(0xFF6D28D9), const Color(0xFF8B5CF6)];
       case EventType.event:        return [const Color(0xFFB45309), const Color(0xFFF59E0B)];
       case EventType.notification: return [const Color(0xFF0E7490), const Color(0xFF06B6D4)];
+      case EventType.meeting:      return [const Color(0xFFBE185D), const Color(0xFFEC4899)];
+      case EventType.evaluation:   return [const Color(0xFF4338CA), const Color(0xFF6366F1)];
     }
   }
 
@@ -44,6 +51,8 @@ extension EventTypeExt on EventType {
       case EventType.holiday:      return Icons.celebration_rounded;
       case EventType.event:        return Icons.event_rounded;
       case EventType.notification: return Icons.notifications_rounded;
+      case EventType.meeting:      return Icons.videocam_rounded;
+      case EventType.evaluation:   return Icons.insights_rounded;
     }
   }
 
@@ -56,6 +65,8 @@ extension EventTypeExt on EventType {
       case EventType.holiday:      return IconMotion.tada;
       case EventType.event:        return IconMotion.swing;
       case EventType.notification: return IconMotion.ring;
+      case EventType.meeting:      return IconMotion.pulse;
+      case EventType.evaluation:   return IconMotion.float;
     }
   }
 
@@ -67,6 +78,8 @@ extension EventTypeExt on EventType {
       case EventType.holiday:      return 'Festivo';
       case EventType.event:        return 'Evento';
       case EventType.notification: return 'Aviso';
+      case EventType.meeting:      return 'Reunión';
+      case EventType.evaluation:   return 'Evaluación';
     }
   }
 }
@@ -77,8 +90,12 @@ class CalendarEvent {
   final EventType type;
   final String? description;
   final String? course;
-  final String? hora;        // HH:mm — solo para recordatorios personales
+  final String? hora;        // HH:mm
   final bool isReminder;     // true = recordatorio personal del usuario
+
+  /// Evento que viene del servidor (actividad, reunión o evaluación); null en
+  /// festivos y recordatorios personales.
+  final CalEvent? source;
 
   const CalendarEvent({
     required this.title,
@@ -87,8 +104,12 @@ class CalendarEvent {
     this.course,
     this.hora,
     this.isReminder = false,
+    this.source,
   });
 }
+
+/// Cómo se muestra el calendario.
+enum _Vista { mes, semana, agenda }
 
 /// Calendario académico premium — diseño moderno con eventos sincronizados.
 class CalendarScreen extends StatefulWidget {
@@ -102,9 +123,22 @@ class _CalendarScreenState extends State<CalendarScreen>
     with TickerProviderStateMixin {
   DateTime _focused  = DateTime.now();
   DateTime _selected = DateTime.now();
-  CalendarFormat _format = CalendarFormat.month;
   bool _loading = false;
   int _userId = 0;
+  String _userRol = 'Student';
+  final CalendarService _servicio = const CalendarService();
+
+  /// Eventos del servidor por día (se reemplazan completos en cada carga) y en bruto.
+  Map<DateTime, List<CalendarEvent>> _srv = {};
+  List<CalEvent> _srvRaw = [];
+  bool _sinConexion = false;
+  String? _errorCarga;
+
+  _Vista _vista = _Vista.mes;
+  bool _buscando = false;
+  String _busqueda = '';
+  String? _cursoFiltro;
+  final _buscadorCtrl = TextEditingController();
 
   /// Tipo elegido en la leyenda (null = todos).
   EventType? _legendFilter;
@@ -130,51 +164,40 @@ class _CalendarScreenState extends State<CalendarScreen>
   @override
   void dispose() {
     _cardAnim.dispose();
+    _buscadorCtrl.dispose();
     super.dispose();
   }
 
-  /// Inicia el calendario: carga userId, recordatorios, festivos y actividades.
+  /// Inicia el calendario: carga userId, recordatorios, festivos y eventos del servidor.
   Future<void> _initCalendar() async {
     final prefs = await SharedPreferences.getInstance();
     _userId = prefs.getInt('userId') ?? 0;
+    _userRol = prefs.getString('userRol') ?? 'Student';
     // Festivos siempre visibles (sin red)
     final base = _festivosColombia();
     if (mounted) setState(() => _events = base);
     // Recordatorios del usuario actual
     await _loadRecordatorios();
-    // Actividades del backend
-    await _loadActivitiesFromBackend();
+    // Actividades, reuniones y evaluaciones del servidor
+    await _cargarServidor();
   }
 
-  /// Festivos oficiales de Colombia 2026 — hardcoded, no requieren conexión.
+  /// Festivos oficiales de Colombia, calculados para cada año del calendario
+  /// (2024-2030) con la Ley Emiliani y la Pascua: sin lista fija ni conexión.
   Map<DateTime, List<CalendarEvent>> _festivosColombia() {
-    final lista = {
-      DateTime(2026,  1,  1): 'Año Nuevo',
-      DateTime(2026,  1, 12): 'Reyes Magos',
-      DateTime(2026,  3, 23): 'Día de San José',
-      DateTime(2026,  4,  2): 'Jueves Santo',
-      DateTime(2026,  4,  3): 'Viernes Santo',
-      DateTime(2026,  5,  1): 'Día del Trabajo',
-      DateTime(2026,  5, 18): 'Ascensión del Señor',
-      DateTime(2026,  6,  8): 'Corpus Christi',
-      DateTime(2026,  6, 29): 'San Pedro y San Pablo',
-      DateTime(2026,  7, 20): 'Independencia de Colombia',
-      DateTime(2026,  8,  7): 'Batalla de Boyacá',
-      DateTime(2026,  8, 17): 'Asunción de la Virgen',
-      DateTime(2026, 10, 12): 'Día de la Raza',
-      DateTime(2026, 11,  2): 'Todos los Santos',
-      DateTime(2026, 11, 16): 'Independencia de Cartagena',
-      DateTime(2026, 12,  8): 'Inmaculada Concepción',
-      DateTime(2026, 12, 25): 'Navidad',
-    };
-    return {
-      for (final e in lista.entries)
-        _norm(e.key): [CalendarEvent(
-          title: e.value,
-          type: EventType.holiday,
-          description: 'Festivo oficial Colombia 2026',
-        )],
-    };
+    final mapa = <DateTime, List<CalendarEvent>>{};
+    for (var anio = 2024; anio <= 2030; anio++) {
+      for (final e in festivosColombia(anio).entries) {
+        mapa[_norm(e.key)] = [
+          CalendarEvent(
+            title: e.value,
+            type: EventType.holiday,
+            description: 'Festivo oficial Colombia $anio',
+          ),
+        ];
+      }
+    }
+    return mapa;
   }
 
   // ── Recordatorios personales ──────────────────────────────────────────────
@@ -398,86 +421,85 @@ class _CalendarScreenState extends State<CalendarScreen>
     }
   }
 
-  /// Carga las actividades reales de todos los cursos del usuario
-  /// y las inserta en el mapa [_events] del calendario.
-  ///
-  /// Flujo:
-  /// 1. Leer userId y rol desde SharedPreferences.
-  /// 2. Obtener cursos del usuario con [ApiService.getMyCourses].
-  /// 3. Por cada curso obtener actividades con [ApiService.getActivities].
-  /// 4. Mapear cada actividad a un [CalendarEvent] usando la fecha de cierre.
-  Future<void> _loadActivitiesFromBackend() async {
-    try {
-      // Leer datos de sesión para obtener los cursos correctos del usuario
-      final prefs  = await SharedPreferences.getInstance();
-      final userId = prefs.getInt('userId') ?? 0;
-
-      if (userId == 0) {
-        if (mounted) setState(() => _loading = false);
-        return;
-      }
-
-      // Obtener los cursos en los que está matriculado el usuario
-      final cursos = await ApiService().getMyCourses(userId);
-
-      // Mapa temporal para acumular eventos antes de llamar a setState
-      final nuevosMapa = <DateTime, List<CalendarEvent>>{};
-
-      for (final curso in cursos) {
-        // Obtener todas las actividades del curso
-        final actividades = await ApiService().getActivities(curso.id);
-
-        for (final act in actividades) {
-          // Parsear la fecha de cierre para colocar el evento en el día correcto
-          DateTime? fechaCierre;
-          try {
-            fechaCierre = DateTime.parse(act.closingDate);
-          } catch (_) {
-            continue; // Ignorar actividades con fecha inválida
-          }
-
-          // Extraer la hora de cierre para mostrarla en la descripción
-          final horaCierre =
-              '${fechaCierre.hour.toString().padLeft(2, '0')}:'
-              '${fechaCierre.minute.toString().padLeft(2, '0')}';
-
-          // Construir la descripción con tipo y hora de cierre
-          final descripcion =
-              '${_tipoLabel(act.type)} · Cierre: $horaCierre';
-
-          // Crear el evento del calendario a partir de la actividad
-          final evento = CalendarEvent(
-            title:       act.tittle,
-            type:        _tipoAEventType(act.type),
-            description: descripcion,
-            course:      curso.name,
-          );
-
-          // Agregar el evento al día de cierre (normalizando a medianoche)
-          final diaCierre = _norm(fechaCierre);
-          nuevosMapa.putIfAbsent(diaCierre, () => []).add(evento);
-        }
-      }
-
-      // Mezclar actividades con festivos y recordatorios ya cargados
-      // (no reemplazar _events entero para no perder festivos ni recordatorios)
-      if (mounted) {
-        setState(() {
-          for (final entry in nuevosMapa.entries) {
-            _events.putIfAbsent(entry.key, () => []).addAll(entry.value);
-          }
-          _loading = false;
-        });
-      }
-    } catch (_) {
+  /// Carga los eventos del servidor: actividades con SU estado, reuniones y evaluaciones.
+  /// Una sola consulta (antes eran una por curso). Sin conexión usa la última copia.
+  Future<void> _cargarServidor() async {
+    if (_userId == 0) {
       if (mounted) setState(() => _loading = false);
+      return;
+    }
+    if (mounted) setState(() { _loading = true; _errorCarga = null; });
+    try {
+      final hoy = DateTime.now().toUtc();
+      final r = await _servicio.events(_userId, _userRol,
+          desde: hoy.subtract(const Duration(days: 90)),
+          hasta: hoy.add(const Duration(days: 270)));
+      if (!mounted) return;
+      setState(() {
+        _srvRaw = r.events;
+        _srv = _agrupar(r.events);
+        _sinConexion = r.fromCache;
+        _loading = false;
+      });
+    } catch (e) {
+      if (mounted) setState(() { _loading = false; _errorCarga = e.toString(); });
+    }
+  }
+
+  Map<DateTime, List<CalendarEvent>> _agrupar(List<CalEvent> lista) {
+    final mapa = <DateTime, List<CalendarEvent>>{};
+    for (final e in lista) {
+      mapa.putIfAbsent(e.dia, () => []).add(_aEvento(e));
+    }
+    return mapa;
+  }
+
+  CalendarEvent _aEvento(CalEvent e) {
+    final peso = (e.weighting ?? 0) > 0 ? ' · ${(e.weighting! * 100).round()} %' : '';
+    switch (e.kind) {
+      case CalKind.activity:
+        final tipo = e.activityType ?? 'other';
+        return CalendarEvent(
+          title: e.title,
+          type: _tipoAEventType(tipo),
+          description: '${_tipoLabel(tipo)} · ${tipo == 'resource' ? 'Disponible' : 'Cierra ${e.hora}'}$peso',
+          course: e.courseName,
+          hora: e.hora,
+          source: e,
+        );
+      case CalKind.meeting:
+        return CalendarEvent(
+          title: e.title, type: EventType.meeting,
+          description: 'Hora: ${e.hora}', course: e.courseName, hora: e.hora, source: e,
+        );
+      case CalKind.evaluation:
+        return CalendarEvent(
+          title: e.title, type: EventType.evaluation,
+          description: 'Cierra ${e.hora}', hora: e.hora, source: e,
+        );
     }
   }
 
   DateTime _norm(DateTime d) => DateTime(d.year, d.month, d.day);
 
-  List<CalendarEvent> _eventsFor(DateTime day) =>
-      _events[_norm(day)] ?? [];
+  /// Festivos, recordatorios y eventos del servidor de un día, con la búsqueda y el
+  /// filtro de curso aplicados, ordenados por hora (lo que no tiene hora va primero).
+  List<CalendarEvent> _eventsFor(DateTime day) {
+    final k = _norm(day);
+    final lista = [...?_events[k], ...?_srv[k]].where(_pasaFiltros).toList()
+      ..sort((a, b) => (a.hora ?? '').compareTo(b.hora ?? ''));
+    return lista;
+  }
+
+  bool _pasaFiltros(CalendarEvent e) {
+    // Festivos y recordatorios no pertenecen a un curso: siempre se conservan.
+    if (_cursoFiltro != null && e.course != null && e.course != _cursoFiltro) return false;
+    if (_busqueda.isNotEmpty) {
+      final texto = '${e.title} ${e.course ?? ''} ${e.type.label} ${e.description ?? ''}'.toLowerCase();
+      if (!texto.contains(_busqueda)) return false;
+    }
+    return true;
+  }
 
   /// Al seleccionar un día, animar la entrada de los eventos.
   void _onDaySelected(DateTime sel, DateTime foc) {
@@ -492,6 +514,7 @@ class _CalendarScreenState extends State<CalendarScreen>
     final eventos    = _eventsFor(_selected)
         .where((e) => _legendFilter == null || e.type == _legendFilter)
         .toList();
+    final cursos = {for (final e in _srvRaw) if (e.courseName != null) e.courseName!}.toList()..sort();
 
     return Scaffold(
       appBar: AppBar(
@@ -501,12 +524,28 @@ class _CalendarScreenState extends State<CalendarScreen>
           reaction: IconReaction.nudge,
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Row(mainAxisSize: MainAxisSize.min, children: [
-          MotionIcon(Icons.calendar_month_rounded,
-              size: 22, motion: IconMotion.swing),
-          SizedBox(width: 8),
-          Flexible(child: Text('Calendario Académico', overflow: TextOverflow.ellipsis)),
-        ]),
+        title: _buscando
+            ? TextField(
+                controller: _buscadorCtrl,
+                autofocus: true,
+                cursorColor: Colors.white,
+                style: GoogleFonts.poppins(color: Colors.white, fontSize: 15),
+                decoration: InputDecoration(
+                  hintText: 'Buscar evento, curso o tipo',
+                  hintStyle: GoogleFonts.poppins(color: Colors.white70, fontSize: 14),
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  filled: false,
+                ),
+                onChanged: (v) => setState(() => _busqueda = v.trim().toLowerCase()),
+              )
+            : const Row(mainAxisSize: MainAxisSize.min, children: [
+                MotionIcon(Icons.calendar_month_rounded,
+                    size: 22, motion: IconMotion.swing),
+                SizedBox(width: 8),
+                Flexible(child: Text('Calendario Académico', overflow: TextOverflow.ellipsis)),
+              ]),
         actions: [
           if (_loading)
             const Padding(
@@ -516,6 +555,22 @@ class _CalendarScreenState extends State<CalendarScreen>
                     child: CircularProgressIndicator(
                         color: Colors.white, strokeWidth: 2)),
               ),
+            ),
+          AnimatedIconButton(
+            tooltip: _buscando ? 'Cerrar búsqueda' : 'Buscar',
+            icon: _buscando ? Icons.close_rounded : Icons.search_rounded,
+            reaction: IconReaction.pop,
+            onPressed: () => setState(() {
+              _buscando = !_buscando;
+              if (!_buscando) { _busqueda = ''; _buscadorCtrl.clear(); }
+            }),
+          ),
+          if (_userId != 0)
+            AnimatedIconButton(
+              tooltip: 'Ver en mi calendario (Google, Outlook, Apple)',
+              icon: Icons.ios_share_rounded,
+              reaction: IconReaction.nudge,
+              onPressed: () => mostrarSincronizacion(context, userId: _userId, rol: _userRol),
             ),
           AnimatedIconButton(
             tooltip: 'Ir a hoy',
@@ -535,35 +590,190 @@ class _CalendarScreenState extends State<CalendarScreen>
           child: Column(children: [
           // Leyenda premium de tipos de evento
           _buildLegend(primary),
+          _buildVistas(cursos),
+          if (_sinConexion)
+            _aviso(Icons.wifi_off_rounded,
+                'Sin conexión: se muestra lo último que se sincronizó.', context.tokens.warning),
+          if (_errorCarga != null && _srvRaw.isEmpty)
+            _aviso(Icons.error_outline_rounded, _errorCarga!, context.tokens.danger, reintentar: _cargarServidor),
 
           Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-              child: Column(children: [
-                // Tarjeta del calendario premium
-                _buildCalendar(themeType, primary),
-                const SizedBox(height: 16),
+            child: _vista == _Vista.agenda
+                ? _buildAgenda(primary)
+                : RefreshIndicator(
+                    onRefresh: _cargarServidor,
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                      child: Column(children: [
+                        if (_userId != 0 && _srvRaw.isNotEmpty) ...[
+                          ProximoVencimientoCard(
+                            eventos: _srvRaw,
+                            onTap: (e) {
+                              setState(() { _selected = e.dia; _focused = e.dia; });
+                              _cardAnim.forward(from: 0);
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          CargaSemanalCard(
+                            dia: _selected,
+                            seleccionado: _selected,
+                            hoy: DateTime.now(),
+                            conteo: _conteoSemana(),
+                            onDia: (d) => _onDaySelected(d, d),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+                        // Tarjeta del calendario premium
+                        _buildCalendar(themeType, primary),
+                        const SizedBox(height: 16),
 
-                // Header del día seleccionado
-                _buildDayHeader(eventos, primary, themeType),
-                const SizedBox(height: 12),
+                        // Header del día seleccionado
+                        _buildDayHeader(eventos, primary, themeType),
+                        const SizedBox(height: 12),
 
-                // Lista de eventos del día
-                if (eventos.isEmpty)
-                  _buildEmptyDay(primary)
-                else
-                  FadeTransition(
-                    opacity: _cardFade,
-                    child: Column(
-                      children: eventos.asMap().entries.map((e) =>
-                          _buildEventCard(e.value, e.key)).toList(),
+                        // Lista de eventos del día
+                        if (eventos.isEmpty)
+                          _buildEmptyDay(primary)
+                        else
+                          FadeTransition(
+                            opacity: _cardFade,
+                            child: Column(
+                              children: eventos.asMap().entries.map((e) =>
+                                  _buildEventCard(e.value, e.key)).toList(),
+                            ),
+                          ),
+                      ]),
+                    ),
+                  ),
+          ),
+        ]),
+        )),
+      ),
+    );
+  }
+
+  /// Eventos del servidor por día de la semana mostrada (para las barras de carga).
+  Map<DateTime, int> _conteoSemana() {
+    final lunes = _norm(_selected.subtract(Duration(days: _selected.weekday - 1)));
+    return {
+      for (var i = 0; i < 7; i++)
+        DateTime(lunes.year, lunes.month, lunes.day + i): _eventsFor(DateTime(lunes.year, lunes.month, lunes.day + i))
+            .where((e) => e.source != null)
+            .length,
+    };
+  }
+
+  Widget _aviso(IconData icono, String texto, Color color, {VoidCallback? reintentar}) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: Semantics(
+          liveRegion: true,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(AppTokens.radiusControl),
+              border: Border.all(color: color.withValues(alpha: 0.4)),
+            ),
+            child: Row(children: [
+              Icon(icono, color: color, size: 18),
+              const SizedBox(width: 10),
+              Expanded(child: Text(texto, style: GoogleFonts.poppins(fontSize: 12.5))),
+              if (reintentar != null)
+                TextButton(onPressed: reintentar, child: const Text('Reintentar')),
+            ]),
+          ),
+        ),
+      );
+
+  /// Selector de vista (Mes / Semana / Agenda) y filtro por curso.
+  Widget _buildVistas(List<String> cursos) {
+    final primary = Theme.of(context).colorScheme.primary;
+    final t = context.tokens;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Column(children: [
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<_Vista>(
+            showSelectedIcon: false,
+            segments: const [
+              ButtonSegment(value: _Vista.mes, icon: Icon(Icons.calendar_view_month_rounded, size: 18), label: Text('Mes')),
+              ButtonSegment(value: _Vista.semana, icon: Icon(Icons.calendar_view_week_rounded, size: 18), label: Text('Semana')),
+              ButtonSegment(value: _Vista.agenda, icon: Icon(Icons.view_agenda_rounded, size: 18), label: Text('Agenda')),
+            ],
+            selected: {_vista},
+            onSelectionChanged: (s) {
+              setState(() => _vista = s.first);
+              _cardAnim.forward(from: 0);
+            },
+          ),
+        ),
+        if (cursos.length > 1)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: SizedBox(
+              height: 34,
+              child: ListView(scrollDirection: Axis.horizontal, children: [
+                for (final c in [null, ...cursos])
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      label: Text(c ?? 'Todos los cursos', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600)),
+                      selected: _cursoFiltro == c,
+                      selectedColor: primary.withValues(alpha: 0.18),
+                      side: BorderSide(color: _cursoFiltro == c ? primary : t.glassBorder),
+                      visualDensity: VisualDensity.compact,
+                      onSelected: (_) => setState(() => _cursoFiltro = c),
                     ),
                   ),
               ]),
             ),
           ),
-        ]),
-        )),
+      ]),
+    );
+  }
+
+  /// Agenda: lo que viene en los próximos 60 días, agrupado por día.
+  Widget _buildAgenda(Color primary) {
+    final hoy = _norm(DateTime.now());
+    final limite = hoy.add(const Duration(days: 60));
+    final dias = {..._events.keys, ..._srv.keys}
+        .where((d) => !d.isBefore(hoy) && d.isBefore(limite))
+        .toList()
+      ..sort();
+    final grupos = <DateTime, List<CalendarEvent>>{};
+    for (final d in dias) {
+      final l = _eventsFor(d).where((e) => _legendFilter == null || e.type == _legendFilter).toList();
+      if (l.isNotEmpty) grupos[d] = l;
+    }
+    if (grupos.isEmpty) {
+      return ListView(
+        padding: const EdgeInsets.all(16),
+        children: [_buildEmptyDay(primary, mensaje: 'No hay eventos en los próximos 60 días')],
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _cargarServidor,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+        children: [
+          for (final g in grupos.entries) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 14, 0, 8),
+              child: Semantics(
+                header: true,
+                child: Text(
+                  '${_cuentaRegresiva(g.key)} · ${fechaLarga(g.key, conHora: false)}'.toUpperCase(),
+                  style: GoogleFonts.poppins(
+                      fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.1, color: context.tokens.muted),
+                ),
+              ),
+            ),
+            for (final e in g.value.asMap().entries) _buildEventCard(e.value, e.key, dia: g.key),
+          ],
+        ],
       ),
     );
   }
@@ -657,17 +867,18 @@ class _CalendarScreenState extends State<CalendarScreen>
           TableCalendar<CalendarEvent>(
             locale: 'es_ES',
             firstDay: DateTime.utc(2024, 1, 1),
-            lastDay: DateTime.utc(2027, 12, 31),
+            lastDay: DateTime.utc(2030, 12, 31),
             focusedDay: _focused,
             selectedDayPredicate: (d) => isSameDay(d, _selected),
-            calendarFormat: _format,
+            calendarFormat: _vista == _Vista.semana ? CalendarFormat.week : CalendarFormat.month,
+            availableCalendarFormats: const {CalendarFormat.month: 'Mes', CalendarFormat.week: 'Semana'},
             eventLoader: _eventsFor,
             startingDayOfWeek: StartingDayOfWeek.monday,
             onDaySelected: _onDaySelected,
-            onFormatChanged: (f) => setState(() => _format = f),
             onPageChanged: (f) => setState(() => _focused = f),
             headerStyle: HeaderStyle(
               titleCentered: true,
+              formatButtonVisible: false,
               formatButtonDecoration: BoxDecoration(
                 gradient: LinearGradient(colors: themeType.gradient),
                 borderRadius: BorderRadius.circular(20),
@@ -884,10 +1095,10 @@ class _CalendarScreenState extends State<CalendarScreen>
     ]);
   }
 
-  /// "Hoy", "Mañana", "En 3 días"… respecto del día seleccionado.
-  String _cuentaRegresiva() {
+  /// "Hoy", "Mañana", "En 3 días"… respecto de [dia] (por defecto el día seleccionado).
+  String _cuentaRegresiva([DateTime? dia]) {
     final hoy = _norm(DateTime.now());
-    final d = _norm(_selected).difference(hoy).inDays;
+    final d = _norm(dia ?? _selected).difference(hoy).inDays;
     if (d == 0) return 'Hoy';
     if (d == 1) return 'Mañana';
     if (d == -1) return 'Ayer';
@@ -896,8 +1107,11 @@ class _CalendarScreenState extends State<CalendarScreen>
 
   // ── Tarjeta de evento ─────────────────────────────────────────────────────
 
-  Widget _buildEventCard(CalendarEvent ev, int idx) {
-    final cuenta = _cuentaRegresiva();
+  Widget _buildEventCard(CalendarEvent ev, int idx, {DateTime? dia}) {
+    final cuenta = _cuentaRegresiva(dia);
+    final tk = context.tokens;
+    final estado = ev.source?.estadoTexto;
+    final estadoColor = ev.source?.estadoColor(tk.success, tk.warning, tk.danger, tk.info);
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
       duration: Duration(milliseconds: 300 + idx * 90),
@@ -917,6 +1131,9 @@ class _CalendarScreenState extends State<CalendarScreen>
             blur: false,
             tint: ev.type.color,
             radius: 18,
+            onTap: ev.source == null
+                ? null
+                : () => mostrarAccionesEvento(context, ev.source!, userId: _userId, rol: _userRol),
             padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
             child: Row(children: [
               IconMedallion(ev.type.icon,
@@ -929,10 +1146,10 @@ class _CalendarScreenState extends State<CalendarScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(children: [
+                    Wrap(spacing: 6, runSpacing: 4, children: [
                       _pastilla(ev.type.label, ev.type.color),
-                      const SizedBox(width: 6),
                       _pastilla(cuenta, context.tokens.muted, soft: true),
+                      if (estado != null) _pastilla(estado, estadoColor ?? context.tokens.muted),
                     ]),
                     const SizedBox(height: 6),
                     Text(ev.title, style: GoogleFonts.poppins(
@@ -987,7 +1204,7 @@ class _CalendarScreenState extends State<CalendarScreen>
 
   // ── Sin eventos ───────────────────────────────────────────────────────────
 
-  Widget _buildEmptyDay(Color primary) {
+  Widget _buildEmptyDay(Color primary, {String mensaje = 'No hay actividades programadas\npara este día'}) {
     return TalkWidget(
       label: 'No hay eventos para este día. Selecciona otro día del calendario.',
       child: AppCard(
@@ -1013,7 +1230,7 @@ class _CalendarScreenState extends State<CalendarScreen>
               fontSize: 15, fontWeight: FontWeight.w700,
               color: context.tokens.muted)),
           const SizedBox(height: 6),
-          Text('No hay actividades programadas\npara este día',
+          Text(mensaje,
               textAlign: TextAlign.center,
               style: GoogleFonts.poppins(
                   fontSize: 12, color: context.tokens.muted, height: 1.5)),

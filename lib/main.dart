@@ -13,6 +13,7 @@ import 'services/auth_service.dart';
 import 'services/connectivity_service.dart';
 import 'services/offline_queue.dart';
 import 'utils/app_keys.dart';
+import 'screens/notifications/notification_toaster.dart';
 import 'widgets/offline_banner.dart';
 import 'utils/route_transitions.dart';
 import 'screens/login_screen.dart';
@@ -40,6 +41,7 @@ void main() {
     _RenovadorDeSesion().iniciar();
     await OfflineQueue.instance.init();
 
+    instalarAvisosDeNotificaciones();
     runApp(const GesacadApp());
   }, () => AuthClient());
 }

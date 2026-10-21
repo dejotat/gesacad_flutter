@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../config/api_config.dart';
 import 'api_service.dart';
+import 'notification_service.dart';
 import 'offline_queue.dart';
 
 /// Servicio de autenticación y gestión de sesión de usuario.
@@ -209,6 +210,7 @@ class AuthService {
   /// 2. Si otro usuario inicia sesión, no verá datos del usuario anterior.
   Future<void> clearSession() async {
     // Cambios sin enviar y copias de datos: no deben pasar al siguiente usuario.
+    NotificationService.instance.clear();
     await OfflineQueue.instance.clearAll();
     await ApiService().invalidarCache();
     _token = null;
