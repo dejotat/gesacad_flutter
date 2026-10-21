@@ -26,3 +26,32 @@ jobs:
       - run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - run: flutter test
+
+  # Compila el APK de Android con las notificaciones push activadas (valores de relleno): así se
+  # detecta en cada push si los paquetes de Firebase dejan de compilar con el proyecto Android.
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.41.2
+          cache: true
+
+      - run: flutter pub get
+
+      - run: >-
+          flutter build apk --debug
+          --dart-define=FIREBASE_API_KEY=ci
+          --dart-define=FIREBASE_APP_ID=1:1:android:ci
+          --dart-define=FIREBASE_MESSAGING_SENDER_ID=1
+          --dart-define=FIREBASE_PROJECT_ID=ci

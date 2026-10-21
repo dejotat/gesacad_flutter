@@ -46,3 +46,11 @@ app.*.map.json
 
 # Database backups
 backup_gesacad_*.sql
+
+# Firebase / notificaciones push: configuración local y credenciales (NUNCA se suben)
+firebase.env
+firebase.env.local
+*firebase-adminsdk*.json
+*service-account*.json
+google-services.json
+GoogleService-Info.plist

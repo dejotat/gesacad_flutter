@@ -5,6 +5,8 @@ import '../../config/app_tokens.dart';
 import '../../models/notification_models.dart';
 import '../../services/notification_service.dart';
 import '../../widgets/ui/ui.dart';
+import '../../services/push_service.dart';
+import '../../widgets/push_widgets.dart';
 import 'notification_router.dart';
 
 /// Bandeja de notificaciones (CU-11).
@@ -663,6 +665,7 @@ class _HojaPreferenciasState extends State<_HojaPreferencias> {
           Text('Los que desactives dejarán de llegar a tu bandeja.',
               style: GoogleFonts.poppins(fontSize: 12.5, color: t.muted)),
           const SizedBox(height: 8),
+          const AvisosEnTelefono(),
           if (_prefs == null && _error == null)
             const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()))
           else if (_prefs != null)
@@ -725,10 +728,20 @@ class _NotificationBellState extends State<NotificationBell> with SingleTickerPr
     if (widget.userId > 0) {
       _svc.attach(widget.userId, widget.userRol);
       _enlazada = true;
+      _iniciarPush();
     }
     _sub = _svc.arrivals.listen((_) {
       if (mounted && !(MediaQuery.maybeDisableAnimationsOf(context) ?? false)) _shake.forward(from: 0);
     });
+  }
+
+  /// Registra este teléfono para recibir push y, si falta, pregunta con contexto (una sola vez).
+  Future<void> _iniciarPush() async {
+    await PushService.instance.start(widget.userId, widget.userRol);
+    if (!mounted) return;
+    await preguntarPorPush(context);
+    // Si el usuario tocó un aviso antes de que la app estuviera lista, se abre ahora.
+    await PushService.instance.abrirPendiente();
   }
 
   @override
@@ -738,6 +751,7 @@ class _NotificationBellState extends State<NotificationBell> with SingleTickerPr
       if (_enlazada) _svc.detach();
       _svc.attach(widget.userId, widget.userRol);
       _enlazada = true;
+      _iniciarPush();
     }
   }
 

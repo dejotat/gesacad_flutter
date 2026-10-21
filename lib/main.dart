@@ -13,7 +13,11 @@ import 'services/auth_service.dart';
 import 'services/connectivity_service.dart';
 import 'services/offline_queue.dart';
 import 'utils/app_keys.dart';
+import 'screens/notifications/notification_router.dart';
 import 'screens/notifications/notification_toaster.dart';
+import 'services/notification_service.dart';
+import 'services/push_service.dart';
+import 'services/push_transport_firebase.dart';
 import 'widgets/offline_banner.dart';
 import 'utils/route_transitions.dart';
 import 'screens/login_screen.dart';
@@ -42,8 +46,36 @@ void main() {
     await OfflineQueue.instance.init();
 
     instalarAvisosDeNotificaciones();
+    await _iniciarPush();
     runApp(const GesacadApp());
   }, () => AuthClient());
+}
+
+/// Notificaciones push (CU-13). Sin configuración de Firebase en esta compilación no hace
+/// nada y la app funciona igual con su bandeja. Un fallo aquí nunca impide abrir la app.
+Future<void> _iniciarPush() async {
+  if (!PushConfig.configurado) return;
+  try {
+    final push = PushService.instance;
+    push.usarTransporte(FirebasePushTransport());
+    // Al tocar un aviso: abre lo que lo originó (actividad, curso, reunión, evaluación).
+    push.alTocar = (m) async {
+      for (var i = 0; i < 40; i++) { // si la app venía cerrada, espera a que la sesión esté lista
+        final ctx = appNavigatorKey.currentContext;
+        final notifs = NotificationService.instance;
+        if (ctx != null && ctx.mounted && notifs.userId > 0) {
+          await abrirReferencia(ctx,
+              refType: m.refType, refId: m.refId, courseId: m.courseId, courseName: m.courseName,
+              courseCode: m.courseCode, courseImg: m.courseImg, userId: notifs.userId, rol: notifs.rol);
+          return;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+      }
+    };
+    await push.init();
+  } catch (e) {
+    debugPrint('[Push] No se pudo preparar: $e');
+  }
 }
 
 /// Renueva el token al volver a la app (sesión deslizante: quien usa la app no

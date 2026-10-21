@@ -4,6 +4,7 @@ import 'dart:convert';
 import '../config/api_config.dart';
 import 'api_service.dart';
 import 'notification_service.dart';
+import 'push_service.dart';
 import 'offline_queue.dart';
 
 /// Servicio de autenticación y gestión de sesión de usuario.
@@ -210,6 +211,8 @@ class AuthService {
   /// 2. Si otro usuario inicia sesión, no verá datos del usuario anterior.
   Future<void> clearSession() async {
     // Cambios sin enviar y copias de datos: no deben pasar al siguiente usuario.
+    // Primero el push (necesita la sesión para avisar al servidor), luego todo lo demás.
+    await PushService.instance.stop();
     NotificationService.instance.clear();
     await OfflineQueue.instance.clearAll();
     await ApiService().invalidarCache();
