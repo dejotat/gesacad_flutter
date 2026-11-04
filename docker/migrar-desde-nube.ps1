@@ -115,9 +115,15 @@ Write-Host "`n[4/4] Filas por tabla en Docker:" -ForegroundColor Cyan
 $conteo = "export MYSQL_PWD=`$MYSQL_ROOT_PASSWORD; for t in `$(mysql -uroot -N -e 'SHOW TABLES' $envBase); do echo `$t: `$(printf 'SELECT COUNT(*) FROM %s;' `$t | mysql -uroot -N $envBase) filas; done"
 & docker compose exec -T db sh -c $conteo
 
+# Usuarios que quedaron en Docker, por rol (sin nombres ni contraseñas): deben ser los de la nube.
+Write-Host "`nUsuarios en Docker por rol (deben ser los de la nube):" -ForegroundColor Cyan
+$usuarios = "export MYSQL_PWD=`$MYSQL_ROOT_PASSWORD; mysql -uroot -N -e 'SELECT rol, COUNT(*) FROM users GROUP BY rol' $envBase"
+& docker compose exec -T db sh -c $usuarios
+
 if (-not $BaseDestino) {
     & docker compose restart backend | Out-Null
     Write-Host "`nListo. Se reinició la API: completa sola lo que falte (columnas nuevas, cifrado de contraseñas antiguas)." -ForegroundColor Green
-    Write-Host 'Entra a http://localhost:5000 con tus usuarios de siempre.' -ForegroundColor Green
+    Write-Host 'Entra a http://localhost:5000 con tus usuarios de siempre (el "admin" inicial de Docker ya no existe: lo reemplazó la copia).' -ForegroundColor Green
+    Write-Host 'Opcional: borra ADMIN_BOOTSTRAP_USER y ADMIN_BOOTSTRAP_PASSWORD de tu .env; con un Admin existente no hacen nada, pero ya no hacen falta.' -ForegroundColor DarkGray
 }
 Write-Host "Copia de la nube guardada en: $nube  (contiene datos personales: no la subas a git)" -ForegroundColor DarkGray
