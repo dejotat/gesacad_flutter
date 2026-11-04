@@ -54,3 +54,9 @@ firebase.env.local
 *service-account*.json
 google-services.json
 GoogleService-Info.plist
+
+# Configuración local de Docker
+/.env
+
+# Copias de seguridad de la base (datos personales)
+respaldos/

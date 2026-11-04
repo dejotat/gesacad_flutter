@@ -63,3 +63,8 @@ echo
 echo "   Ver registros  : docker compose logs -f"
 echo "   Detener        : docker compose down"
 echo "========================================================="
+
+# Abre la aplicación (puerto 5000, no el 8081 de la API). --no-abrir lo evita.
+if [ "${1:-}" != "--no-abrir" ] && [ "${2:-}" != "--no-abrir" ]; then
+  (xdg-open http://localhost:5000 || open http://localhost:5000) >/dev/null 2>&1 || true
+fi

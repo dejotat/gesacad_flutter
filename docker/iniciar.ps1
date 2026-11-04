@@ -5,11 +5,12 @@
 #   .\docker\iniciar.ps1 -WebLocal       # compila la web en TU equipo y la sirve con nginx:
 #                                        # no descarga la imagen de Flutter (varios GB); ideal
 #                                        # con internet lento
+#   -NoAbrir                             # no abre el navegador al terminar
 #
 # Si no existe el archivo .env, lo crea con contraseñas ALEATORIAS (nada de valores de
 # ejemplo) y muestra una sola vez la contraseña del administrador. Si ya existe, NO lo toca.
 
-param([switch]$SoloGenerar, [switch]$WebLocal)
+param([switch]$SoloGenerar, [switch]$WebLocal, [switch]$NoAbrir)
 
 $ErrorActionPreference = 'Stop'
 $raiz = Split-Path -Parent $PSScriptRoot
@@ -80,3 +81,6 @@ if ($claveAdmin) {
 Write-Host "`n   Ver registros  : docker compose logs -f"
 Write-Host '   Detener        : docker compose down'
 Write-Host '=========================================================' -ForegroundColor Green
+
+# Abre la aplicación (el puerto 5000, no el 8081 de la API) para no confundirse de dirección.
+if (-not $NoAbrir) { try { Start-Process 'http://localhost:5000' } catch { } }

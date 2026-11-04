@@ -125,7 +125,9 @@ queda en `.env`). **A mano**, en su lugar:
 1. Copia `.env.docker.example` como `.env` y completa `DB_PASS`, `MYSQL_ROOT_PASSWORD`,
    `JWT_SECRET` y `ADMIN_BOOTSTRAP_PASSWORD`.
 2. Desde la raíz del proyecto ejecuta `docker compose up -d --build`.
-3. Abre `http://localhost:5000`. La API queda disponible en `http://localhost:8081`.
+3. Abre `http://localhost:5000`. La API queda disponible en `http://localhost:8081`
+   (es solo datos, no la aplicación: si la abres en un navegador te lleva a la app;
+   `docker/iniciar.ps1` también abre `http://localhost:5000` al terminar, `-NoAbrir` lo evita).
 
 La base de datos nace **vacía y sin cuentas**: MySQL solo carga el esquema
 `Backend/db/01-esquema.sql` (estructura, sin datos) al crear el volumen por primera vez.
@@ -139,6 +141,20 @@ datos locales, ejecuta `docker compose down -v` y luego `docker compose up -d --
 
 Comandos útiles: `docker compose ps` (estado y salud), `docker compose logs -f backend`
 (registros), `docker compose down` (detener conservando los datos).
+
+**Base de datos en Docker**
+- **Conectar una herramienta** (MySQL Workbench, DBeaver, HeidiSQL) desde tu equipo:
+  host `127.0.0.1`, puerto **3307** (no el 3306: ahí suele haber un MySQL local), usuario `DB_USER`,
+  contraseña `DB_PASS` y base `DB_NAME`, los tres de tu `.env`. Solo escucha en localhost.
+  El contenedor interno sigue usando `db:3306`; el puerto se cambia con `DB_HOST_PORT`.
+- **Datos de demostración**: la base nace vacía (solo el admin inicial). Para cursos, docentes y
+  estudiantes de prueba: `.\docker\datos-demo.ps1` (cuentas `demo_*`, contraseña `Demo#2026`,
+  guardadas cifradas, sin duplicar; requiere `npm install` una vez en `Backend`).
+- **Copia de seguridad**: `.\docker\respaldo.ps1` crea `respaldos\gesacad-FECHA.sql`;
+  `.\docker\respaldo.ps1 -Restaurar archivo.sql` la restaura (pide confirmar). `respaldos\` está en
+  `.gitignore`: contiene datos personales, no la subas.
+- Si no tienes datos y esperabas ver los de tu base anterior: **la base de Docker es nueva y distinta**
+  de tu MySQL local y de la nube; cada una tiene sus propios usuarios.
 
 La app se compila con `API_BASE_URL` (por defecto `http://localhost:8081`). Si
 cambias la dirección de la API, actualiza esa variable en `.env` y vuelve a

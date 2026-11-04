@@ -25,3 +25,6 @@ firebase.env*
 *.sql
 google-services.json
 GoogleService-Info.plist
+
+# Copias de seguridad de la base (datos personales): nunca al contexto de construcción
+respaldos
