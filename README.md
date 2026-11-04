@@ -153,6 +153,7 @@ Comandos útiles: `docker compose ps` (estado y salud), `docker compose logs -f 
 - **Copia de seguridad**: `.\docker\respaldo.ps1` crea `respaldos\gesacad-FECHA.sql`;
   `.\docker\respaldo.ps1 -Restaurar archivo.sql` la restaura (pide confirmar). `respaldos\` está en
   `.gitignore`: contiene datos personales, no la subas.
+- **Migrar la base de la nube (Clever Cloud) a Docker**: `.\docker\migrar-desde-nube.ps1` pide servidor, puerto, usuario, contraseña (oculta, no se guarda) y base; descarga una copia (solo lectura: la nube NO se modifica), respalda lo actual de Docker, pide confirmar con `SI`, restaura, muestra las filas por tabla y reinicia la API. Después la base de Docker es una copia INDEPENDIENTE: lo que agregues allí no llega a la nube. Si algo sale mal: `.\docker\respaldo.ps1 -Restaurar respaldos\antes-de-migrar-FECHA.sql`.
 - Si no tienes datos y esperabas ver los de tu base anterior: **la base de Docker es nueva y distinta**
   de tu MySQL local y de la nube; cada una tiene sus propios usuarios.
 
