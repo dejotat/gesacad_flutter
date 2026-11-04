@@ -90,8 +90,10 @@ class AppThemes {
       popupMenuTheme: PopupMenuThemeData(
         color: floating,
         surfaceTintColor: Colors.transparent,
+        elevation: 12,
+        shadowColor: Colors.black.withValues(alpha: 0.3),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppTokens.radiusControl),
+          borderRadius: BorderRadius.circular(18),
           side: BorderSide(color: tokens.glassBorder),
         ),
       ),

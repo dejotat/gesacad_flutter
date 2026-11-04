@@ -13,6 +13,7 @@ import '../../utils/activity_type.dart';
 import '../../widgets/course_card.dart';
 import '../../widgets/tts_button.dart';
 import '../../widgets/chatbot_widget.dart';
+import '../../widgets/ui/account_menu.dart';
 import '../../widgets/ui/ui.dart';
 import '../../widgets/eval/evaluation_entry_card.dart';
 import '../../widgets/offline_banner.dart';
@@ -280,7 +281,6 @@ class _TeacherHomeState extends State<TeacherHome> {
       );
 
   PreferredSizeWidget _buildAppBar() {
-    final danger = context.tokens.danger;
     return AppBar(
       automaticallyImplyLeading: false,
       title: const Row(mainAxisSize: MainAxisSize.min, children: [
@@ -307,26 +307,15 @@ class _TeacherHomeState extends State<TeacherHome> {
           onPressed: () => Navigator.push(context, slideRoute(const ProfileScreen()))
               .then((_) => _reloadPhoto()),
         ),
-        PopupMenuButton<String>(
-          tooltip: 'Más opciones',
-          icon: const Icon(PhosphorIconsRegular.dotsThreeVertical),
-          onSelected: (v) {
-            if (v == 'settings') {
-              Navigator.push(context, slideRoute(const SettingsScreen()));
-            }
-            if (v == 'logout') _logout();
-          },
-          itemBuilder: (_) => [
-            const PopupMenuItem(value: 'settings', child: Row(children: [
-              Icon(PhosphorIconsRegular.gear, size: 18),
-              SizedBox(width: 8), Text('Ajustes'),
-            ])),
-            PopupMenuItem(value: 'logout', child: Row(children: [
-              Icon(PhosphorIconsRegular.signOut, size: 18, color: danger),
-              const SizedBox(width: 8),
-              Text('Cerrar sesión', style: TextStyle(color: danger)),
-            ])),
-          ],
+        // Menú de cuenta compartido (foto, rol, perfil, ajustes y salida).
+        MenuCuenta(
+          nombre: _name,
+          rol: 'Teacher',
+          foto: _photoBytes,
+          onPerfil: () => Navigator.push(context, slideRoute(const ProfileScreen()))
+              .then((_) => _reloadPhoto()),
+          onAjustes: () => Navigator.push(context, slideRoute(const SettingsScreen())),
+          onSalir: _logout,
         ),
       ],
     );
