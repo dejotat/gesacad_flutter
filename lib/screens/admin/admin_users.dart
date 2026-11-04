@@ -4,6 +4,7 @@ import '../../services/api_service.dart';
 import '../../models/user_model.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../widgets/ui/ui.dart';
+import '../../widgets/ui/password_strength.dart';
 import '../../config/app_tokens.dart';
 
 /// Pantalla de gestión de usuarios — diseño moderno con tarjetas en mosaico.
@@ -90,28 +91,6 @@ class _AdminUsersState extends State<AdminUsers> {
       default:
         return 'Estudiante';
     }
-  }
-
-  // ── Indicador visual de criterio de contraseña ───────────────────────────
-  Widget _adminPwCriterion(bool met, String text) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(children: [
-        Icon(
-          met ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-          size: 15,
-          color: met ? context.tokens.success : context.tokens.muted,
-        ),
-        const SizedBox(width: 6),
-        Text(
-          text,
-          style: GoogleFonts.poppins(
-            fontSize: 11,
-            color: met ? context.tokens.success : context.tokens.muted,
-          ),
-        ),
-      ]),
-    );
   }
 
   // ── Helpers de criterios de contraseña ───────────────────────────────────
@@ -291,32 +270,10 @@ class _AdminUsersState extends State<AdminUsers> {
                           },
                         ),
                         const SizedBox(height: 16),
-                        // Campo contraseña con indicador de 6 criterios en tiempo real
+                        // Campo contraseña con barra de seguridad en tiempo real
                         Builder(builder: (_) {
                           final pass  = passCtrl.text;
                           final uname = nameCtrl.text;
-
-                          // Evaluar los 6 criterios individualmente
-                          final c1 = _adminPwLen(pass);
-                          final c2 = _adminPwNum(pass);
-                          final c3 = _adminPwLower(pass);
-                          final c4 = _adminPwUpper(pass);
-                          final c5 = _adminPwSym(pass);
-                          final c6 = _adminPwNoUser(pass, uname);
-
-                          final passed = [c1, c2, c3, c4, c5, c6]
-                              .where((x) => x).length;
-
-                          // Color de las 6 barras según criterios cumplidos
-                          final barColor = passed <= 2
-                              ? context.tokens.danger
-                              : passed <= 3
-                                  ? context.tokens.warning
-                                  : passed <= 4
-                                      ? context.tokens.warning
-                                      : passed <= 5
-                                          ? Colors.lightGreen
-                                          : context.tokens.success;
 
                           // criteriosOk se calcula a nivel StatefulBuilder para
                           // que tanto este indicador como el botón Guardar lo lean.
@@ -361,35 +318,13 @@ class _AdminUsersState extends State<AdminUsers> {
                                     _validatePassword(v, required: user == null),
                               ),
 
-                              // Indicador de fortaleza — aparece al escribir
+                              // Barra de seguridad que cambia de color (sin lista de requisitos).
                               if (pass.isNotEmpty) ...[
                                 const SizedBox(height: 8),
-
-                                // 6 barras de color según criterios cumplidos
-                                Row(
-                                  children: List.generate(6, (i) => Expanded(
-                                    child: Container(
-                                      margin: const EdgeInsets.symmetric(
-                                          horizontal: 2),
-                                      height: 4,
-                                      decoration: BoxDecoration(
-                                        color: i < passed
-                                            ? barColor
-                                            : context.tokens.border,
-                                        borderRadius: BorderRadius.circular(2),
-                                      ),
-                                    ),
-                                  )),
-                                ),
-                                const SizedBox(height: 6),
-
-                                // Lista de los 6 criterios con check verde / círculo gris
-                                _adminPwCriterion(c1, '8-64 caracteres'),
-                                _adminPwCriterion(c2, 'Al menos un número'),
-                                _adminPwCriterion(c3, 'Al menos una letra minúscula'),
-                                _adminPwCriterion(c4, 'Al menos una letra mayúscula'),
-                                _adminPwCriterion(c5, 'Al menos un símbolo (!@#\$%...)'),
-                                _adminPwCriterion(c6, 'No incluir el nombre de usuario'),
+                                PasswordStrengthBar(
+                                    password: pass,
+                                    username: uname,
+                                    showHint: true),
                               ],
 
                             ],
