@@ -1,0 +1,108 @@
+# =============================================================================
+# GESACAD · Aplicación completa: base de datos (MySQL) + API (Node.js) + web (Flutter/nginx)
+# =============================================================================
+#   1) Crea el archivo .env  →  automático:  .\docker\iniciar.ps1   (Linux/Mac: ./docker/iniciar.sh)
+#                               a mano:      copia .env.docker.example como .env y complétalo
+#   2) docker compose up -d --build
+#   3) Abre http://localhost:5000
+#
+# Guía y solución de problemas: README.md → "Ejecutar con Docker".
+# =============================================================================
+name: gesacad
+
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-bdgesacad}
+      MYSQL_USER: ${DB_USER:?Define DB_USER en .env}
+      MYSQL_PASSWORD: ${DB_PASS:?Define DB_PASS en .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Define MYSQL_ROOT_PASSWORD en .env}
+      TZ: UTC                      # el servidor guarda y compara fechas en UTC
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_general_ci
+    volumes:
+      - gesacad_mysql:/var/lib/mysql
+      # Esquema BASE (solo estructura, sin datos ni cuentas). Se ejecuta únicamente la primera
+      # vez, cuando el volumen está vacío. El resto de tablas las crea el propio servidor.
+      - ./Backend/db/01-esquema.sql:/docker-entrypoint-initdb.d/001-esquema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$${MYSQL_ROOT_PASSWORD}\" --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  backend:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    image: gesacad-backend:latest
+    init: true                     # recoge procesos huérfanos y reenvía SIGTERM al cerrar
+    restart: unless-stopped
+    environment:
+      PORT: 8081
+      DB_HOST: db                  # nombre del servicio: Docker lo resuelve a la IP del contenedor
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-bdgesacad}
+      DB_USER: ${DB_USER:?Define DB_USER en .env}
+      DB_PASS: ${DB_PASS:?Define DB_PASS en .env}
+      # Seguridad
+      JWT_SECRET: ${JWT_SECRET:?Define JWT_SECRET en .env (aleatorio, mínimo 16 caracteres)}
+      AUTH_MODE: ${AUTH_MODE:-enforce}
+      ALLOW_LEGACY_LOGIN: ${ALLOW_LEGACY_LOGIN:-false}
+      # Primer administrador: se crea SOLO si la base aún no tiene ninguno
+      ADMIN_BOOTSTRAP_USER: ${ADMIN_BOOTSTRAP_USER:-}
+      ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:-}
+      # Archivos de las entregas (opcional: sin esto todo funciona menos subir archivos)
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+      # Notificaciones push (opcional)
+      FIREBASE_SERVICE_ACCOUNT: ${FIREBASE_SERVICE_ACCOUNT:-}
+    ports:
+      - "127.0.0.1:8081:8081"
+    volumes:
+      - gesacad_uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8081/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # produccion = compila en Docker (por defecto) · web-local = usa build/web de tu equipo
+      target: ${WEB_TARGET:-produccion}
+      args:
+        # Dirección de la API que usará el NAVEGADOR. Se graba al compilar la web: si la cambias,
+        # reconstruye con `docker compose up -d --build web`.
+        API_BASE_URL: ${API_BASE_URL:-http://localhost:8081}
+    image: gesacad-web:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5000:8080"      # nginx sin privilegios escucha en 8080 dentro del contenedor
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  gesacad_mysql:
+  gesacad_uploads:

@@ -107,6 +107,46 @@ entregas, y al administrador gestionar usuarios y cursos desde cualquier disposi
 
 ## Configuración del Entorno de Desarrollo
 
+### Ejecutar con Docker
+
+Requiere Docker Desktop con Docker Compose. Este entorno levanta tres contenedores:
+MySQL, el backend (Node.js) y la versión web de Flutter servida con nginx.
+
+**Con un solo comando** (crea el `.env` con contraseñas aleatorias y arranca todo):
+
+```powershell
+.\docker\iniciar.ps1          # Windows (PowerShell)
+./docker/iniciar.sh           # Linux / macOS
+```
+
+Al terminar muestra el usuario administrador y su contraseña (solo esa vez; también
+queda en `.env`). **A mano**, en su lugar:
+
+1. Copia `.env.docker.example` como `.env` y completa `DB_PASS`, `MYSQL_ROOT_PASSWORD`,
+   `JWT_SECRET` y `ADMIN_BOOTSTRAP_PASSWORD`.
+2. Desde la raíz del proyecto ejecuta `docker compose up -d --build`.
+3. Abre `http://localhost:5000`. La API queda disponible en `http://localhost:8081`.
+
+La base de datos nace **vacía y sin cuentas**: MySQL solo carga el esquema
+`Backend/db/01-esquema.sql` (estructura, sin datos) al crear el volumen por primera vez.
+El primer administrador lo crea el backend a partir de `ADMIN_BOOTSTRAP_USER` y
+`ADMIN_BOOTSTRAP_PASSWORD`, y solo si todavía no existe ninguno; desde ahí el
+administrador crea los demás usuarios en la app. Para empezar de nuevo y borrar los
+datos locales, ejecuta `docker compose down -v` y luego `docker compose up -d --build`.
+
+> Los volcados `gesacad_db4free.sql` y `bdgesacad.sql.sql` son históricos y contienen
+> cuentas con contraseñas reales: **no los uses para Docker** ni los publiques.
+
+Comandos útiles: `docker compose ps` (estado y salud), `docker compose logs -f backend`
+(registros), `docker compose down` (detener conservando los datos).
+
+La app se compila con `API_BASE_URL` (por defecto `http://localhost:8081`). Si
+cambias la dirección de la API, actualiza esa variable en `.env` y vuelve a
+construir la imagen web con `docker compose up -d --build web`.
+
+Cloudinary es opcional; sin sus credenciales, las funciones de subida de archivos
+no estarán disponibles. Los contenedores publican los puertos solo en `localhost`.
+
 ### 1. Variables de entorno del Backend (`Backend/.env`)
 
 ```env

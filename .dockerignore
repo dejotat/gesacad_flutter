@@ -1,0 +1,27 @@
+.git
+.idea
+.dart_tool
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub
+.vscode
+build/*
+!build/web
+coverage
+Backend
+android
+ios
+linux
+macos
+windows
+test
+tool
+*.iml
+.env
+.env.*
+!.env.docker.example
+firebase.env*
+# Volcados de base de datos: contienen cuentas reales y no hacen falta para compilar la web
+*.sql
+google-services.json
+GoogleService-Info.plist
