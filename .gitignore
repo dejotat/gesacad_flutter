@@ -60,3 +60,6 @@ GoogleService-Info.plist
 
 # Copias de seguridad de la base (datos personales)
 respaldos/
+
+# Datos de conexión de la base en la nube (secretos)
+.env.nube

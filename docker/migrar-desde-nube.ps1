@@ -40,6 +40,22 @@ function Preguntar([string]$texto, [string]$valor, [string]$defecto = '') {
     return $r.Trim()
 }
 
+# Si existe el archivo .env.nube (copia de .env.nube.example; está en .gitignore) se leen de ahí los
+# datos de conexión: así no hay que escribirlos ni pegarlos en ningún chat.
+$archivoNube = Join-Path $raiz '.env.nube'
+if (Test-Path $archivoNube) {
+    $datos = @{}
+    foreach ($linea in (Get-Content $archivoNube -Encoding UTF8)) {
+        if ($linea -match '^\s*(NUBE_[A-Z]+)=(.*)$') { $datos[$Matches[1]] = $Matches[2].Trim() }
+    }
+    if (-not $OrigenHost)    { $OrigenHost    = $datos['NUBE_HOST'] }
+    if (-not $OrigenPuerto)  { $OrigenPuerto  = $datos['NUBE_PORT'] }
+    if (-not $OrigenUsuario) { $OrigenUsuario = $datos['NUBE_USER'] }
+    if (-not $OrigenBase)    { $OrigenBase    = $datos['NUBE_DB'] }
+    if (-not $env:MIGRACION_PASS -and $datos['NUBE_PASS']) { $env:MIGRACION_PASS = $datos['NUBE_PASS'] }
+    Write-Host 'Usando los datos de .env.nube' -ForegroundColor DarkGray
+}
+
 Write-Host "`nDatos de la base de la NUBE (solo se lee de ella):" -ForegroundColor Cyan
 $OrigenHost    = Preguntar 'Servidor (host)' $OrigenHost
 $OrigenPuerto  = Preguntar 'Puerto' $OrigenPuerto '3306'
@@ -127,3 +143,4 @@ if (-not $BaseDestino) {
     Write-Host 'Opcional: borra ADMIN_BOOTSTRAP_USER y ADMIN_BOOTSTRAP_PASSWORD de tu .env; con un Admin existente no hacen nada, pero ya no hacen falta.' -ForegroundColor DarkGray
 }
 Write-Host "Copia de la nube guardada en: $nube  (contiene datos personales: no la subas a git)" -ForegroundColor DarkGray
+Remove-Item Env:\MIGRACION_PASS -ErrorAction SilentlyContinue
