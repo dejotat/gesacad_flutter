@@ -40,6 +40,9 @@ if ($faltan) {
 }
 
 $modo = if ($Debug) { '--debug' } else { '--release' }
+# Flutter y Gradle escriben ADVERTENCIAS en stderr (p. ej. "source value 8 is obsolete"). Con
+# 'Stop' PowerShell las toma por errores y corta la compilación: aquí solo cuenta el código de salida.
+$ErrorActionPreference = 'Continue'
 & $flutter build apk $modo @defines
 if ($LASTEXITCODE -ne 0) { throw "La compilación falló (código $LASTEXITCODE)." }
 
