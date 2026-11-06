@@ -1,387 +1,402 @@
 # GESACAD — Sistema de Gestión Académica Universitaria
 
-**Corporación Universitaria Unicomfacauca**  
-Proyecto de Grado — Ingeniería de Sistemas  
-Estudiante: Jorge Tunubala  
-Versión: 1.1.2
+[![Pruebas de la app](https://github.com/dejotat/gesacad_flutter/actions/workflows/pruebas.yml/badge.svg)](https://github.com/dejotat/gesacad_flutter/actions/workflows/pruebas.yml)
+![Flutter](https://img.shields.io/badge/Flutter-3.41-02569B?logo=flutter&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-22-339933?logo=node.js&logoColor=white)
+![MySQL](https://img.shields.io/badge/MySQL-8.4-4479A1?logo=mysql&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
+
+Aplicación multiplataforma (**Android y Web**) para la gestión académica de la
+**Corporación Universitaria Unicomfacauca**. Tres roles —Administrador, Docente y
+Estudiante— trabajan sobre una API propia (Node.js + MySQL): cursos, actividades,
+entregas, calificaciones, evaluación docente, reuniones virtuales, calendario y notificaciones.
+
+Proyecto de grado — Ingeniería de Sistemas · Autor: **Jorge Tunubala**
 
 ---
 
-## Descripción
+## Contenido
 
-GESACAD es una aplicación multiplataforma (Android + Web) desarrollada en Flutter que
-implementa los 7 casos de uso del Sistema de Gestión Académica Universitaria (IEEE 830).
-Permite a estudiantes entregar tareas, a profesores crear actividades y calificar
-entregas, y al administrador gestionar usuarios y cursos desde cualquier dispositivo.
+- [Características](#características)
+- [Arquitectura](#arquitectura)
+- [Inicio rápido](#inicio-rápido)
+- [Docker en detalle](#docker-en-detalle)
+- [Configuración](#configuración)
+- [Seguridad](#seguridad)
+- [Pruebas e integración continua](#pruebas-e-integración-continua)
+- [Despliegue](#despliegue)
+- [Generar el APK](#generar-el-apk-android)
+- [Estructura del proyecto](#estructura-del-proyecto)
+- [Base de datos](#base-de-datos)
+- [Rendimiento y modo sin conexión](#rendimiento-y-modo-sin-conexión)
+- [Accesibilidad](#accesibilidad)
+- [Roles y permisos](#roles-y-permisos)
+- [Notas técnicas](#notas-técnicas)
+- [Documentación adicional](#documentación-adicional)
 
 ---
 
-## Arquitectura del Sistema
+## Características
+
+| CU | Funcionalidad | Rol | Descripción |
+|----|---------------|-----|-------------|
+| 01 | Inicio de sesión | Todos | Sesión con token (JWT), indicador de seguridad de contraseña, renovación automática |
+| 02 | Gestión de usuarios | Admin | Alta, edición, baja y cambio de rol; política de contraseñas |
+| 03 | Gestión de cursos | Admin | Cursos, docentes y matrícula de estudiantes |
+| 04 | Gestión de actividades | Docente | Actividades con ponderado (≤ 100 % por curso), adjuntos y fechas de cierre |
+| 05 | Entrega de tareas | Estudiante | Archivos de hasta 5 MB (pdf, doc/docx, xlsx, pptx, imágenes, zip) |
+| 06 | Calificaciones | Docente / Estudiante | Notas y comentarios, vista de progreso con gráficas |
+| 07 | Accesibilidad | Todos | `Semantics` en toda la interfaz (TalkBack/VoiceOver) y lectura en voz alta |
+| 08 | Evaluación docente | Admin / Estudiante / Docente | Periodos, participantes elegidos por el Admin, respuestas anónimas y resultados al cierre |
+| 09 | Reuniones virtuales | Docente / Estudiante | Sala de Jitsi o enlace de Google Meet, Zoom o Teams (solo https) por curso |
+| 10 | Modo invitado | Público | Presentación de la universidad, ruta de matrícula y demo interactiva con datos de ejemplo |
+| 11 | Notificaciones | Todos | Bandeja persistente sincronizada entre dispositivos, filtros y preferencias por tipo |
+| 12 | Calendario unificado | Todos | Vistas mes/semana/agenda, festivos de Colombia, suscripción `.ics` (Google/Outlook/Apple) |
+| 13 | Notificaciones push | Android | Avisos con la app cerrada vía Firebase Cloud Messaging (requiere configuración) |
+
+También: **modo sin conexión** (lectura en caché y cola de escritura que se sincroniza sola),
+perfil con foto, recuperación de contraseña asistida por el Admin, chatbot de preguntas
+frecuentes y cinco temas de color (incluido modo oscuro).
+
+---
+
+## Arquitectura
 
 ```
-┌─────────────────────────────────────────────────────┐
-│              GESACAD Flutter (Android / Web)         │
-│  lib/                                               │
-│  ├── main.dart              Splash + SplashScreen   │
-│  ├── config/api_config.dart URLs del backend        │
-│  ├── models/                UserModel, CourseModel  │
-│  │                          ActivityModel           │
-│  ├── services/                                      │
-│  │   ├── api_service.dart   HTTP + caché + retry    │
-│  │   ├── auth_service.dart  Sesión SharedPreferences│
-│  │   └── settings_service.dart  Temas + config      │
-│  ├── screens/                                       │
-│  │   ├── login_screen.dart       CU-01              │
-│  │   ├── admin/                  CU-02, CU-03, CU-06│
-│  │   ├── teacher/                CU-04, CU-06       │
-│  │   ├── student/                CU-05, CU-06       │
-│  │   ├── calendar/               Calendario         │
-│  │   ├── notifications/          Notificaciones     │
-│  │   └── profile/                Perfil usuario     │
-│  ├── utils/route_transitions.dart  Animaciones nav  │
-│  └── widgets/               ActivityCard, CourseCard│
-└─────────────────────────────────────────────────────┘
-          │ HTTPS (Railway)
-┌─────────────────────────────────────────────────────┐
-│           Backend Node.js + Express                  │
-│           Desplegado en Railway                      │
-│           URL: gesacad-backend-production.up.railway.app │
-└─────────────────────────────────────────────────────┘
-          │
-    ┌─────┴──────┐
-    │            │
-┌───────┐  ┌───────────┐
-│ MySQL │  │ Cloudinary│
-│Railway│  │  (archivos│
-│       │  │   y fotos)│
-└───────┘  └───────────┘
+        ┌──────────────────────────────────────────────┐
+        │  App Flutter (Android · Web)                 │
+        │  screens · widgets · services · models       │
+        └───────────────────────┬──────────────────────┘
+                                │ HTTPS · JWT (Bearer)
+        ┌───────────────────────▼──────────────────────┐
+        │  API Node.js + Express  (Backend/)           │
+        │  auth · permisos por rol · evaluaciones      │
+        │  reuniones · notificaciones · calendario     │
+        └──────┬───────────────┬───────────────┬───────┘
+               │               │               │
+        ┌──────▼─────┐  ┌──────▼──────┐  ┌─────▼──────────┐
+        │  MySQL 8.4 │  │ Cloudinary  │  │ Firebase (FCM) │
+        │  (datos)   │  │ (archivos)  │  │ (push, opcional)│
+        └────────────┘  └─────────────┘  └────────────────┘
 ```
 
----
+- **Producción:** API en Render (despliegue automático al hacer push a `master`).
+- **Local o entrega:** todo el sistema (base, API y web) con **Docker Compose**.
+- El backend vive en `Backend/`, que es un **repositorio aparte** (`dejotat/gesacad-backend`,
+  privado); en este repositorio solo se registra su versión.
 
-## Stack Técnico
+### Stack
 
-| Componente          | Tecnología                              |
-|---------------------|-----------------------------------------|
-| Framework móvil     | Flutter 3 / Dart 3                      |
-| Lenguaje            | Dart 3                                  |
-| HTTP + caché        | `http ^1.2.0` + SharedPreferences       |
-| Sesión local        | `shared_preferences ^2.3.2`             |
-| Selección archivos  | `file_picker ^8.0.0`                    |
-| Gráficas            | `fl_chart ^0.68.0` (libre, sin licencia)|
-| Tipografía          | `google_fonts ^6.2.1`                   |
-| Calendario          | `table_calendar ^3.2.0`                 |
-| Localización        | `flutter_localizations` (SDK)           |
-| Backend             | Node.js + Express                       |
-| Base de datos       | MySQL (Railway)                         |
-| Almacenamiento      | Cloudinary (archivos + fotos de perfil) |
-| Despliegue backend  | Railway (auto-deploy desde GitHub)      |
+| Capa | Tecnología |
+|------|------------|
+| App | Flutter 3.41 / Dart 3 · `http` · `shared_preferences` · `fl_chart` · `table_calendar` · `google_fonts` · `phosphor_flutter` · `flutter_tts` · `url_launcher` · `firebase_messaging` |
+| API | Node.js 22 · Express · `mysql2` (pool de conexiones) · `multer` · Cloudinary |
+| Seguridad | scrypt (contraseñas) · JWT HS256 · permisos por ruta · límite de intentos |
+| Datos | MySQL 8.4 |
+| Contenedores | Docker Compose · nginx sin privilegios para la web |
+| Calidad | GitHub Actions (análisis estático + pruebas de app y de API) |
 
 ---
 
-## Casos de Uso Implementados (IEEE 830)
+## Inicio rápido
 
-| CU    | Nombre                          | Rol          | Pantalla principal                    |
-|-------|---------------------------------|--------------|---------------------------------------|
-| CU-01 | Inicio de sesión                | Todos        | `login_screen.dart`                   |
-| CU-02 | Gestión de usuarios             | Admin        | `admin_users.dart`                    |
-| CU-03 | Gestión de cursos               | Admin        | `admin_courses.dart`                  |
-| CU-04 | Gestión de actividades          | Teacher      | `add_activity_screen.dart`            |
-| CU-05 | Entrega de tareas               | Student      | `activity_detail_screen.dart`         |
-| CU-06 | Visualización de calificaciones | Teacher/Std  | `grades_screen.dart`                  |
-| CU-07 | Accesibilidad (TalkBack)        | Todos        | Todos los widgets con `Semantics`     |
+### Opción A — Docker (recomendada)
 
-### Funcionalidades adicionales implementadas
-
-| Funcionalidad              | Descripción                                                  |
-|----------------------------|--------------------------------------------------------------|
-| Perfil de usuario          | Foto, bio, teléfono, programa, correo — guardados en MySQL   |
-| Recuperación de contraseña | Notificación al Admin + WhatsApp directo                     |
-| Calendario académico       | Actividades reales + festivos Colombia 2026 + recordatorios  |
-| Notificaciones             | Por rol: Admin (sistema), Profesor (entregas), Estudiante    |
-| Chatbot                    | Respuestas predefinidas sobre Unicomfacauca                  |
-| Múltiples temas            | 5 temas de color seleccionables desde Ajustes                |
-| TalkBack / VoiceOver       | Accesibilidad completa con `Semantics` en todos los roles    |
-
----
-
-## Configuración del Entorno de Desarrollo
-
-### Ejecutar con Docker
-
-Requiere Docker Desktop con Docker Compose. Este entorno levanta tres contenedores:
-MySQL, el backend (Node.js) y la versión web de Flutter servida con nginx.
-
-**Con un solo comando** (crea el `.env` con contraseñas aleatorias y arranca todo):
+Requiere [Docker Desktop](https://www.docker.com/products/docker-desktop). Levanta MySQL, la API y la web.
 
 ```powershell
 .\docker\iniciar.ps1          # Windows (PowerShell)
 ./docker/iniciar.sh           # Linux / macOS
 ```
 
-Al terminar muestra el usuario administrador y su contraseña (solo esa vez; también
-queda en `.env`). **A mano**, en su lugar:
+El script crea el `.env` con **contraseñas aleatorias** (si no existe), construye, arranca y abre el navegador.
+Al terminar muestra el usuario administrador y su contraseña **una sola vez** (también queda en `.env`).
 
-1. Copia `.env.docker.example` como `.env` y completa `DB_PASS`, `MYSQL_ROOT_PASSWORD`,
-   `JWT_SECRET` y `ADMIN_BOOTSTRAP_PASSWORD`.
-2. Desde la raíz del proyecto ejecuta `docker compose up -d --build`.
-3. Abre `http://localhost:5000`. La API queda disponible en `http://localhost:8081`
-   (es solo datos, no la aplicación: si la abres en un navegador te lleva a la app;
-   `docker/iniciar.ps1` también abre `http://localhost:5000` al terminar, `-NoAbrir` lo evita).
+| Servicio | Dirección |
+|----------|-----------|
+| **Aplicación web** | http://localhost:5000 |
+| API (solo datos) | http://localhost:8081 — abrirla en un navegador te lleva a la app |
+| MySQL (para Workbench/DBeaver) | `127.0.0.1:3307` |
 
-La base de datos nace **vacía y sin cuentas**: MySQL solo carga el esquema
-`Backend/db/01-esquema.sql` (estructura, sin datos) al crear el volumen por primera vez.
-El primer administrador lo crea el backend a partir de `ADMIN_BOOTSTRAP_USER` y
-`ADMIN_BOOTSTRAP_PASSWORD`, y solo si todavía no existe ninguno; desde ahí el
-administrador crea los demás usuarios en la app. Para empezar de nuevo y borrar los
-datos locales, ejecuta `docker compose down -v` y luego `docker compose up -d --build`.
+> Con internet lenta, `.\docker\iniciar.ps1 -WebLocal` compila la web en tu equipo en lugar de
+> descargar la imagen de Flutter (varios GB).
 
-> Los volcados `gesacad_db4free.sql` y `bdgesacad.sql.sql` son históricos y contienen
-> cuentas con contraseñas reales: **no los uses para Docker** ni los publiques.
-
-Comandos útiles: `docker compose ps` (estado y salud), `docker compose logs -f backend`
-(registros), `docker compose down` (detener conservando los datos).
-
-**Base de datos en Docker**
-- **Conectar una herramienta** (MySQL Workbench, DBeaver, HeidiSQL) desde tu equipo:
-  host `127.0.0.1`, puerto **3307** (no el 3306: ahí suele haber un MySQL local), usuario `DB_USER`,
-  contraseña `DB_PASS` y base `DB_NAME`, los tres de tu `.env`. Solo escucha en localhost.
-  El contenedor interno sigue usando `db:3306`; el puerto se cambia con `DB_HOST_PORT`.
-- **Datos de demostración**: la base nace vacía (solo el admin inicial). Para cursos, docentes y
-  estudiantes de prueba: `.\docker\datos-demo.ps1` (cuentas `demo_*`, contraseña `Demo#2026`,
-  guardadas cifradas, sin duplicar; requiere `npm install` una vez en `Backend`).
-- **Copia de seguridad**: `.\docker\respaldo.ps1` crea `respaldos\gesacad-FECHA.sql`;
-  `.\docker\respaldo.ps1 -Restaurar archivo.sql` la restaura (pide confirmar). `respaldos\` está en
-  `.gitignore`: contiene datos personales, no la subas.
-- **Migrar la base de la nube (Clever Cloud) a Docker**: `.\docker\migrar-desde-nube.ps1` pide servidor, puerto, usuario, contraseña (oculta, no se guarda) y base —o los lee de `.env.nube`, que se crea copiando `.env.nube.example` y está en `.gitignore`—; descarga una copia (solo lectura: la nube NO se modifica), respalda lo actual de Docker, pide confirmar con `SI`, restaura, muestra las filas por tabla y reinicia la API. Después la base de Docker es una copia INDEPENDIENTE: lo que agregues allí no llega a la nube. Si algo sale mal: `.\docker\respaldo.ps1 -Restaurar respaldos\antes-de-migrar-FECHA.sql`.
-- Si no tienes datos y esperabas ver los de tu base anterior: **la base de Docker es nueva y distinta**
-  de tu MySQL local y de la nube; cada una tiene sus propios usuarios.
-
-La app se compila con `API_BASE_URL` (por defecto `http://localhost:8081`). Si
-cambias la dirección de la API, actualiza esa variable en `.env` y vuelve a
-construir la imagen web con `docker compose up -d --build web`.
-
-Cloudinary es opcional; sin sus credenciales, las funciones de subida de archivos
-no estarán disponibles. Los contenedores publican los puertos solo en `localhost`.
-
-### 1. Variables de entorno del Backend (`Backend/.env`)
-
-```env
-DB_HOST=...
-DB_USER=...
-DB_PASS=...
-DB_NAME=...
-DB_PORT=3306
-PORT=8081
-CLOUDINARY_CLOUD_NAME=...
-CLOUDINARY_API_KEY=...
-CLOUDINARY_API_SECRET=...
-```
-
-### 2. URL del Backend (`lib/config/api_config.dart`)
-
-```dart
-// Producción Railway (por defecto):
-static const String baseUrl =
-    'https://gesacad-backend-production.up.railway.app';
-
-// Desarrollo local Web (Chrome):
-// static const String baseUrl = 'http://localhost:8081';
-
-// Emulador Android:
-// static const String baseUrl = 'http://10.0.2.2:8081';
-
-// Dispositivo físico (WiFi local):
-// static const String baseUrl = 'http://192.168.X.X:8081';
-```
-
-### 3. Instalar dependencias
+### Opción B — Desarrollo local (sin Docker)
 
 ```bash
 flutter pub get
+flutter run -d chrome         # web
+flutter run                   # emulador o dispositivo Android
+flutter analyze               # análisis estático
 ```
 
-### 4. Ejecutar en desarrollo (Web / Chrome)
+La app apunta por defecto a la API de producción. Para usar un backend local no hace falta editar código:
 
 ```bash
-flutter run -d chrome
+flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:8081
+# Emulador Android:   http://10.0.2.2:8081
+# Dispositivo físico: http://192.168.X.X:8081
 ```
 
-### 5. Ejecutar en emulador Android
-
-```bash
-flutter run
-```
+El backend local (`Backend/`, repositorio aparte): copia `Backend/.env.example` como `Backend/.env`,
+apúntalo a un MySQL local y ejecuta `npm install` y `npm start`.
+En Windows, `.\tool\dev_local.ps1` inicia MySQL, el backend y la app juntos.
 
 ---
 
-## Generar APK Release (Android)
+## Docker en detalle
 
-> **IMPORTANTE:** No usar `flutter build apk` directamente en Windows si la ruta
-> de Flutter tiene espacios (`C:\Users\JORGE TECHNOLOGY\flutter`). Usar la junction:
+### Qué se levanta
+
+| Servicio | Imagen | Notas |
+|----------|--------|-------|
+| `db` | `mysql:8.4` | Volumen persistente; carga el esquema base solo la primera vez |
+| `backend` | `Backend/Dockerfile` (Node 22, dos etapas) | Usuario sin privilegios, `HEALTHCHECK` a `/health` |
+| `web` | `Dockerfile` (Flutter compilado + nginx) | nginx sin privilegios, cabeceras de seguridad, caché adecuada |
+
+Los puertos solo escuchan en `localhost`. `docker compose ps` muestra el estado y la salud;
+`docker compose logs -f backend` los registros; `docker compose down` detiene **conservando** los datos
+(`down -v` los borra).
+
+### La base de datos nace vacía
+
+MySQL carga `Backend/db/01-esquema.sql` (estructura, sin datos ni cuentas); el servidor crea el
+resto de tablas al arrancar. El primer administrador sale de `ADMIN_BOOTSTRAP_USER` y
+`ADMIN_BOOTSTRAP_PASSWORD`, y **solo se crea si no existe ningún Admin**. Desde ahí se crean los demás
+usuarios en la app.
+
+> Los volcados históricos `gesacad_db4free.sql` y `bdgesacad.sql.sql` contienen cuentas con
+> contraseñas reales: **no los uses** para Docker ni los publiques.
+
+### Scripts de `docker/`
+
+| Script | Para qué sirve |
+|--------|----------------|
+| `iniciar.ps1` / `iniciar.sh` | Crea el `.env`, construye y arranca; abre la app (`-NoAbrir` lo evita) |
+| `datos-demo.ps1` | Carga docentes, estudiantes y cursos de prueba (`demo_*`, contraseña `Demo#2026`, guardadas cifradas) |
+| `respaldo.ps1` | Copia de seguridad en `respaldos\`; `-Restaurar archivo.sql` la restaura |
+| `migrar-desde-nube.ps1` | Copia una base MySQL de la nube a Docker (solo lectura en el origen) |
+| `publicar.ps1` | Construye y etiqueta las imágenes para Docker Hub; solo con `-Subir` las publica |
+| `entrega/` | Compose, script y guía para ejecutar el sistema **sin el código fuente** |
+
+**Conectar una herramienta a la base:** host `127.0.0.1`, puerto **3307** (no el 3306, que suele estar
+ocupado por un MySQL local), y `DB_USER`, `DB_PASS` y `DB_NAME` de tu `.env`.
+
+### Migrar la base de la nube a Docker
+
+`.\docker\migrar-desde-nube.ps1` pide servidor, puerto, usuario, contraseña (oculta, no se guarda)
+y base —o los lee de `.env.nube`, copia de `.env.nube.example`, que git ignora—. Hace un respaldo de
+lo actual, descarga la copia de la nube (**solo lectura: el origen no se modifica**), pide confirmar con
+`SI`, restaura, muestra las filas por tabla y los usuarios por rol, y reinicia la API.
+Después la base de Docker es una **copia independiente**: lo que se agregue allí no llega a la nube.
+Si algo sale mal: `.\docker\respaldo.ps1 -Restaurar respaldos\antes-de-migrar-FECHA.sql`.
+
+### Ejecutar en otro equipo (sin el código)
+
+La carpeta `docker/entrega/` contiene `compose.yaml`, `iniciar.ps1` y `LEEME.md`. En el otro equipo basta
+Docker Desktop: `.\iniciar.ps1` crea el `.env`, carga o descarga las imágenes y arranca todo; luego se
+abre http://localhost:5000. Las imágenes se generan con `docker\publicar.ps1`, que las etiqueta como
+`<usuario>/gesacad-{db,backend,web}`; también pueden entregarse en un archivo con `docker save`.
+
+---
+
+## Configuración
+
+### Variables de Docker (`.env`, plantilla `.env.docker.example`)
+
+| Variable | Obligatoria | Descripción |
+|----------|:-----------:|-------------|
+| `DB_USER`, `DB_PASS`, `MYSQL_ROOT_PASSWORD` | Sí | Credenciales de MySQL |
+| `JWT_SECRET` | Sí | Secreto de las sesiones (aleatorio, mínimo 16 caracteres) |
+| `ADMIN_BOOTSTRAP_USER`, `ADMIN_BOOTSTRAP_PASSWORD` | Primer arranque | Primer administrador de una base nueva |
+| `DB_NAME`, `DB_HOST_PORT` | No | Nombre de la base (`bdgesacad`) y puerto local de MySQL (`3307`) |
+| `CLOUDINARY_*` | No | Sin ellas todo funciona menos subir archivos |
+| `FIREBASE_SERVICE_ACCOUNT` | No | Activa las notificaciones push |
+| `API_BASE_URL` | No | Dirección de la API **para el navegador**; se graba al compilar la web |
+
+Si cambias `API_BASE_URL`: `docker compose up -d --build web`.
+
+### Variables del backend (`Backend/.env`, plantilla `Backend/.env.example`)
+
+`DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`, `PORT` (8081), `JWT_SECRET`, `AUTH_MODE`
+(`enforce` por defecto), `DB_POOL_SIZE`, `CLOUDINARY_*`, `FIREBASE_SERVICE_ACCOUNT`. El `.env` **no se versiona**.
+
+### URL de la API en la app
+
+`lib/config/api_config.dart` define `baseUrl` y todas las rutas. Se sobrescribe sin tocar código con
+`--dart-define=API_BASE_URL=...`. No se deben versionar URLs de desarrollo local.
+
+### Notificaciones push (opcional)
+
+Firebase se configura con `--dart-define` (`FIREBASE_API_KEY`, `FIREBASE_APP_ID`,
+`FIREBASE_MESSAGING_SENDER_ID`, `FIREBASE_PROJECT_ID`), sin `google-services.json`. Copia
+`firebase.env.example` como `firebase.env` (git lo ignora) y compila con `.\tool\compilar_apk.ps1`.
+En el servidor hace falta `FIREBASE_SERVICE_ACCOUNT`. Solo Android; sin esta configuración la bandeja
+de notificaciones funciona igual. El envío contra FCM real **requiere validarse con un teléfono**.
+
+---
+
+## Seguridad
+
+- **Contraseñas** con **scrypt** (`pass_hash`); nunca se devuelven por la API. Política: 8–64 caracteres con
+  mayúscula, minúscula, número y símbolo, y sin el nombre de usuario (validada en app y servidor). La app muestra
+  una **barra de seguridad** de colores mientras se escribe.
+- **Sesiones** con JWT HS256 (7 días) en `Authorization: Bearer`. Cambiar contraseña o rol, eliminar al usuario o
+  `POST /auth/logout-all` revocan los tokens. La app renueva el token al abrir si pasaron más de 12 horas.
+- **Permisos por ruta:** el Admin gestiona usuarios y cursos; el docente solo sus cursos y actividades; el
+  estudiante solo lo suyo. La identidad sale de la sesión, no de lo que envía el cliente.
+- **Fuerza bruta:** 8 fallos por usuario+IP y 60 por IP cada 15 min → `429` con `Retry-After`.
+- **Archivos:** límites y tipos validados en app y servidor; se escriben a disco temporal con nombre aleatorio y se
+  borran al terminar; `/files/proxy` solo reenvía `https://res.cloudinary.com`.
+- **Anonimato en la evaluación docente:** participación y respuestas viven en tablas sin vínculo entre sí.
+- **Contenedores:** la API y la web corren sin privilegios; los puertos solo escuchan en `localhost`;
+  las imágenes no contienen secretos ni datos.
+- **Secretos:** `.env`, `.env.nube`, `firebase.env` y `respaldos/` están fuera de git.
+
+---
+
+## Pruebas e integración continua
+
+```bash
+flutter analyze
+flutter test                          # pruebas de la app (widgets, lógica, modo sin conexión)
+cd Backend && npm test                # pruebas de la API contra una base MySQL aparte
+```
+
+GitHub Actions (`.github/workflows/pruebas.yml`) ejecuta en cada push: **app** → análisis y pruebas;
+**backend** → MySQL 8 de servicio, `npm ci` y `npm test`. Render despliega al hacer push sin esperar las
+pruebas, así que conviene revisar la pestaña *Actions* después de cada push.
+Casos de caja negra por caso de uso: [`docs/pruebas-caja-negra.md`](docs/pruebas-caja-negra.md).
+
+---
+
+## Despliegue
+
+**Backend en Render:** el repositorio `gesacad-backend` se despliega al hacer push a `master` (`npm install` y
+`npm start`, ~45 s). Las migraciones se aplican al arrancar y son aditivas e idempotentes: nunca borran datos.
+
+```
+GET /health  →  { status, version, uptimeSeconds, auth, push }
+```
+
+`version` es el commit corto desplegado: tras un push, debe coincidir con `git rev-parse --short=7 HEAD`.
+Las bases en la nube limitan las conexiones simultáneas; si el plan es pequeño, baja `DB_POOL_SIZE`.
+
+**Todo en Docker:** ver [Docker en detalle](#docker-en-detalle).
+
+---
+
+## Generar el APK (Android)
+
+En Windows, si la ruta de Flutter tiene espacios, **no uses `flutter build apk` directamente**: usa el acceso
+directo sin espacios.
 
 ```powershell
-# Desde PowerShell, en la carpeta del proyecto:
 C:\flutter_sdk\bin\flutter.bat build apk --release
+# Con notificaciones push: .\tool\compilar_apk.ps1   (lee firebase.env)
 ```
 
-El APK se genera en:
+Salida: `build\app\outputs\flutter-apk\app-release.apk`. El `dependency_overrides` de `objective_c` en
+`pubspec.yaml` corrige el mismo problema de rutas con espacios: **no lo quites**.
+
+> La compilación *release* usa hoy la firma de depuración; para publicar en una tienda hace falta una clave
+> de lanzamiento propia.
+
+---
+
+## Estructura del proyecto
+
 ```
-build\app\outputs\flutter-apk\app-release.apk
+gesacad_flutter/
+├── lib/
+│   ├── main.dart              Entrada: splash, sesión y rol
+│   ├── config/                api_config, temas, tokens de diseño
+│   ├── models/                Usuario, curso, actividad, evaluación, calendario…
+│   ├── services/              ApiService (HTTP + caché), Auth, cola sin conexión, push…
+│   ├── screens/               admin · teacher · student · evaluation · calendar ·
+│   │                          notifications · profile · guest · auth
+│   ├── widgets/               Componentes reutilizables (tarjetas, menú de cuenta, barras…)
+│   └── utils/ · helpers/      Transiciones, plataforma web/móvil, visor de archivos
+├── test/                      Pruebas de la app
+├── Backend/                   API Node.js (repositorio aparte)
+├── docker/                    Scripts, nginx y paquete de entrega
+├── docs/                      Documentación adicional
+├── tool/                      Scripts de desarrollo y compilación del APK
+├── compose.yaml · Dockerfile  Orquestación y compilación de la web
+└── .github/workflows/         Integración continua
 ```
 
-**Tamaño aproximado:** ~57 MB
+---
+
+## Base de datos
+
+18 tablas (MySQL 8.4). Las cinco primeras vienen en el esquema base; el servidor crea el resto al arrancar.
+
+| Grupo | Tablas |
+|-------|--------|
+| Núcleo académico | `users`, `courses`, `registration`, `activities`, `resolutionsactivities` |
+| Auditoría | `system_logs` |
+| Evaluación docente | `evaluation_periods`, `evaluation_questions`, `evaluation_targets`, `evaluation_scope`, `evaluation_participation`, `evaluation_answers` |
+| Reuniones | `course_meetings` |
+| Notificaciones | `notifications`, `notification_prefs`, `push_devices` |
+| Calendario | `calendar_feeds` |
+| Invitados | `public_content` |
 
 ---
 
-## Estructura de la Base de Datos (MySQL)
+## Rendimiento y modo sin conexión
 
-| Tabla                   | Descripción                                          |
-|-------------------------|------------------------------------------------------|
-| `users`                 | Usuarios con rol (Admin/Teacher/Student) + perfil    |
-| `courses`               | Cursos académicos                                    |
-| `registration`          | Matrícula: qué usuario pertenece a qué curso         |
-| `activities`            | Actividades evaluables de cada curso                 |
-| `resolutionsactivities` | Entregas y calificaciones de cada estudiante         |
-| `system_logs`           | Auditoría de acciones críticas (login, creación, etc)|
-
----
-
-## Rendimiento y Optimizaciones
-
-### Caché en dos niveles (ApiService)
-- **Memoria (TTL 5 min):** respuesta en < 1ms para datos recientes
-- **SharedPreferences:** muestra datos de sesión anterior mientras carga del backend
-- **Invalidación automática:** al crear/editar/eliminar cursos o actividades
-
-### Tolerancia a Railway (cold start)
-- **Timeout:** 30 segundos (Railway puede tardar hasta 30s en despertar un dyno)
-- **Retry automático:** reintenta 1 vez tras 2s en caso de timeout
-- **Ping al arrancar:** `ApiService().ping()` en el SplashScreen despierta Railway
-  antes de que el usuario llegue a la pantalla con datos
-
-### Zona horaria
-- Todas las fechas de actividades se almacenan en UTC en MySQL
-- Flutter convierte a hora Colombia (UTC-5) usando `ActivityModel.toCol()`
+- **Caché de dos niveles** en `ApiService`: memoria (5 min) y `SharedPreferences` (muestra datos de la sesión anterior
+  mientras carga). Se invalida al crear, editar o eliminar cursos y actividades.
+- **Tolerancia a arranques en frío:** timeout de 30 s y un reintento de las lecturas; `ping()` al abrir despierta el servidor.
+- **Modo sin conexión:** la app mide si el *servidor* responde (no solo el wifi). Las lecturas se sirven desde la copia
+  local; las entregas del estudiante y las notas del docente van a una **cola persistente** que se sincroniza sola, reintenta
+  con espera creciente y evita duplicados.
+- **Zona horaria:** las fechas se guardan en UTC y se muestran en hora de Colombia (UTC-5) con `ActivityModel.toCol()`.
 
 ---
 
-## Tablas de Pruebas de Caja Negra
+## Accesibilidad
 
-### CU-01 — Inicio de Sesión (RF01)
-
-| ID    | Condición de prueba               | Resultado esperado                                      |
-|-------|-----------------------------------|---------------------------------------------------------|
-| CP-01 | Usuario vacío                     | "El campo Usuario es obligatorio"                       |
-| CP-02 | Contraseña vacía                  | "El campo Contraseña es obligatorio"                    |
-| CP-03 | Usuario = "   " (solo espacios)   | "El usuario no puede contener solo espacios"            |
-| CP-04 | Usuario = "ab" (< 3 chars)        | "El usuario debe tener al menos 3 caracteres"           |
-| CP-05 | Usuario = 51 caracteres           | "Máximo 50 caracteres permitidos"                       |
-| CP-06 | Contraseña = "abc" (< 4 chars)    | "La contraseña debe tener al menos 4 caracteres"        |
-| CP-07 | Credenciales incorrectas          | "Usuario o contraseña incorrectos. Verifica tus datos." |
-| CP-08 | Servidor apagado / timeout        | "El servidor tardó demasiado. Verifica tu conexión."    |
-| CP-09 | Password = "p@$$#/" (chars esp.)  | Login exitoso (Uri.encodeComponent previene crash)      |
-| CP-10 | Credenciales Admin válidas        | Navega a AdminHome                                      |
-| CP-11 | Credenciales Teacher válidas      | Navega a TeacherHome                                    |
-| CP-12 | Credenciales Student válidas      | Navega a StudentHome                                    |
-
-### CU-04 — Crear Actividad (RF06, RF07)
-
-| ID    | Condición de prueba                   | Resultado esperado                                      |
-|-------|---------------------------------------|---------------------------------------------------------|
-| CA-01 | Título vacío                          | "Campo requerido"                                       |
-| CA-02 | Descripción vacía                     | "Campo requerido"                                       |
-| CA-03 | Ponderado vacío                       | "Requerido"                                             |
-| CA-04 | Ponderado = 0 o > 100                 | "Entre 1 y 100"                                         |
-| CA-05 | Ponderado > disponible en curso       | SnackBar rojo con el máximo disponible                  |
-| CA-06 | Fecha/hora cierre ≤ fecha/hora inicio | "La fecha y hora de cierre deben ser posteriores"       |
-| CA-07 | Ponderado disponible = 0%             | Banner rojo, botón deshabilitado                        |
-
-### CU-05 — Entrega de Tareas (RF08)
-
-| ID    | Condición de prueba               | Resultado esperado                                     |
-|-------|-----------------------------------|--------------------------------------------------------|
-| CE-01 | Plazo de la actividad vencido     | Botón deshabilitado, banner rojo visible               |
-| CE-02 | Actividad ya entregada            | Sección "Tu entrega" visible, estado "Entregado"       |
-| CE-03 | Archivo de 6 MB (> 5 MB)          | "El archivo no puede superar 5 MB"                     |
-| CE-04 | Seleccionar tipo no permitido     | FilePicker solo muestra extensiones válidas            |
-| CE-05 | Archivo válido + servidor OK      | Snackbar verde + estado actualizado                    |
-| CE-06 | Archivo válido + servidor caído   | Snackbar rojo: "Error de conexión"                     |
-| CE-07 | Cancelar el selector de archivos  | No ocurre ninguna acción                               |
-
-### CU-02 — Gestión de Usuarios (RF03)
-
-| ID    | Condición de prueba               | Resultado esperado                                    |
-|-------|-----------------------------------|-------------------------------------------------------|
-| CU-01 | Nombre de usuario vacío           | "Requerido"                                           |
-| CU-02 | Nombre < 3 caracteres             | "Mínimo 3 caracteres"                                 |
-| CU-03 | Nombre > 50 caracteres            | "Máximo 50 caracteres"                                |
-| CU-04 | Nombre duplicado                  | SnackBar: "Ya existe un usuario con ese nombre"       |
-| CU-05 | Contraseña vacía al crear         | "Requerido"                                           |
-| CU-06 | Contraseña < 4 chars al crear     | "Mínimo 4 caracteres"                                 |
-| CU-07 | Eliminar profesor con cursos      | Diálogo de advertencia antes de eliminar              |
+Cumple CU-07 con `Semantics` de Flutter (TalkBack/VoiceOver): etiquetas en todos los botones solo con icono,
+`ExcludeSemantics` en imágenes decorativas y contadores animados (con la etiqueta en el padre), descripciones completas
+en tarjetas y gráficas, y errores como `liveRegion` que se anuncian al aparecer. Incluye lectura en voz alta del contenido.
 
 ---
 
-## Accesibilidad (CU-07 — RNF03)
+## Roles y permisos
 
-Implementa `Semantics` de Flutter para compatibilidad con **TalkBack** (Android):
-
-- **Campos de texto:** `labelText` en `InputDecoration` → leídos automáticamente
-- **Botones de acción:** `Semantics(label, button: true)` en todos los botones sin texto visible
-- **Imágenes decorativas:** `ExcludeSemantics` para que TalkBack las ignore
-- **Animaciones count-up:** `ExcludeSemantics` en número animado + `Semantics(label)` con valor final en el padre
-- **Gráficas:** `Semantics(label: 'descripción de datos...')` en el wrapper, leyenda interactiva accesible
-- **Tarjetas de actividad:** descripción completa del estado (nota, plazo, entrega)
-- **Errores:** `liveRegion: true` — se anuncian automáticamente al aparecer
+| Rol | Permisos principales |
+|-----|----------------------|
+| **Admin** | Gestiona usuarios, cursos y matrícula; crea y cierra periodos de evaluación; ve los resultados; edita la información para invitados |
+| **Docente** | Crea actividades en sus cursos, califica entregas, convoca reuniones, ve los resultados de su evaluación |
+| **Estudiante** | Ve actividades, entrega tareas, consulta calificaciones, evalúa a sus docentes y se une a reuniones |
 
 ---
 
-## Notas Técnicas Importantes
+## Notas técnicas
 
-### Typo del backend (RF01)
-La clave de respuesta exitosa del login es `'LOGIN_SUCCESFULLY'` (una sola 'L').
-Es un error tipográfico del servidor original conservado intencionalmente para compatibilidad.
-
-### BINARY en MySQL (contraseñas)
-El query de login usa `BINARY pass = ?` para comparación case-sensitive.
-Sin `BINARY`, MySQL ignora mayúsculas en la contraseña.
-
-### resource_type: "raw" en Cloudinary
-Todos los archivos se suben con `resource_type: "raw"` para que el MIME type
-se determine por la extensión del nombre de archivo. Con `"auto"`, los PDFs
-quedarían como imágenes y los archivos Office sin extensión.
-
-### Proxy de archivos
-El endpoint `GET /files/proxy?url=...` de Railway descarga el archivo de Cloudinary
-server-to-server y lo reenvía al cliente, evitando errores CORS/401 que ocurrirían
-si el navegador intentara acceder directamente a Cloudinary.
-
-### Patrón Singleton (ApiService)
-`ApiService` usa Factory Singleton para una única instancia del cliente HTTP
-en toda la app, compartiendo el caché en memoria entre todas las pantallas.
-
-### Zona horaria Colombia (UTC-5)
-Las fechas de actividades se guardan en MySQL en UTC (+5h al recibir hora Colombia).
-Flutter convierte a hora Colombia restando 5h usando `ActivityModel.toCol(String)`.
+- **`LOGIN_SUCCESFULLY`** (una sola «L»): es la clave de respuesta del login en el servidor original; se conserva a propósito.
+- **Cloudinary con `resource_type: "raw"`:** hace que el tipo MIME se determine por la extensión; con `"auto"`, los PDF quedarían
+  como imágenes.
+- **Proxy de archivos:** `GET /files/proxy?url=…` descarga de Cloudinary servidor a servidor y reenvía al cliente, evitando
+  errores CORS/401 del navegador.
+- **Parámetros en la URL:** deben pasar por `Uri.encodeComponent` (el servidor falla con `/ ? # %`).
+- **Singleton:** `ApiService` es una única instancia que comparte el caché entre pantallas.
+- **Sin gestor de estado externo:** se usan singletons y `ValueNotifier`.
 
 ---
 
-## Roles del Sistema
+## Documentación adicional
 
-| Rol         | Permisos principales                                                    |
-|-------------|-------------------------------------------------------------------------|
-| **Admin**   | Gestionar usuarios, cursos y miembros. Ver estadísticas globales.       |
-| **Teacher** | Crear/editar actividades en sus cursos. Calificar entregas.             |
-| **Student** | Ver actividades, entregar tareas, consultar calificaciones.             |
+- [`docs/pruebas-caja-negra.md`](docs/pruebas-caja-negra.md) — casos de prueba funcionales.
+- [`docker/entrega/LEEME.md`](docker/entrega/LEEME.md) — ejecutar el sistema en otro equipo.
+- `Backend/.env.example`, `.env.docker.example`, `firebase.env.example` — plantillas de configuración.
 
 ---
 
 ## Créditos
 
-- **Desarrollador:** Jorge Tunubala
-- **Institución:** Corporación Universitaria Unicomfacauca
-- **Framework:** Flutter / Dart — Google
-- **Backend:** Node.js + Express + MySQL en Railway
-- **Almacenamiento:** Cloudinary
-- **Gráficas:** fl_chart (BSD License)
+- **Autor:** Jorge Tunubala — Corporación Universitaria Unicomfacauca
+- **Tecnologías:** Flutter / Dart, Node.js / Express, MySQL, Docker, Cloudinary, Firebase
+- **Gráficas:** [fl_chart](https://pub.dev/packages/fl_chart) (licencia BSD)

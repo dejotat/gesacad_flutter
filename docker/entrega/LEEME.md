@@ -1,16 +1,20 @@
 # GESACAD con Docker (sin el código fuente)
 
 Sistema de gestión académica (Unicomfacauca): base de datos MySQL, API Node.js y aplicación web.
-Las imágenes están publicadas en Docker Hub por **dejota0712**:
+Usa tres imágenes de Docker, con el usuario de Docker Hub **dejota0712**:
 
 - `dejota0712/gesacad-web` · aplicación web
 - `dejota0712/gesacad-backend` · API
 - `dejota0712/gesacad-db` · MySQL con el esquema base
 
+Se obtienen de una de dos formas: **incluidas en el paquete** (archivo `gesacad-imagenes.tar`, que
+`iniciar.ps1` carga solo, sin internet) o **descargadas de Docker Hub**, si ya fueron publicadas con
+`docker\publicar.ps1 -Subir` (en ese caso el paquete no necesita el `.tar`).
+
 ## Para verlo en otro equipo
 
 1. Instala **Docker Desktop** (https://www.docker.com/products/docker-desktop) y ábrelo hasta que diga *Engine running*.
-2. Copia esta carpeta (`compose.yaml` e `iniciar.ps1`) al equipo.
+2. Copia esta carpeta (`compose.yaml`, `iniciar.ps1` y, si viene en el paquete, `gesacad-imagenes.tar`) al equipo.
 3. En PowerShell, dentro de la carpeta:
    ```
    .\iniciar.ps1
