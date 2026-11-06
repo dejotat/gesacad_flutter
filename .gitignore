@@ -63,3 +63,6 @@ respaldos/
 
 # Datos de conexión de la base en la nube (secretos)
 .env.nube
+
+# Paquete de entrega con las imagenes de Docker (cientos de MB; se genera, no se versiona)
+/entrega-gesacad/
