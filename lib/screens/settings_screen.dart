@@ -112,7 +112,7 @@ class SettingsScreen extends StatelessWidget {
                           fontWeight: FontWeight.w600, fontSize: 16)),
                   Text(
                     enabled
-                        ? 'Activado — el cursor lee en voz alta'
+                        ? 'Activado — lee botones, textos y pantallas en voz alta'
                         : 'Desactivado — sin lectura de voz',
                     style: GoogleFonts.poppins(fontSize: 12, color: accent),
                   ),
@@ -141,9 +141,9 @@ class SettingsScreen extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Pasa el cursor sobre cualquier elemento para escucharlo. '
-                      'El botón de altavoz lee toda la pantalla. '
-                      'Desactiva el interruptor para silenciar.',
+                      'Pasa el cursor sobre cualquier botón, texto o campo para escucharlo; también '
+                      'lee lo que enfocas con el teclado (Tab) y anuncia cada pantalla que abres. '
+                      'En el móvil, mantén pulsado un elemento. El botón de altavoz lee toda la pantalla.',
                       style: GoogleFonts.poppins(fontSize: 12, color: t.muted),
                     ),
                   ),
@@ -176,7 +176,7 @@ class SettingsScreen extends StatelessWidget {
                 spacing: gap,
                 runSpacing: gap,
                 children: [
-                  for (final theme in AppThemeType.values)
+                  for (final theme in AppThemeTypeExt.ofrecidos)
                     SizedBox(
                       width: w,
                       child: _themeTile(context, theme, theme == current),
@@ -308,8 +308,9 @@ class SettingsScreen extends StatelessWidget {
         Text(label,
             style: GoogleFonts.poppins(
                 fontSize: 13, color: context.tokens.muted)),
-        const Spacer(),
-        Flexible(
+        const SizedBox(width: 12),
+        // Todos los valores comparten el borde derecho (antes cada uno quedaba a otra altura).
+        Expanded(
           child: Text(value,
               style: GoogleFonts.poppins(
                   fontSize: 13, fontWeight: FontWeight.w600),

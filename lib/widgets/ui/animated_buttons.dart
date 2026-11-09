@@ -67,8 +67,8 @@ Matrix4 reactionTransform(IconReaction reaction, double t, double size) {
 /// Botón de ícono con vida: halo al pasar el cursor, rebote de resorte al
 /// presionar y una reacción propia del ícono ([reaction]).
 ///
-/// Sustituye a `IconButton` en barras y tarjetas. Área táctil mínima de 44 px y
-/// etiqueta semántica = [tooltip] (CU-07).
+/// Sustituye a `IconButton` en barras y tarjetas. Área táctil de 48 px (mínimo de Android;
+/// el círculo visible mide 44) y etiqueta semántica = [tooltip] (CU-07).
 class AnimatedIconButton extends StatefulWidget {
   const AnimatedIconButton({
     super.key,
@@ -167,6 +167,9 @@ class _AnimatedIconButtonState extends State<AnimatedIconButton>
         ),
       ]);
     }
+
+    // El círculo mide 44; el área que responde al toque, 48.
+    body = SizedBox(width: 48, height: 48, child: Center(child: body));
 
     return Semantics(
       button: true,

@@ -61,7 +61,7 @@ if ($WebLocal) {
     if ($linea) { $api = ($linea -replace '^API_BASE_URL=', '').Trim() }
     $flutter = if (Test-Path 'C:\flutter_sdk\bin\flutter.bat') { 'C:\flutter_sdk\bin\flutter.bat' } else { 'flutter' }
     Write-Host "`nCompilando la web en este equipo (API: $api)..." -ForegroundColor Cyan
-    & $flutter build web --release "--dart-define=API_BASE_URL=$api"
+    & $flutter build web --release --no-web-resources-cdn "--dart-define=API_BASE_URL=$api"
     if ($LASTEXITCODE -ne 0) { throw "flutter build web falló (código $LASTEXITCODE)." }
     $env:WEB_TARGET = 'web-local'
 }

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/material.dart';
 
 /// Movimiento continuo de un [MotionIcon] tras su entrada.
@@ -36,6 +37,12 @@ enum IconMotion {
 
   /// Trazo de escritura: se inclina y avanza (lápiz, formularios).
   write,
+
+  /// Respira: la escala sube y baja con suavidad (serenidad, vigilancia: el escudo del Admin).
+  breathe,
+
+  /// Cabeceo: se inclina a un lado y a otro como quien asiente (el birrete del Estudiante).
+  nod,
 }
 
 /// Ícono con vida: entra con un rebote elástico y luego se mueve de forma sutil
@@ -54,6 +61,7 @@ class MotionIcon extends StatefulWidget {
     this.delay = Duration.zero,
     this.glow = false,
     this.halo = false,
+    this.speed = 1.0,
     this.semanticLabel,
   });
 
@@ -70,7 +78,37 @@ class MotionIcon extends StatefulWidget {
 
   /// Onda expansiva tipo sonar detrás del ícono (llama la atención sin ruido).
   final bool halo;
+
+  /// Multiplicador de velocidad del movimiento continuo (1 = normal, 2 = el doble de rápido).
+  /// Se limita a 0,25–4 para que nunca quede congelado ni frenético.
+  final double speed;
   final String? semanticLabel;
+
+  /// Duración del ciclo para [motion] a la velocidad [speed].
+  @visibleForTesting
+  static Duration periodo(IconMotion motion, [double speed = 1.0]) {
+    final base = _periodoBase(motion);
+    final s = speed.clamp(0.25, 4.0);
+    return Duration(microseconds: (base.inMicroseconds / s).round());
+  }
+
+  static Duration _periodoBase(IconMotion motion) {
+    switch (motion) {
+      case IconMotion.float:  return const Duration(milliseconds: 3200);
+      case IconMotion.pulse:  return const Duration(milliseconds: 2200);
+      case IconMotion.wiggle: return const Duration(milliseconds: 4200);
+      case IconMotion.spin:   return const Duration(seconds: 9);
+      case IconMotion.bounce: return const Duration(milliseconds: 3400);
+      case IconMotion.ring:   return const Duration(milliseconds: 3600);
+      case IconMotion.tada:   return const Duration(milliseconds: 4600);
+      case IconMotion.heartbeat: return const Duration(milliseconds: 1500);
+      case IconMotion.swing:  return const Duration(milliseconds: 2800);
+      case IconMotion.write:  return const Duration(milliseconds: 3000);
+      case IconMotion.breathe: return const Duration(milliseconds: 3800);
+      case IconMotion.nod:    return const Duration(milliseconds: 3600);
+      case IconMotion.none:   return const Duration(seconds: 1);
+    }
+  }
 
   @override
   State<MotionIcon> createState() => _MotionIconState();
@@ -82,21 +120,7 @@ class _MotionIconState extends State<MotionIcon> with TickerProviderStateMixin {
   Timer? _delayTimer;
   bool _hover = false;
 
-  Duration get _period {
-    switch (widget.motion) {
-      case IconMotion.float:  return const Duration(milliseconds: 3200);
-      case IconMotion.pulse:  return const Duration(milliseconds: 2200);
-      case IconMotion.wiggle: return const Duration(milliseconds: 4200);
-      case IconMotion.spin:   return const Duration(seconds: 9);
-      case IconMotion.bounce: return const Duration(milliseconds: 3400);
-      case IconMotion.ring:   return const Duration(milliseconds: 3600);
-      case IconMotion.tada:   return const Duration(milliseconds: 4600);
-      case IconMotion.heartbeat: return const Duration(milliseconds: 1500);
-      case IconMotion.swing:  return const Duration(milliseconds: 2800);
-      case IconMotion.write:  return const Duration(milliseconds: 3000);
-      case IconMotion.none:   return const Duration(seconds: 1);
-    }
-  }
+  Duration get _period => MotionIcon.periodo(widget.motion, widget.speed);
 
   @override
   void initState() {
@@ -136,49 +160,60 @@ class _MotionIconState extends State<MotionIcon> with TickerProviderStateMixin {
   Matrix4 _loopTransform(double t) {
     switch (widget.motion) {
       case IconMotion.float:
-        return Matrix4.translationValues(0, math.sin(t * 2 * math.pi) * -3.5, 0);
+        return Matrix4.translationValues(0, math.sin(t * 2 * math.pi) * -3.0, 0);
       case IconMotion.pulse:
-        final s = 1 + 0.10 * (0.5 - 0.5 * math.cos(t * 2 * math.pi));
+        final s = 1 + 0.07 * (0.5 - 0.5 * math.cos(t * 2 * math.pi));
         return Matrix4.diagonal3Values(s, s, 1);
       case IconMotion.wiggle:
         // Agitación solo en el primer 18% del ciclo, el resto en reposo.
         if (t > 0.18) return Matrix4.identity();
         final k = t / 0.18;
-        final a = math.sin(k * 6 * math.pi) * 0.30 * (1 - k);
+        final a = math.sin(k * 6 * math.pi) * 0.18 * (1 - k);
         return Matrix4.rotationZ(a);
       case IconMotion.spin:
         return Matrix4.rotationZ(t * 2 * math.pi);
       case IconMotion.bounce:
         if (t > 0.30) return Matrix4.identity();
         final k = t / 0.30;
-        return Matrix4.translationValues(0, -math.sin(k * math.pi) * 7, 0);
+        return Matrix4.translationValues(0, -math.sin(k * math.pi) * 4.5, 0);
       case IconMotion.ring:
         // Campana: pivote en la parte alta, amortiguada, en el 30% del ciclo.
         if (t > 0.30) return Matrix4.identity();
         final k = t / 0.30;
-        final a = math.sin(k * 8 * math.pi) * 0.42 * (1 - k);
+        final a = math.sin(k * 8 * math.pi) * 0.32 * (1 - k);
         return _rotateAround(a, 0, -widget.size * 0.4);
       case IconMotion.tada:
         if (t > 0.26) return Matrix4.identity();
         final k = t / 0.26;
-        final sc = 1 + 0.22 * math.sin(k * math.pi);
-        final a = math.sin(k * 6 * math.pi) * 0.14 * math.sin(k * math.pi);
+        final sc = 1 + 0.13 * math.sin(k * math.pi);
+        final a = math.sin(k * 6 * math.pi) * 0.09 * math.sin(k * math.pi);
         return Matrix4.diagonal3Values(sc, sc, 1)..rotateZ(a);
       case IconMotion.heartbeat:
         // Dos latidos seguidos y un descanso.
         double b(double x, double c) =>
             math.exp(-math.pow((x - c) / 0.07, 2).toDouble());
-        final s = 1 + 0.16 * b(t, 0.12) + 0.11 * b(t, 0.32);
+        final s = 1 + 0.11 * b(t, 0.12) + 0.07 * b(t, 0.32);
         return Matrix4.diagonal3Values(s, s, 1);
       case IconMotion.swing:
         return _rotateAround(
-            math.sin(t * 2 * math.pi) * 0.22, 0, -widget.size * 0.45);
+            math.sin(t * 2 * math.pi) * 0.17, 0, -widget.size * 0.45);
       case IconMotion.write:
         if (t > 0.5) return Matrix4.identity();
         final k = t / 0.5;
         return Matrix4.translationValues(
-            math.sin(k * 4 * math.pi) * 2.5 * (1 - k), 0, 0)
-          ..rotateZ(math.sin(k * 4 * math.pi) * 0.22 * (1 - k));
+            math.sin(k * 4 * math.pi) * 2.0 * (1 - k), 0, 0)
+          ..rotateZ(math.sin(k * 4 * math.pi) * 0.16 * (1 - k));
+      case IconMotion.breathe:
+        // Subida y bajada con suavizado (coseno): sin tirones ni rebotes.
+        final sb = 1 + 0.075 * (0.5 - 0.5 * math.cos(t * 2 * math.pi));
+        return Matrix4.diagonal3Values(sb, sb, 1);
+      case IconMotion.nod:
+        // Dos inclinaciones amortiguadas en el primer 45 % del ciclo (pivote en la base); el resto,
+        // en reposo: expresivo pero sin agitarse todo el tiempo.
+        if (t > 0.45) return Matrix4.identity();
+        final kn = t / 0.45;
+        final an = math.sin(kn * 4 * math.pi) * 0.20 * (1 - kn);
+        return _rotateAround(an, 0, widget.size * 0.30);
       case IconMotion.none:
         return Matrix4.identity();
     }
@@ -214,7 +249,7 @@ class _MotionIconState extends State<MotionIcon> with TickerProviderStateMixin {
         return Opacity(
           opacity: fade,
           child: Transform.scale(
-            scale: (0.3 + 0.7 * e) * (_hover ? 1.15 : 1.0),
+            scale: (0.3 + 0.7 * e) * (_hover ? 1.1 : 1.0),
             child: Transform(
               alignment: Alignment.center,
               transform: loop,

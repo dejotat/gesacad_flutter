@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../config/app_tokens.dart';
+import '../../services/settings_service.dart';
 
 /// Menú de cuenta de la barra superior (los tres dashboards lo comparten).
 ///
@@ -33,6 +34,7 @@ class MenuCuenta extends StatelessWidget {
   static const _perfil = 'perfil';
   static const _ajustes = 'ajustes';
   static const _salir = 'salir';
+  static const _lector = 'lector';
 
   /// "Ana María Gómez" → "AM"; vacío → "?".
   static String iniciales(String nombre) {
@@ -75,6 +77,7 @@ class MenuCuenta extends StatelessWidget {
         switch (v) {
           case _perfil: onPerfil();
           case _ajustes: onAjustes();
+          case _lector: AppSettings.setTalkBack(!AppSettings.talkBackEnabled.value);
           case _salir: onSalir();
         }
       },
@@ -85,6 +88,9 @@ class MenuCuenta extends StatelessWidget {
             detalle: 'Tus datos y tu foto'),
         _opcion(ctx, valor: _ajustes, icono: PhosphorIconsRegular.gear, titulo: 'Ajustes',
             detalle: 'Tema, voz y accesibilidad'),
+        _opcion(ctx, valor: _lector, icono: PhosphorIconsRegular.speakerHigh,
+            titulo: AppSettings.talkBackEnabled.value ? 'Apagar lector de voz' : 'Activar lector de voz',
+            detalle: AppSettings.talkBackEnabled.value ? 'Dejar de leer en voz alta' : 'Lee botones, textos y pantallas'),
         const PopupMenuDivider(height: 8),
         _opcion(ctx, valor: _salir, icono: PhosphorIconsRegular.signOut, titulo: 'Cerrar sesión',
             detalle: 'Salir de esta cuenta', peligro: true),

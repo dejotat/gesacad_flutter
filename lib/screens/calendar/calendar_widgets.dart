@@ -277,7 +277,7 @@ class CargaSemanalCard extends StatelessWidget {
 IconData _iconoDe(CalEvent e) => switch (e.kind) {
       CalKind.meeting => Icons.videocam_rounded,
       CalKind.evaluation => Icons.insights_rounded,
-      CalKind.activity => e.activityType == 'midterm'
+      CalKind.activity => e.activityType == 'midterm' || e.activityType == 'quiz'
           ? Icons.quiz_rounded
           : e.activityType == 'resource' ? Icons.menu_book_rounded : Icons.assignment_rounded,
     };

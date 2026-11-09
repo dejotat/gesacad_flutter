@@ -4,7 +4,7 @@ import '../config/app_tokens.dart';
 import '../widgets/ui/motion_icon.dart';
 
 /// Tipo de actividad: etiqueta, ícono y color en un solo lugar.
-/// Valores del backend: 'midterm', 'project', 'resource'; cualquier otro es "Otro".
+/// Valores del backend: 'midterm', 'quiz', 'project', 'resource'; cualquier otro es "Otro".
 class ActivityTypeInfo {
   const ActivityTypeInfo._(this.label, this.icon, this.motion);
   final String label;
@@ -17,6 +17,8 @@ class ActivityTypeInfo {
     switch (type) {
       case 'midterm':
         return const ActivityTypeInfo._('Parcial', PhosphorIconsRegular.exam, IconMotion.heartbeat);
+      case 'quiz':
+        return const ActivityTypeInfo._('Quiz', PhosphorIconsRegular.listChecks, IconMotion.pulse);
       case 'project':
         return const ActivityTypeInfo._('Proyecto', PhosphorIconsRegular.folderOpen, IconMotion.bounce);
       case 'resource':
@@ -30,6 +32,8 @@ class ActivityTypeInfo {
     switch (type) {
       case 'midterm':
         return t.typeParcial;
+      case 'quiz':
+        return t.chart[1];
       case 'project':
         return t.typeProyecto;
       case 'resource':

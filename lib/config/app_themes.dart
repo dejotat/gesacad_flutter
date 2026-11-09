@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/settings_service.dart';
+import 'app_scenes.dart';
 import 'app_tokens.dart';
 
 /// Fábrica de temas de Material 3 para GESACAD.
@@ -16,11 +17,14 @@ class AppThemes {
 
   static ThemeData _build(AppThemeType type, Brightness brightness) {
     final isDark = brightness == Brightness.dark;
-    final tokens = isDark ? AppTokens.dark : AppTokens.light;
+    final scene = isDark ? type.scene : null;
+    final tokens = isDark
+        ? AppTokens.dark.copyWith(glass: scene!.glass, glassHighlight: scene.glassHighlight)
+        : AppTokens.light;
     final primary = type.primaryColor;
 
-    final surface = isDark ? const Color(0xFF1A1738) : Colors.white;
-    final onSurface = isDark ? const Color(0xFFF1F0FF) : const Color(0xFF1E1B4B);
+    final surface = isDark ? scene!.surface : Colors.white;
+    final onSurface = isDark ? const Color(0xFFEAF0FF) : const Color(0xFF1E1B4B);
     const onPrimary = Colors.white;
 
     final cs = ColorScheme.fromSeed(
@@ -33,7 +37,7 @@ class AppThemes {
       surface: surface,
       onSurface: onSurface,
       surfaceContainerHighest:
-          isDark ? const Color(0xFF241F4A) : const Color(0xFFEDE9FE),
+          isDark ? scene!.container : const Color(0xFFEDE9FE),
       outline: tokens.border,
       outlineVariant: tokens.border,
       error: tokens.danger,
@@ -44,7 +48,7 @@ class AppThemes {
         .apply(bodyColor: onSurface, displayColor: onSurface);
 
     // Superficies flotantes (diálogos, menús, hojas): casi opacas para legibilidad.
-    final floating = isDark ? const Color(0xF21A1738) : const Color(0xF2FFFFFF);
+    final floating = isDark ? scene!.surface.withValues(alpha: 0.95) : const Color(0xF2FFFFFF);
 
     OutlineInputBorder inputBorder(Color c, [double w = 1]) =>
         OutlineInputBorder(
@@ -60,7 +64,7 @@ class AppThemes {
       dividerColor: tokens.border,
       appBarTheme: AppBarTheme(
         backgroundColor: isDark
-            ? const Color(0xE61A1738)
+            ? scene!.appBar
             : primary.withValues(alpha: 0.94),
         foregroundColor: Colors.white,
         elevation: 0,
@@ -140,7 +144,7 @@ class AppThemes {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: isDark ? const Color(0x66241F4A) : const Color(0x99FFFFFF),
+        fillColor: isDark ? scene!.input : const Color(0x99FFFFFF),
         border: inputBorder(tokens.border),
         enabledBorder: inputBorder(tokens.border),
         focusedBorder: inputBorder(primary, 2),

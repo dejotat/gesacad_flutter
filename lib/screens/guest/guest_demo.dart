@@ -342,7 +342,6 @@ class _DemoAdmin extends StatelessWidget {
         blur: false,
         child: BarList(
           color: t.chart[0],
-          rotateColors: true,
           items: const [
             BarItem('Matemáticas Aplicadas', 38),
             BarItem('Programación I', 32),

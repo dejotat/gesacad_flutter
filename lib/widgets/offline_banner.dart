@@ -7,7 +7,7 @@ import '../services/offline_queue.dart';
 import '../utils/app_keys.dart';
 import 'ui/ui.dart';
 
-enum _Estado { oculto, sinConexion, sincronizando, revisar, listo }
+enum _Estado { oculto, conectando, sinConexion, sincronizando, revisar, listo }
 
 /// Envuelve toda la app y muestra, arriba, el estado de conexión y de la cola
 /// de cambios pendientes:
@@ -40,7 +40,7 @@ class _OfflineShellState extends State<OfflineShell> {
       widget._connectivity ?? ConnectivityService.instance;
   late final OfflineQueue _queue = widget._queue ?? OfflineQueue.instance;
   late final Listenable _merged =
-      Listenable.merge([_conn.online, _queue.operations, _queue.syncing]);
+      Listenable.merge([_conn.online, _conn.conectando, _queue.operations, _queue.syncing]);
   StreamSubscription<SyncEvent>? _sub;
   Timer? _doneTimer;
   bool _showDone = false;
@@ -103,6 +103,8 @@ class _OfflineShellState extends State<OfflineShell> {
   }
 
   _Estado get _estado {
+    // Primera conexión lenta: el servidor está despertando; no es una caída.
+    if (_conn.conectando.value) return _Estado.conectando;
     if (!_conn.online.value) return _Estado.sinConexion;
     if (_queue.syncing.value) return _Estado.sincronizando;
     if (_queue.failedCount > 0) return _Estado.revisar;
@@ -177,6 +179,13 @@ class _Banner extends StatelessWidget {
     late final String titulo;
     String? detalle;
     switch (estado) {
+      case _Estado.conectando:
+        color = t.info;
+        icon = Icons.cloud_queue_rounded;
+        motion = IconMotion.pulse;
+        titulo = 'Conectando con el servidor…';
+        detalle = 'La primera conexión del día puede tardar hasta un minuto. '
+            'Mientras tanto verás tus datos guardados.';
       case _Estado.sinConexion:
         color = const Color(0xFF475569);
         icon = Icons.cloud_off_rounded;
@@ -265,7 +274,7 @@ class _Banner extends StatelessWidget {
                   onPressed: onReintentar,
                   style: TextButton.styleFrom(
                       foregroundColor: Colors.white,
-                      minimumSize: const Size(44, 44)),
+                      minimumSize: const Size(48, 48)),
                   child: Text('Reintentar',
                       style: GoogleFonts.poppins(
                           fontSize: 12, fontWeight: FontWeight.w700)),

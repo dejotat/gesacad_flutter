@@ -59,10 +59,10 @@ dev_dependencies:
   flutter_lints: ^3.0.0
   flutter_launcher_icons: ^0.14.1
 
-# Configuración del ícono de la app para todas las plataformas
+# Configuración del ícono de la app (la app es solo Android y Web)
 flutter_launcher_icons:
   android: true
-  ios: true
+  ios: false
   image_path: "assets/icon/icon.png"
   min_sdk_android: 21
   adaptive_icon_background: "#1565C0"
@@ -72,6 +72,9 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/
+    # Poppins incluida en la app: google_fonts la usa desde aquí en vez de descargarla de
+    # internet (arranque más rápido, sin parpadeo de texto y también sin conexión).
+    - google_fonts/
 
 dependency_overrides:
   path_provider_foundation: ^2.3.2

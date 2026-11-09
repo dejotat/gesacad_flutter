@@ -17,6 +17,8 @@ import 'screens/notifications/notification_router.dart';
 import 'screens/notifications/notification_toaster.dart';
 import 'services/notification_service.dart';
 import 'services/push_service.dart';
+import 'services/screen_reader.dart';
+import 'widgets/screen_reader_widgets.dart';
 import 'services/push_transport_firebase.dart';
 import 'widgets/offline_banner.dart';
 import 'utils/route_transitions.dart';
@@ -31,10 +33,15 @@ void main() {
   // La inicialización y runApp deben ocurrir dentro de la misma zona.
   http.runWithClient(() async {
     WidgetsFlutterBinding.ensureInitialized();
-    // Inicializar locale español para table_calendar y formatos de fecha
-    await initializeDateFormatting('es', null);
-    await AppSettings.load();
-    await AuthService.loadToken();
+    // Lo PRIMERO: despertar al servidor. En la nube puede tardar hasta un minuto en arrancar y esa
+    // espera corre en paralelo con el resto del arranque, no después de él.
+    unawaited(ApiService().ping());
+    // Independientes entre sí: se preparan a la vez (antes, una tras otra).
+    await Future.wait([
+      initializeDateFormatting('es', null), // locale español para fechas y calendario
+      AppSettings.load(),
+      AuthService.loadToken(),
+    ]);
     // Sesión vencida o revocada → al login con el motivo (sin perder lo pendiente).
     SessionGuard.instance.alInvalidarse = (mensaje) {
       appNavigatorKey.currentState?.pushAndRemoveUntil(
@@ -46,8 +53,11 @@ void main() {
     await OfflineQueue.instance.init();
 
     instalarAvisosDeNotificaciones();
-    await _iniciarPush();
+    // Lector de pantalla integrado: lee lo que señala el cursor, el foco del teclado y cada pantalla.
+    ScreenReader.instance.iniciar();
     runApp(const GesacadApp());
+    // Push después de dibujar la primera pantalla: nunca retrasa el arranque.
+    unawaited(_iniciarPush());
   }, () => AuthClient());
 }
 
@@ -93,6 +103,9 @@ class _RenovadorDeSesion with WidgetsBindingObserver {
 class GesacadApp extends StatelessWidget {
   const GesacadApp({super.key});
 
+  /// Avisa al lector de voz cuando se abre o se cierra una pantalla, diálogo u hoja.
+  static final _observadorLector = ScreenReaderObserver();
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<AppThemeType>(
@@ -103,6 +116,7 @@ class GesacadApp extends StatelessWidget {
           title: 'GESACAD',
           debugShowCheckedModeBanner: false,
           navigatorKey: appNavigatorKey,
+          navigatorObservers: [_observadorLector],
           scaffoldMessengerKey: appMessengerKey,
           theme: AppThemes.of(themeType),
           themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
@@ -110,7 +124,11 @@ class GesacadApp extends StatelessWidget {
           // El banner de conexión vive encima del Navigator: se ve en todas las pantallas.
           builder: (context, child) => AppBackground(
               type: themeType,
-              child: OfflineShell(child: child ?? const SizedBox())),
+              child: Stack(children: [
+                Positioned.fill(child: OfflineShell(child: child ?? const SizedBox())),
+                // Visible solo mientras el lector de voz está encendido.
+                const IndicadorLectorVoz(),
+              ])),
           home: const SplashScreen(),
           // Localización completa en español (menús Cut/Copy/Paste, fechas, etc.)
           localizationsDelegates: const [
@@ -171,7 +189,6 @@ class _SplashScreenState extends State<SplashScreen>
     Future.delayed(const Duration(milliseconds: 600),
         () { if (mounted) _textCtrl.forward(); });
 
-    unawaited(ApiService().ping());
     _checkSession();
   }
 
@@ -183,8 +200,10 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _checkSession() async {
-    await Future.delayed(const Duration(milliseconds: 2500));
+    // Lo justo para ver la marca (la animación del logo dura ~0,9 s). Antes eran 2,5 s fijos.
+    final minimo = Future.delayed(const Duration(milliseconds: 1100));
     final prefs = await SharedPreferences.getInstance();
+    await minimo;
     final rol = prefs.getString('userRol');
     if (!mounted) return;
 

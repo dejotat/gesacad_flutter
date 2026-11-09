@@ -1,18 +1,11 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-import '../services/tts_service.dart';
 import '../services/settings_service.dart';
 
-/// Widget de TalkBack con lectura continua al arrastrar el cursor.
+/// Marca visual de «lo que el lector está leyendo» (cursor de ayuda y resplandor opcional al pasar).
 ///
-/// Implementa "Touch Exploration" — al pasar o arrastrar el cursor/dedo
-/// sobre el elemento, lo lee en voz alta inmediatamente.
-///
-/// Comportamiento:
-/// - Si TalkBack está desactivado → no hace nada
-/// - Al entrar el cursor → espera [delayMs] ms → lee el texto
-/// - Al salir el cursor → detiene la lectura
-/// - Al arrastrar (hover move) → si cambia de widget, lee el nuevo
+/// La VOZ ya no la da este widget: la da el lector general (`ScreenReader`), que lee todo lo que
+/// tiene etiqueta de accesibilidad en cualquier pantalla. Se conserva para no cambiar las pantallas
+/// que lo usan y para el realce visual; [label] queda como documentación del texto del elemento.
 class TalkWidget extends StatefulWidget {
   final Widget child;
   final String label;
@@ -32,48 +25,17 @@ class TalkWidget extends StatefulWidget {
 }
 
 class _TalkWidgetState extends State<TalkWidget> {
-  Timer? _timer;
   bool _hovering = false;
 
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  /// El cursor entró — iniciar lectura tras el delay.
+  /// El cursor entró (solo realce visual).
   void _onEnter(PointerEvent _) {
     if (!AppSettings.talkBackEnabled.value) return;
     if (mounted) setState(() => _hovering = true);
-    _timer?.cancel();
-    _timer = Timer(Duration(milliseconds: widget.delayMs), () {
-      if (!mounted || !_hovering) return;
-      if (!AppSettings.talkBackEnabled.value) return;
-      TtsService.instance.speak(widget.label);
-    });
   }
 
-  /// El cursor se movió dentro del widget — releer si ya está leyendo
-  /// otro texto (exploración táctil continua).
-  void _onHover(PointerEvent _) {
-    if (!AppSettings.talkBackEnabled.value) return;
-    // Si ya está leyendo ESTE texto no interrumpir
-    if (TtsService.instance.textoActual == widget.label) return;
-    // Si está leyendo otro texto, actualizar al nuevo (exploración continua)
-    if (TtsService.instance.leyendo) {
-      _timer?.cancel();
-      _timer = Timer(Duration(milliseconds: widget.delayMs), () {
-        if (!mounted || !_hovering) return;
-        TtsService.instance.speak(widget.label);
-      });
-    }
-  }
-
-  /// El cursor salió — detener lectura.
+  /// El cursor salió.
   void _onExit(PointerEvent _) {
     if (mounted) setState(() => _hovering = false);
-    _timer?.cancel();
-    TtsService.instance.stop();
   }
 
   @override
@@ -82,7 +44,6 @@ class _TalkWidgetState extends State<TalkWidget> {
       valueListenable: AppSettings.talkBackEnabled,
       builder: (_, activado, child) => MouseRegion(
         onEnter: _onEnter,
-        onHover: _onHover, // Captura movimiento del cursor dentro del widget
         onExit:  _onExit,
         cursor: activado
             ? SystemMouseCursors.help

@@ -32,14 +32,14 @@ class CourseCard extends StatefulWidget {
 
   /// Pares de degradado vivos (texto blanco encima con buen contraste).
   static const List<List<Color>> _gradients = [
-    [Color(0xFF2563EB), Color(0xFF06B6D4)], // azul → cian
-    [Color(0xFF7C3AED), Color(0xFFEC4899)], // violeta → rosa
-    [Color(0xFF059669), Color(0xFF22D3EE)], // esmeralda → turquesa
-    [Color(0xFFE11D48), Color(0xFFF59E0B)], // carmín → ámbar
+    [Color(0xFF7C3AED), Color(0xFFD946EF)], // violeta → fucsia
+    [Color(0xFF0891B2), Color(0xFF34D399)], // cian → esmeralda
+    [Color(0xFFDB2777), Color(0xFFF97316)], // rosa → naranja
+    [Color(0xFF6D28D9), Color(0xFFDB2777)], // violeta → rosa
     [Color(0xFF0D9488), Color(0xFF84CC16)], // teal → lima
     [Color(0xFFEA580C), Color(0xFFEF4444)], // naranja → rojo
-    [Color(0xFF4F46E5), Color(0xFF0EA5E9)], // índigo → cielo
-    [Color(0xFFC026D3), Color(0xFF6366F1)], // fucsia → índigo
+    [Color(0xFF059669), Color(0xFF22D3EE)], // esmeralda → turquesa
+    [Color(0xFFC026D3), Color(0xFF7C3AED)], // fucsia → violeta
   ];
 
   static const List<IconData> _icons = [
@@ -107,16 +107,28 @@ class _CourseCardState extends State<CourseCard>
     super.dispose();
   }
 
+  /// Estilo de la materia: el del curso si el servidor lo trae; si no (0 o vacío), uno estable
+  /// calculado con el nombre, para que cada materia tenga siempre su color e ícono.
+  int get _img {
+    final v = widget.course.imgCourse;
+    if (v >= 1) return v;
+    var h = 0;
+    for (final u in widget.course.name.toLowerCase().codeUnits) {
+      h = (h * 31 + u) & 0x7fffffff;
+    }
+    return (h % 8) + 1;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final colors = CourseCard.gradientFor(widget.course.imgCourse);
-    final icon = CourseCard.iconFor(widget.course.imgCourse);
+    final colors = CourseCard.gradientFor(_img);
+    final icon = CourseCard.iconFor(_img);
     final t = context.tokens;
     final cs = Theme.of(context).colorScheme;
     final radius = BorderRadius.circular(AppTokens.radiusCard);
 
     return Semantics(
-      label: 'Curso: ${widget.course.name}, código ${widget.course.courseCode}',
+      label: 'Código de la materia ${widget.course.courseCode}. Materia: ${widget.course.name}',
       button: true,
       // Con botones de administración (editar/eliminar) deben seguir accesibles.
       excludeSemantics: widget.onEdit == null && widget.onDelete == null,
@@ -210,7 +222,7 @@ class _CourseCardState extends State<CourseCard>
                     size: 32,
                     glow: true,
                     halo: _hovered,
-                    motion: CourseCard.motionFor(widget.course.imgCourse),
+                    motion: CourseCard.motionFor(_img),
                     delay: delay),
               ),
             ),
@@ -224,12 +236,17 @@ class _CourseCardState extends State<CourseCard>
               color: Colors.black.withValues(alpha: 0.28),
               borderRadius: BorderRadius.circular(6),
             ),
-            child: Text(
-              widget.course.courseCode,
-              style: GoogleFonts.poppins(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
+            // Un número suelto no dice nada al lector: se anuncia como código de la materia.
+            child: Semantics(
+              label: 'Código de la materia ${widget.course.courseCode}',
+              excludeSemantics: true,
+              child: Text(
+                widget.course.courseCode,
+                style: GoogleFonts.poppins(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
           ),

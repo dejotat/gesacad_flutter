@@ -31,12 +31,12 @@ class ApiService {
   factory ApiService() => _instance;
   ApiService._internal();
 
-  /// URL base del backend Railway. Cambia en [ApiConfig] según el entorno.
+  /// URL base del backend. Cambia en [ApiConfig] según el entorno.
   final String _base = ApiConfig.baseUrl;
 
-  // Timeout de 30s para tolerar el "cold start" de Railway: el dyno puede tardar
-  // hasta 30s en despertar después de estar inactivo. Con 10s siempre falla.
-  static const _timeout = Duration(seconds: 30);
+  // Espera máxima por petición. Dinámica: 75 s hasta que el servidor responde por primera vez
+  // (el "arranque en frío" de la nube tarda 30–60 s) y 30 s después. Ver [ConnectivityService.espera].
+  Duration get _timeout => ConnectivityService.instance.espera;
 
   // Caché en memoria con TTL de 5 minutos para datos que cambian poco.
   // Clave: 'courses_$userId' o 'acts_$courseId' — valor: lista de modelos.
@@ -83,19 +83,11 @@ class ApiService {
   Future<http.Response> _getConRetry(Uri uri) =>
       _conRetry(() => http.get(uri).timeout(_timeout));
 
-  /// Hace un GET silencioso a /health para despertar el dyno de Railway.
-  /// Se llama con [unawaited] en [SplashScreen.initState] para que el servidor
-  /// tenga 2+ segundos de ventana para arrancar antes de que lleguen peticiones reales.
-  Future<void> ping() async {
-    try {
-      await http.get(Uri.parse('$_base/health'))
-          .timeout(const Duration(seconds: 8));
-      ConnectivityService.instance.reportSuccess();
-    } catch (e) {
-      // Sin error visible: solo se registra el estado para mostrar el aviso.
-      ConnectivityService.instance.reportFailure(e);
-    }
-  }
+  /// Despierta al servidor si estaba dormido. Se lanza con [unawaited] lo antes posible al abrir la
+  /// app (en `main`), para que el arranque en frío de la nube corra EN PARALELO con la carga de la
+  /// interfaz. Hace una sola petición paciente a /health: la respuesta llega en cuanto el servidor
+  /// despierta, y mientras tanto el banner dice "Conectando con el servidor…".
+  Future<void> ping() => ConnectivityService.instance.checkNow();
 
   /// Guarda datos en SharedPreferences bajo la clave 'apicache_$key'.
   /// Permite que la app muestre datos de la sesión anterior mientras carga del backend.

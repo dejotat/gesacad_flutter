@@ -173,7 +173,21 @@ class _Inicio extends StatelessWidget {
                   button: true,
                   label: 'Probar la app como ${r.label}',
                   child: Column(children: [
-                    MotionIcon(r.icon, size: 30, color: Theme.of(context).colorScheme.primary, halo: true),
+                    // Cada perfil con su propio gesto, más ágil que el flotar por defecto y
+                    // escalonados para que no se muevan al unísono.
+                    MotionIcon(
+                      r.icon,
+                      size: 30,
+                      color: Theme.of(context).colorScheme.primary,
+                      halo: true,
+                      speed: 1.7,
+                      delay: Duration(milliseconds: 110 * r.index),
+                      motion: switch (r) {
+                        DemoRole.student => roleStyleOf(RoleKind.student).motion, // asiente
+                        DemoRole.teacher => roleStyleOf(RoleKind.teacher).motion, // flota
+                        DemoRole.admin => roleStyleOf(RoleKind.admin).motion, // respira
+                      },
+                    ),
                     const SizedBox(height: 8),
                     Text(r.label, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700)),
                   ]),

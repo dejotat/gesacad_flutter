@@ -1518,6 +1518,7 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
   Color _tipoColor(String tipo) {
     switch (tipo) {
       case 'midterm': return context.tokens.warning;
+      case 'quiz': return context.tokens.chart[1];
       case 'project': return context.tokens.info;
       case 'resource': return context.tokens.success;
       default: return context.tokens.typeOtro;
@@ -1527,6 +1528,7 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
   IconData _tipoIcono(String tipo) {
     switch (tipo) {
       case 'midterm': return Icons.quiz_rounded;
+      case 'quiz': return Icons.checklist_rounded;
       case 'project': return Icons.folder_rounded;
       case 'resource': return Icons.description_rounded;
       default: return Icons.assignment_rounded;
@@ -1536,6 +1538,7 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
   String _tipoLabel(String tipo) {
     switch (tipo) {
       case 'midterm': return 'Parcial';
+      case 'quiz': return 'Quiz';
       case 'project': return 'Proyecto';
       case 'resource': return 'Recurso';
       default: return 'Otro';

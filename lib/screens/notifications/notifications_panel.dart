@@ -476,7 +476,7 @@ class _NotificationsPanelState extends State<NotificationsPanel> {
   Widget _tarjeta(AppNotif n) {
     final t = context.tokens;
     final primario = Theme.of(context).colorScheme.primary;
-    final color = n.type.color;
+    final color = n.colorAviso;
 
     Widget fondo(Alignment al, IconData ic, String txt, Color c) => Container(
           alignment: al,
@@ -506,7 +506,7 @@ class _NotificationsPanelState extends State<NotificationsPanel> {
         onDismissed: (_) => _descartar(n),
         child: Semantics(
           button: true,
-          label: '${n.type.label}${n.read ? '' : ', sin leer'}. ${n.title}. ${_hace(n.createdAt)}. '
+          label: '${n.etiqueta}${n.read ? '' : ', sin leer'}. ${n.title}. ${n.body}. ${_hace(n.createdAt)}. '
               'Toca para abrir, desliza para marcar como leída o descartar.',
           child: ExcludeSemantics(
             child: AppCard(
@@ -515,10 +515,10 @@ class _NotificationsPanelState extends State<NotificationsPanel> {
               onTap: () => _abrir(n),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                IconMedallion(n.type.icon,
+                IconMedallion(n.icono,
                     size: 46,
                     colors: AppTokens.gradientOf(color),
-                    motion: n.read ? IconMotion.none : n.type.motion,
+                    motion: n.read ? IconMotion.none : n.movimiento,
                     orbit: !n.read,
                     ping: !n.read),
                 const SizedBox(width: 14),
@@ -529,7 +529,7 @@ class _NotificationsPanelState extends State<NotificationsPanel> {
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
                             color: color.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(8)),
-                        child: Text(n.type.label,
+                        child: Text(n.etiqueta,
                             style: GoogleFonts.poppins(fontSize: 10, color: color, fontWeight: FontWeight.w700)),
                       ),
                       const Spacer(),
@@ -556,7 +556,7 @@ class _NotificationsPanelState extends State<NotificationsPanel> {
 
   /// Detalle para las notificaciones que no llevan a ninguna pantalla.
   void _mostrarDetalle(AppNotif n) {
-    final color = n.type.color;
+    final color = n.colorAviso;
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -565,11 +565,11 @@ class _NotificationsPanelState extends State<NotificationsPanel> {
           padding: const EdgeInsets.fromLTRB(24, 4, 24, 20),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              IconMedallion(n.type.icon, size: 56, colors: AppTokens.gradientOf(color), motion: n.type.motion),
+              IconMedallion(n.icono, size: 56, colors: AppTokens.gradientOf(color), motion: n.movimiento),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(n.type.label, style: GoogleFonts.poppins(fontSize: 12, color: color, fontWeight: FontWeight.w700)),
+                  Text(n.etiqueta, style: GoogleFonts.poppins(fontSize: 12, color: color, fontWeight: FontWeight.w700)),
                   Text(_hace(n.createdAt), style: GoogleFonts.poppins(fontSize: 12, color: context.tokens.muted)),
                 ]),
               ),

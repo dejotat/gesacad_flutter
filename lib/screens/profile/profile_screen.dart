@@ -10,6 +10,8 @@ import 'dart:typed_data';
 import 'dart:convert';
 import '../../services/settings_service.dart';
 import '../../services/api_service.dart';
+import '../../utils/route_transitions.dart';
+import '../academic/semaforo_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -28,6 +30,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   final _bioCtrl = TextEditingController();
 
   String _rol = '';
+  int _myId = 0;
   bool _photoNueva = false; // true cuando el usuario seleccionó una foto nueva en esta sesión
   bool _saving = false;
   bool _saved = false;
@@ -58,6 +61,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   Future<void> _loadProfile() async {
     final prefs  = await SharedPreferences.getInstance();
     final userId = prefs.getInt('userId') ?? 0;
+    _myId        = userId;
     _rol         = prefs.getString('userRol') ?? '';
     final userName = prefs.getString('userName') ?? '';
     _nameCtrl.text      = userName;
@@ -325,6 +329,26 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                       _field(_semestreCtrl, 'Semestre / Período', Icons.calendar_today_rounded, primary,
                           keyboard: TextInputType.number),
                     ]),
+                    // Solo el estudiante: su malla curricular con el estado de cada materia.
+                    if (_rol == 'Student' && _myId > 0) ...[
+                      const SizedBox(height: 24),
+                      _sectionTitle('Semáforo académico', Icons.traffic_rounded, primary),
+                      const SizedBox(height: 12),
+                      _card(isDark, children: [
+                        Text('Mira tu avance en la carrera: materias aprobadas, en curso, pendientes y pre-requisitos.',
+                            style: GoogleFonts.poppins(fontSize: 13, color: context.tokens.muted)),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () => Navigator.push(context,
+                                slideRoute(SemaforoScreen(studentId: _myId, rol: 'Student', studentName: _nameCtrl.text))),
+                            icon: const Icon(Icons.traffic_rounded),
+                            label: const Text('Ver mi semáforo académico'),
+                          ),
+                        ),
+                      ]),
+                    ],
                     const SizedBox(height: 28),
                     // Botón guardar
                     Container(

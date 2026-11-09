@@ -1,6 +1,8 @@
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:html' as html;
 
+import 'voice_picker.dart';
+
 /// Implementación WEB de PlatformUtils usando dart:html.
 /// Se usa automáticamente cuando se compila para web.
 class PlatformUtils {
@@ -27,12 +29,29 @@ class PlatformUtils {
     final synth = html.window.speechSynthesis;
     if (synth == null) return;
     synth.cancel();
+    final voz = _vozElegante(synth);
+    final masculina = voz != null && esVozMasculina(voz.name ?? '', voz.lang ?? '');
     final utt = html.SpeechSynthesisUtterance(text)
-      ..lang   = lang
-      ..rate   = 0.85
+      ..lang   = voz?.lang ?? lang
+      // Ritmo pausado y tono grave: suena sereno y elegante. Si no hay voz masculina conocida,
+      // el tono más grave la acerca a una.
+      ..rate   = 0.95
       ..volume = 1.0
-      ..pitch  = 1.05;
+      ..pitch  = masculina ? 0.9 : 0.75;
+    if (voz != null) utt.voice = voz;
     synth.speak(utt);
+  }
+
+  /// Mejor voz masculina en español que tenga el navegador (las voces cargan de forma asíncrona:
+  /// si aún no hay ninguna se usa la predeterminada y la siguiente lectura ya las encuentra).
+  static html.SpeechSynthesisVoice? _vozElegante(html.SpeechSynthesis synth) {
+    try {
+      final voces = synth.getVoices();
+      final i = mejorVoz([for (final v in voces) (nombre: v.name ?? '', idioma: v.lang ?? '')]);
+      return i == null ? null : voces[i];
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Detiene la lectura de voz en curso.

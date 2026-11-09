@@ -115,7 +115,7 @@ class _AnimatedLogoState extends State<AnimatedLogo>
                     gradient: RadialGradient(
                       colors: [
                         Colors.white.withOpacity(t ? 0.12 + g * 0.08 : 0.22 + g * 0.1),
-                        (t ? Colors.black : const Color(0xFF1A237E)).withOpacity(0.85),
+                        (t ? Colors.black : const Color(0xFF0B4F4A)).withOpacity(0.85),
                       ],
                     ),
                     border: Border.all(
@@ -129,7 +129,7 @@ class _AnimatedLogoState extends State<AnimatedLogo>
                         spreadRadius: 2 + g * 4,
                       ),
                       BoxShadow(
-                        color: const Color(0xFF82B1FF).withOpacity(t ? 0.15 : 0.35 + g * 0.1),
+                        color: const Color(0xFF5EEAD4).withOpacity(t ? 0.15 : 0.35 + g * 0.1),
                         blurRadius: 40, spreadRadius: 0,
                       ),
                     ],
@@ -139,8 +139,8 @@ class _AnimatedLogoState extends State<AnimatedLogo>
                       shaderCallback: (bounds) => LinearGradient(
                         colors: [
                           Colors.white,
-                          Color.lerp(const Color(0xFF90CAF9),
-                              const Color(0xFF80DEEA), g)!,
+                          Color.lerp(const Color(0xFF99F6E4),
+                              const Color(0xFFD9F99D), g)!,
                         ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
@@ -260,8 +260,8 @@ class _GradientArcPainter extends CustomPainter {
     final paint1 = Paint()
       ..shader = const SweepGradient(
         colors: [
-          Color(0x00FFFFFF), Color(0xFF90CAF9),
-          Color(0xFF80DEEA), Color(0x00FFFFFF),
+          Color(0x00FFFFFF), Color(0xFF99F6E4),
+          Color(0xFFD9F99D), Color(0x00FFFFFF),
         ],
         stops: [0.0, 0.3, 0.7, 1.0],
       ).createShader(rect)
@@ -271,7 +271,7 @@ class _GradientArcPainter extends CustomPainter {
     canvas.drawArc(rect, 0, 2 * pi, false, paint1);
     final paint2 = Paint()
       ..shader = const SweepGradient(
-        colors: [Color(0xFF82B1FF), Color(0x0082B1FF)],
+        colors: [Color(0xFF5EEAD4), Color(0x005EEAD4)],
         stops: [0.0, 1.0],
       ).createShader(rect)
       ..strokeWidth = strokeWidth * 0.6

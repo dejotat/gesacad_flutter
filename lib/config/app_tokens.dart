@@ -89,30 +89,36 @@ class AppTokens extends ThemeExtension<AppTokens> {
     warning: Color(0xFFFBBF24),
     danger: Color(0xFFFB7185),
     info: Color(0xFF38BDF8),
+    // Paleta futurista (cian · rosa · ámbar · violeta · verde · coral), en ORDEN FIJO. Validada
+    // con el validador de paletas sobre la superficie oscura (#0B1020): luminosidad en banda,
+    // separación para daltonismo (ΔE ≥ 8, sin advertencias), ≥ 15 a simple vista y contraste ≥ 3:1.
+    // Los 3 primeros valen en cualquier combinación. No ciclar ni añadir un 7.º tono.
     chart: [
-      Color(0xFFA78BFA), // violeta
-      Color(0xFF22D3EE), // cian
-      Color(0xFFFB7185), // rosa
-      Color(0xFFFBBF24), // ámbar
-      Color(0xFF34D399), // esmeralda
-      Color(0xFF60A5FA), // azul
+      Color(0xFF0EA0BF), // cian
+      Color(0xFFD44378), // rosa
+      Color(0xFFCB7A12), // ámbar
+      Color(0xFF7F52EE), // violeta
+      Color(0xFF169365), // verde
+      Color(0xFFD9573A), // coral
     ],
-    typeParcial: Color(0xFFFBBF24),
-    typeProyecto: Color(0xFF60A5FA),
-    typeRecurso: Color(0xFF34D399),
-    typeOtro: Color(0xFFA78BFA),
-    border: Color(0x33CBD5E1),
-    muted: Color(0xFFA5B0C8),
+    typeParcial: Color(0xFFCB7A12),
+    typeProyecto: Color(0xFF0EA0BF),
+    typeRecurso: Color(0xFF169365),
+    typeOtro: Color(0xFF7F52EE),
+    border: Color(0x26CBD5E1),
+    muted: Color(0xFF9AA7C2),
+    // Sombra profunda + un velo de luz violeta: los paneles «flotan» sobre el negro.
     cardShadow: [
-      BoxShadow(color: Color(0x66000000), blurRadius: 28, offset: Offset(0, 10)),
+      BoxShadow(color: Color(0x80000000), blurRadius: 28, offset: Offset(0, 10)),
+      BoxShadow(color: Color(0x147C3AED), blurRadius: 40, spreadRadius: -8),
     ],
-    glass: Color(0x991A1738),
+    glass: Color(0x8C1A1138),
     glassBorder: Color(0x38FFFFFF),
-    glassHighlight: Color(0xB32A2552),
+    glassHighlight: Color(0xB32E2062),
   );
 
-  /// Pareja de colores análogos (matiz −18° / +22°, algo más claros) a partir
-  /// de [c]: da degradados vivos y armónicos sin inventar una paleta por color.
+  /// Pareja de colores análogos (matiz −5° / +6°, algo más claros) a partir de [c]: degradados
+  /// vivos y armónicos que NO se desvían hacia otro color (un cian no debe acabar en azul).
   static List<Color> gradientOf(Color c) {
     final h = HSLColor.fromColor(c);
     // En colores ya claros (tema oscuro) no se aclara más: se lavarían.
@@ -122,7 +128,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
         .withLightness((h.lightness + dl * k).clamp(0.0, 0.92))
         .withSaturation((h.saturation + 0.04).clamp(0.0, 1.0))
         .toColor();
-    return [shift(-18, 0.02), shift(22, 0.10)];
+    return [shift(-5, 0.02), shift(6, 0.10)];
   }
 
   @override

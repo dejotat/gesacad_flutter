@@ -138,10 +138,8 @@ class ApiConfig {
   // Archivos — proxy y descarga
   // ---------------------------------------------------------------------------
 
-  /// Proxy real de Cloudinary: Railway busca el archivo server-to-server y lo
-  /// retorna al cliente evitando errores CORS/401 del navegador.
-  /// Query params: url=<cloudinary_url_encodeada> [&dl=1 para descargar]
-  static const String proxyFile = '/files/proxy';
+  // (El endpoint /files/proxy del servidor se conserva para versiones antiguas de la app;
+  //  la app actual abre los archivos directamente desde Cloudinary.)
 
   /// Obtiene la URL de un archivo desde la base de datos (no es proxy real).
   static const String downloadFile = '/files/download';

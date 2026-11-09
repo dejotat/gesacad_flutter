@@ -19,9 +19,6 @@ class TtsService {
   String _textoActual = '';
   String get textoActual => _textoActual;
 
-  /// Marca interacción del usuario (Chrome la requiere para audio).
-  static void marcarInteraccion() {}
-
   /// Lee [texto] en voz alta.
   /// Si ya está leyendo el mismo texto → no interrumpe.
   /// Si está leyendo otro texto → cancela y empieza el nuevo.

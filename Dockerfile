@@ -27,7 +27,9 @@ COPY . .
 
 # Dirección de la API que usará el navegador (se graba en la compilación).
 ARG API_BASE_URL=https://gesacad-backend.onrender.com
-RUN flutter build web --release --dart-define=API_BASE_URL=${API_BASE_URL}
+# --no-web-resources-cdn: el motor de dibujo (CanvasKit, ~7 MB) se sirve desde nuestro nginx
+# (comprimido y en caché) en vez de descargarse de un CDN externo en cada carga en frío.
+RUN flutter build web --release --no-web-resources-cdn --dart-define=API_BASE_URL=${API_BASE_URL}
 
 # ── Base común: nginx con la configuración de la aplicación ──────────────────
 FROM nginxinc/nginx-unprivileged:1.27-alpine AS base-nginx

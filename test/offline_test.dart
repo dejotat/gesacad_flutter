@@ -93,6 +93,55 @@ void main() {
       expect(c.online.value, isTrue);
       c.dispose();
     });
+
+    test('espera: 75 s hasta ver al servidor, 30 s con el servidor activo y 75 s si cae', () {
+      final c = _conn();
+      // Arranque en frío de la nube: tarda 30–60 s, hay que esperarlo.
+      expect(c.espera, const Duration(seconds: 75));
+      c.reportSuccess();
+      expect(c.espera, const Duration(seconds: 30));
+      c.reportFailure(TimeoutException('x'));
+      expect(c.espera, const Duration(seconds: 75));
+      c.dispose();
+    });
+
+    testWidgets('conectando: solo si la PRIMERA conexión tarda (sin parpadeos si es rápida)',
+        (t) async {
+      final lenta = Completer<bool>();
+      final c = ConnectivityService.test(
+          probe: () => lenta.future, interval: const Duration(hours: 1));
+      final f = c.checkNow();
+      await t.pump(const Duration(seconds: 1));
+      expect(c.conectando.value, isFalse, reason: 'aún es pronto: evita parpadeos');
+      await t.pump(const Duration(seconds: 2));
+      expect(c.conectando.value, isTrue, reason: 'el servidor está despertando');
+      lenta.complete(true);
+      expect(await f, isTrue);
+      expect(c.conectando.value, isFalse);
+      expect(c.online.value, isTrue);
+
+      // Ya respondió una vez: un sondeo lento posterior NO vuelve a decir "conectando".
+      final otra = Completer<bool>();
+      final c2 = ConnectivityService.test(
+          probe: () => otra.future, interval: const Duration(hours: 1))
+        ..reportSuccess();
+      final f2 = c2.checkNow();
+      await t.pump(const Duration(seconds: 5));
+      expect(c2.conectando.value, isFalse);
+      otra.complete(true);
+      await f2;
+      c.dispose();
+      c2.dispose();
+    });
+
+    testWidgets('una conexión rápida nunca activa "conectando"', (t) async {
+      final c = ConnectivityService.test(
+          probe: () async => true, interval: const Duration(hours: 1));
+      expect(await c.checkNow(), isTrue);
+      await t.pump(const Duration(seconds: 3));
+      expect(c.conectando.value, isFalse);
+      c.dispose();
+    });
   });
 
   group('OfflineQueue', () {
@@ -361,6 +410,29 @@ void main() {
       expect(find.text('Todo sincronizado'), findsOneWidget);
       await t.pump(const Duration(seconds: 4));
       expect(find.text('Todo sincronizado'), findsNothing);
+      q.disposeForTest();
+      c.dispose();
+    });
+
+    testWidgets('el banner dice "Conectando…" (no "Sin conexión") mientras el servidor despierta',
+        (t) async {
+      final lenta = Completer<bool>();
+      final c = ConnectivityService.test(
+          probe: () => lenta.future, interval: const Duration(hours: 1));
+      final q = _queue(FakeExecutor([]), c);
+      await t.pumpWidget(app(OfflineShell(
+          connectivity: c, queue: q, child: const Scaffold(body: Text('app')))));
+
+      unawaited(c.checkNow());
+      await t.pump(const Duration(seconds: 3));
+      await t.pump(const Duration(milliseconds: 400));
+      expect(find.text('Conectando con el servidor…'), findsOneWidget);
+      expect(find.text('Sin conexión'), findsNothing);
+      expect(find.text('app'), findsOneWidget);
+
+      lenta.complete(true);
+      await t.pump(const Duration(milliseconds: 400));
+      expect(find.text('Conectando con el servidor…'), findsNothing);
       q.disposeForTest();
       c.dispose();
     });

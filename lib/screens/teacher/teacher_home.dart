@@ -1,6 +1,7 @@
 ﻿import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import '../../services/screen_reader.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,8 +12,11 @@ import '../../models/course_model.dart';
 import '../../models/activity_model.dart';
 import '../../utils/activity_type.dart';
 import '../../widgets/course_card.dart';
+import '../../widgets/course_grid.dart';
 import '../../widgets/tts_button.dart';
 import '../../widgets/chatbot_widget.dart';
+import '../evaluation/teacher_evaluation_screen.dart';
+import '../academic/semaforo_pickers.dart';
 import '../../widgets/ui/account_menu.dart';
 import '../../widgets/ui/ui.dart';
 import '../../widgets/eval/evaluation_entry_card.dart';
@@ -52,6 +56,7 @@ class _TeacherHomeState extends State<TeacherHome> {
   String     _name            = '';
   Uint8List? _photoBytes;
   int        _myId            = 0;
+  final GlobalKey _cursosKey = GlobalKey();
 
   // Estadísticas calculadas en background por [_calcularEstadisticas].
   bool _statsLoading = true;
@@ -68,6 +73,7 @@ class _TeacherHomeState extends State<TeacherHome> {
   void initState() {
     super.initState();
     _load();
+    ScreenReader.instance.bienvenida('docente');
   }
 
   /// Recarga solo la foto desde SharedPreferences, sin refrescar los cursos.
@@ -179,7 +185,8 @@ class _TeacherHomeState extends State<TeacherHome> {
     if (!await confirmarSalidaConPendientes(context)) return;
     await AuthService().clearSession();
     if (!mounted) return;
-    Navigator.pushReplacement(context, slideRoute(const LoginScreen()));
+    // Quita TODAS las pantallas (el inicio y la sección abierta con el menú lateral).
+    Navigator.pushAndRemoveUntil(context, slideRoute(const LoginScreen()), (_) => false);
   }
 
   String get _ttsText => _courses.isEmpty
@@ -193,9 +200,11 @@ class _TeacherHomeState extends State<TeacherHome> {
   @override
   Widget build(BuildContext context) {
     final primary = Theme.of(context).colorScheme.primary;
+    final nav = _nav;
 
-    return Scaffold(
-      appBar: _buildAppBar(),
+    return AppShell(nav: nav, activo: 'inicio', child: Scaffold(
+      drawer: nav.cajon(context, 'inicio'),
+      appBar: _buildAppBar(nav.esAncho(context)),
       body: LogoBackdrop(child: RefreshIndicator(
         color: primary,
         onRefresh: _load,
@@ -227,34 +236,20 @@ class _TeacherHomeState extends State<TeacherHome> {
                           ),
                         )
                       else
-                        SliverPadding(
-                          padding: const EdgeInsets.fromLTRB(
-                              AppTokens.pagePadding, 0,
-                              AppTokens.pagePadding, 100),
-                          sliver: SliverGrid(
-                            gridDelegate:
-                                const SliverGridDelegateWithMaxCrossAxisExtent(
-                              maxCrossAxisExtent: 260,
-                              mainAxisExtent: 220,
-                              crossAxisSpacing: 14,
-                              mainAxisSpacing: 14,
-                            ),
-                            delegate: SliverChildBuilderDelegate(
-                              (_, i) => CourseCard(
-                                course: _courses[i],
-                                index: i,
-                                onTap: () async {
-                                  await Navigator.push(
-                                      context,
-                                      slideRoute(TeacherCourseContent(
-                                          course: _courses[i],
-                                          teacherId: _myId)));
-                                  // Al volver puede haber cambiado lo calificado.
-                                  if (mounted) _calcularEstadisticas();
-                                },
-                              ),
-                              childCount: _courses.length,
-                            ),
+                        SliverCourseGrid(
+                          count: _courses.length,
+                          itemBuilder: (i) => CourseCard(
+                            course: _courses[i],
+                            index: i,
+                            onTap: () async {
+                              await Navigator.push(
+                                  context,
+                                  slideRoute(TeacherCourseContent(
+                                      course: _courses[i],
+                                      teacherId: _myId)));
+                              // Al volver puede haber cambiado lo calificado.
+                              if (mounted) _calcularEstadisticas();
+                            },
                           ),
                         ),
                     ],
@@ -270,8 +265,43 @@ class _TeacherHomeState extends State<TeacherHome> {
                 TtsButton(text: _ttsText),
               ],
             ),
-    );
+    ));
   }
+
+  // ── MENÚ LATERAL ──────────────────────────────────────────────────────────
+
+  void _irACursos() {
+    final ctx = _cursosKey.currentContext;
+    if (ctx == null) return;
+    Scrollable.ensureVisible(ctx,
+        duration: const Duration(milliseconds: 420), curve: Curves.easeOutCubic, alignment: 0.05);
+  }
+
+  SidebarNav get _nav => SidebarNav(
+        rol: 'Teacher',
+        nombre: _name,
+        foto: _photoBytes,
+        onSalir: _logout,
+        alVolver: () { if (mounted) { _reloadPhoto(); _calcularEstadisticas(); } },
+        items: [
+          const NavItem(id: 'inicio', icon: PhosphorIconsRegular.house, label: 'Inicio'),
+          NavItem(id: 'cursos', icon: PhosphorIconsRegular.books, label: 'Mis asignaturas', action: _irACursos),
+          NavItem(
+              id: 'semaforo',
+              icon: PhosphorIconsRegular.trafficSignal,
+              label: 'Semáforo de estudiantes',
+              destination: () => TeacherSemaforoScreen(teacherId: _myId)),
+          NavItem(
+              id: 'evaluacion',
+              icon: PhosphorIconsRegular.chartPolar,
+              label: 'Evaluación docente',
+              destination: () => TeacherEvaluationScreen(teacherId: _myId)),
+          NavItem(id: 'perfil', icon: PhosphorIconsRegular.userCircle, label: 'Mi perfil',
+              destination: () => const ProfileScreen()),
+          NavItem(id: 'ajustes', icon: PhosphorIconsRegular.gear, label: 'Ajustes',
+              destination: () => const SettingsScreen()),
+        ],
+      );
 
   Widget _centered(Widget child) => Center(
         child: ConstrainedBox(
@@ -280,15 +310,18 @@ class _TeacherHomeState extends State<TeacherHome> {
         ),
       );
 
-  PreferredSizeWidget _buildAppBar() {
+  /// Barra superior: título, notificaciones, calendario y cuenta. En pantallas estrechas muestra
+  /// el botón del menú (cajón) y la marca; en las anchas la marca vive en el menú lateral.
+  PreferredSizeWidget _buildAppBar(bool ancho) {
     return AppBar(
-      automaticallyImplyLeading: false,
-      title: const Row(mainAxisSize: MainAxisSize.min, children: [
-        MotionIcon(PhosphorIconsRegular.graduationCap,
-            size: 24, motion: IconMotion.swing, halo: true),
-        SizedBox(width: 8),
-        Text('GESACAD'),
-      ]),
+      title: ancho
+          ? const Text('Panel del docente')
+          : const Row(mainAxisSize: MainAxisSize.min, children: [
+              MotionIcon(PhosphorIconsRegular.graduationCap,
+                  size: 24, motion: IconMotion.swing, halo: true),
+              SizedBox(width: 8),
+              Text('GESACAD'),
+            ]),
       actions: [
         NotificationBell(userId: _myId, userRol: 'Teacher'),
         AnimatedIconButton(
@@ -335,23 +368,7 @@ class _TeacherHomeState extends State<TeacherHome> {
         PageHeader(
           title: _name,
           subtitle: '$saludo, profe',
-          leading: ExcludeSemantics(
-            child: Container(
-              width: 56, height: 56,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.5), width: 2),
-                color: Colors.white.withValues(alpha: 0.15),
-              ),
-              child: ClipOval(
-                child: _photoBytes != null
-                    ? Image.memory(_photoBytes!, fit: BoxFit.cover)
-                    : const Icon(PhosphorIconsRegular.chalkboardTeacher,
-                        color: Colors.white, size: 28),
-              ),
-            ),
-          ),
+          leading: RoleBadge(role: RoleKind.teacher, photo: _photoBytes),
           chips: [
             HeaderChip(PhosphorIconsRegular.books,
                 '${_courses.length} curso${_courses.length == 1 ? '' : 's'}'),
@@ -365,9 +382,12 @@ class _TeacherHomeState extends State<TeacherHome> {
         const SizedBox(height: AppTokens.sectionGap),
         _buildCharts(),
         const SizedBox(height: AppTokens.sectionGap),
-        SectionTitle('Mis cursos',
-            icon: PhosphorIconsRegular.books,
-            subtitle: '${_courses.length} asignados'),
+        KeyedSubtree(
+          key: _cursosKey,
+          child: SectionTitle('Mis cursos',
+              icon: PhosphorIconsRegular.books,
+              subtitle: '${_courses.length} asignados'),
+        ),
         const SizedBox(height: 12),
       ]),
     );
@@ -386,7 +406,7 @@ class _TeacherHomeState extends State<TeacherHome> {
       StatCard(icon: PhosphorIconsRegular.clipboardText,
           value: _statsLoading ? '…' : '$_ungraded',
           label: 'Entregas por calificar', color: t.chart[2],
-          motion: IconMotion.wiggle, delay: const Duration(milliseconds: 280)),
+          motion: IconMotion.write, delay: const Duration(milliseconds: 280)),
     ];
     return LayoutBuilder(builder: (ctx, c) {
       final cols = c.maxWidth > 760 ? 3 : (c.maxWidth > 480 ? 2 : 1);

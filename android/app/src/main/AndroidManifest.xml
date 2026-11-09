@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Internet: backend Railway + API externas -->
+    <!-- Internet: la API del backend y servicios externos (Cloudinary, Jitsi, Firebase) -->
     <uses-permission android:name="android.permission.INTERNET"/>
 
     <!-- file_picker: lectura de archivos en Android 9 y anteriores -->
@@ -39,10 +39,12 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
-        <!-- Ícono y color de los avisos push cuando la app está cerrada -->
+        <!-- Ícono y color de los avisos push cuando la app está cerrada.
+             El ícono debe ser una silueta de un solo color (ic_stat_notification): con el ícono
+             a color de la app, Android lo muestra como un cuadrado blanco. -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
-            android:resource="@mipmap/ic_launcher" />
+            android:resource="@drawable/ic_stat_notification" />
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_color"
             android:resource="@android:color/holo_blue_dark" />

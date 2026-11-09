@@ -397,13 +397,14 @@ class _CalendarScreenState extends State<CalendarScreen>
   // ── Mapa de tipo de actividad → EventType del calendario ─────────────────
 
   /// Convierte el tipo de actividad del backend al tipo de evento del calendario.
-  /// - 'midterm'  → exam       (rojo — representa un examen/parcial)
+  /// - 'midterm' y 'quiz' → exam (rojo — examen/parcial/quiz)
   /// - 'project'  → assignment (azul — representa una entrega de proyecto)
   /// - 'resource' → notification (turquesa — representa un recurso/aviso)
   /// - otro       → event      (naranja — tipo genérico)
   EventType _tipoAEventType(String tipo) {
     switch (tipo) {
       case 'midterm':  return EventType.exam;
+      case 'quiz':     return EventType.exam;
       case 'project':  return EventType.assignment;
       case 'resource': return EventType.notification;
       default:         return EventType.event;
@@ -415,6 +416,7 @@ class _CalendarScreenState extends State<CalendarScreen>
   String _tipoLabel(String tipo) {
     switch (tipo) {
       case 'midterm':  return 'Parcial';
+      case 'quiz':     return 'Quiz';
       case 'project':  return 'Proyecto';
       case 'resource': return 'Recurso';
       default:         return 'Actividad';
@@ -890,7 +892,9 @@ class _CalendarScreenState extends State<CalendarScreen>
               titleTextStyle: GoogleFonts.poppins(
                   fontWeight: FontWeight.w700, fontSize: 16,
                   color: onSurface),
-              leftChevronIcon: Container(
+              leftChevronIcon: Semantics(
+                label: 'Mes anterior',
+                child: Container(
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
                   color: primary.withOpacity(0.1),
@@ -898,8 +902,10 @@ class _CalendarScreenState extends State<CalendarScreen>
                 ),
                 child: Icon(Icons.chevron_left_rounded,
                     color: primary, size: 20),
-              ),
-              rightChevronIcon: Container(
+              )),
+              rightChevronIcon: Semantics(
+                label: 'Mes siguiente',
+                child: Container(
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
                   color: primary.withOpacity(0.1),
@@ -907,7 +913,7 @@ class _CalendarScreenState extends State<CalendarScreen>
                 ),
                 child: Icon(Icons.chevron_right_rounded,
                     color: primary, size: 20),
-              ),
+              )),
             ),
             calendarStyle: CalendarStyle(
               // Día de hoy — círculo con gradiente

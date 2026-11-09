@@ -42,7 +42,7 @@ docker info >/dev/null 2>&1 || { echo 'El motor de Docker no responde. Inícialo
 if [ "${1:-}" = "--web-local" ]; then
   api="$(grep -E '^API_BASE_URL=' "$archivo" | head -1 | cut -d= -f2-)"; api="${api:-http://localhost:8081}"
   echo; echo "Compilando la web en este equipo (API: $api)..."
-  flutter build web --release "--dart-define=API_BASE_URL=$api"
+  flutter build web --release --no-web-resources-cdn "--dart-define=API_BASE_URL=$api"
   export WEB_TARGET=web-local
 fi
 

@@ -55,6 +55,26 @@ void main() {
     await t.pump(const Duration(seconds: 3));
   });
 
+  test('MotionIcon.periodo: speed acelera el ciclo y se mantiene en límites razonables', () {
+    expect(MotionIcon.periodo(IconMotion.float), const Duration(milliseconds: 3200));
+    expect(MotionIcon.periodo(IconMotion.float, 2), const Duration(milliseconds: 1600));
+    expect(MotionIcon.periodo(IconMotion.float, 1.7).inMilliseconds, inInclusiveRange(1880, 1884));
+    // Nunca congelado ni frenético.
+    expect(MotionIcon.periodo(IconMotion.float, 0), MotionIcon.periodo(IconMotion.float, 0.25));
+    expect(MotionIcon.periodo(IconMotion.float, 100), MotionIcon.periodo(IconMotion.float, 4));
+  });
+
+  testWidgets('MotionIcon con speed se anima sin excepciones', (t) async {
+    await t.pumpWidget(_app(const Wrap(children: [
+      MotionIcon(Icons.school, motion: IconMotion.bounce, speed: 1.7, halo: true),
+      MotionIcon(Icons.school, motion: IconMotion.float, speed: 1.7, halo: true),
+      MotionIcon(Icons.school, motion: IconMotion.pulse, speed: 1.7, halo: true),
+    ])));
+    await t.pump(const Duration(milliseconds: 500));
+    await t.pump(const Duration(seconds: 3));
+    expect(t.takeException(), isNull);
+  });
+
   testWidgets('LogoBackdrop anima sin excepciones', (t) async {
     await t.pumpWidget(_app(const LogoBackdrop(child: Text('contenido'))));
     await t.pump(const Duration(seconds: 2));

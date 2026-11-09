@@ -2,6 +2,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:image_picker/image_picker.dart';
 
+import 'voice_picker.dart';
+
 /// Implementación ANDROID/iOS de PlatformUtils.
 class PlatformUtils {
   PlatformUtils._();
@@ -14,7 +16,29 @@ class PlatformUtils {
     await _tts.setLanguage('es-CO');
     await _tts.setSpeechRate(0.5);
     await _tts.setVolume(1.0);
-    await _tts.setPitch(1.05);
+    // Voz masculina en español si el teléfono tiene alguna; si no, un tono más grave.
+    var masculina = false;
+    try {
+      final todas = await _tts.getVoices;
+      if (todas is List) {
+        final voces = <({String nombre, String idioma})>[];
+        final mapas = <Map<Object?, Object?>>[];
+        for (final v in todas) {
+          if (v is Map) {
+            voces.add((nombre: '${v['name']}', idioma: '${v['locale']}'));
+            mapas.add(v);
+          }
+        }
+        final i = mejorVoz(voces);
+        if (i != null) {
+          await _tts.setVoice({'name': '${mapas[i]['name']}', 'locale': '${mapas[i]['locale']}'});
+          masculina = esVozMasculina(voces[i].nombre, voces[i].idioma);
+        }
+      }
+    } catch (_) {
+      // Sin lista de voces: se queda la predeterminada.
+    }
+    await _tts.setPitch(masculina ? 0.9 : 0.75);
     _ttsInit = true;
   }
 

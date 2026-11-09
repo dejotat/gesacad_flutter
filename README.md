@@ -40,7 +40,7 @@ Proyecto de grado — Ingeniería de Sistemas · Autor: **Jorge Tunubala**
 
 | CU | Funcionalidad | Rol | Descripción |
 |----|---------------|-----|-------------|
-| 01 | Inicio de sesión | Todos | Sesión con token (JWT), indicador de seguridad de contraseña, renovación automática |
+| 01 | Inicio de sesión | Todos | Pantalla oscura con fondo animado (aurora y partículas, respeta «reducir movimiento»), sesión con token (JWT), indicador de seguridad de contraseña y renovación automática |
 | 02 | Gestión de usuarios | Admin | Alta, edición, baja y cambio de rol; política de contraseñas |
 | 03 | Gestión de cursos | Admin | Cursos, docentes y matrícula de estudiantes |
 | 04 | Gestión de actividades | Docente | Actividades con ponderado (≤ 100 % por curso), adjuntos y fechas de cierre |
@@ -165,7 +165,7 @@ resto de tablas al arrancar. El primer administrador sale de `ADMIN_BOOTSTRAP_US
 `ADMIN_BOOTSTRAP_PASSWORD`, y **solo se crea si no existe ningún Admin**. Desde ahí se crean los demás
 usuarios en la app.
 
-> Los volcados históricos `gesacad_db4free.sql` y `bdgesacad.sql.sql` contienen cuentas con
+> Los volcados históricos `gesacad_db4free.sql` y `bdgesacad.sql.sql` ya no están en el repositorio, pero siguen en su historial y contienen cuentas con
 > contraseñas reales: **no los uses** para Docker ni los publiques.
 
 ### Scripts de `docker/`
@@ -247,7 +247,7 @@ de notificaciones funciona igual. El envío contra FCM real **requiere validarse
   estudiante solo lo suyo. La identidad sale de la sesión, no de lo que envía el cliente.
 - **Fuerza bruta:** 8 fallos por usuario+IP y 60 por IP cada 15 min → `429` con `Retry-After`.
 - **Archivos:** límites y tipos validados en app y servidor; se escriben a disco temporal con nombre aleatorio y se
-  borran al terminar; `/files/proxy` solo reenvía `https://res.cloudinary.com`.
+  borran al terminar; el endpoint `/files/proxy` (conservado para versiones antiguas) solo reenvía `https://res.cloudinary.com`.
 - **Anonimato en la evaluación docente:** participación y respuestas viven en tablas sin vínculo entre sí.
 - **Contenedores:** la API y la web corren sin privilegios; los puertos solo escuchan en `localhost`;
   las imágenes no contienen secretos ni datos.
@@ -379,8 +379,9 @@ en tarjetas y gráficas, y errores como `liveRegion` que se anuncian al aparecer
 - **`LOGIN_SUCCESFULLY`** (una sola «L»): es la clave de respuesta del login en el servidor original; se conserva a propósito.
 - **Cloudinary con `resource_type: "raw"`:** hace que el tipo MIME se determine por la extensión; con `"auto"`, los PDF quedarían
   como imágenes.
-- **Proxy de archivos:** `GET /files/proxy?url=…` descarga de Cloudinary servidor a servidor y reenvía al cliente, evitando
-  errores CORS/401 del navegador.
+- **Visualización de archivos:** la app abre los archivos con la URL directa de Cloudinary (PDF e imágenes directamente;
+  Word, Excel y PowerPoint con el visor de Office Online). `GET /files/proxy?url=…` sigue disponible en el servidor para
+  versiones antiguas de la app, pero la versión actual no lo usa.
 - **Parámetros en la URL:** deben pasar por `Uri.encodeComponent` (el servidor falla con `/ ? # %`).
 - **Singleton:** `ApiService` es una única instancia que comparte el caché entre pantallas.
 - **Sin gestor de estado externo:** se usan singletons y `ValueNotifier`.

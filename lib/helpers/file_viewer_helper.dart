@@ -1,18 +1,15 @@
+import 'dart:convert';
 import 'package:gesacad/utils/platform_utils.dart';
 import 'package:flutter/material.dart';
-import '../config/api_config.dart';
 import '../config/app_tokens.dart';
 
 /// Helper centralizado para visualización y descarga de archivos de Cloudinary.
 ///
-/// ESTRATEGIA POR TIPO:
-/// - Word (.docx/.doc)     → Google Docs Viewer con URL del proxy
-/// - Excel (.xlsx/.xls)    → Google Docs Viewer con URL del proxy
-/// - PowerPoint (.pptx)    → Google Docs Viewer con URL del proxy
-/// - PDF                   → Abrir directamente via proxy (el navegador lo renderiza)
-/// - Imágenes              → Abrir directamente via proxy
-/// - ZIP/RAR               → Solo descarga via proxy
-/// - Cloudinary raw        → Google Docs Viewer (probablemente Office)
+/// ESTRATEGIA POR TIPO (siempre con la URL directa de Cloudinary, sin pasar por el servidor):
+/// - Word, Excel, PowerPoint → Visor de Office Online (view.officeapps.live.com)
+/// - PDF e imágenes          → Se abren directamente (el navegador los muestra)
+/// - ZIP/RAR                 → Solo descarga
+/// - Cloudinary raw con nombre → Visor de Office Online; sin nombre → apertura directa
 class FileViewerHelper {
 
   // ── Extraer URL real y nombre original ──────────────────────────────────────
@@ -22,10 +19,23 @@ class FileViewerHelper {
     return rawUrl.trim();
   }
 
+  /// Repara nombres guardados con la codificación torcida por versiones anteriores del servidor
+  /// («PÃ³ster» → «Póster»). Solo cambia el texto si el resultado es UTF-8 válido: un nombre
+  /// correcto («Café.pdf») se deja igual.
+  static String repararNombre(String nombre) {
+    final hayAcentos = nombre.codeUnits.any((c) => c >= 0x80);
+    if (!hayAcentos || nombre.codeUnits.any((c) => c > 0xFF)) return nombre;
+    try {
+      return utf8.decode(latin1.encode(nombre));
+    } catch (_) {
+      return nombre;
+    }
+  }
+
   static String extractName(String rawUrl, {int index = 1}) {
     // Formato estándar actual: url::name::nombre_original.ext
     if (rawUrl.contains('::name::')) {
-      return rawUrl.split('::name::').last.trim();
+      return repararNombre(rawUrl.split('::name::').last.trim());
     }
     // Compatibilidad con el formato antiguo del backend (antes de la corrección):
     // url nameFile:nombre_original.ext
@@ -73,19 +83,6 @@ class FileViewerHelper {
   static bool isPdf(String ext)   => ext == 'pdf';
   static bool isImage(String ext) => ['png','jpg','jpeg','gif','webp'].contains(ext);
   static bool isZip(String ext)   => ['zip','rar','7z'].contains(ext);
-
-  // ── Construir URL del proxy ─────────────────────────────────────────────────
-  // El proxy de Railway recibe la URL completa (con ::name:: si existe)
-  // y se encarga de setear el Content-Type correcto según el nombre.
-
-  static String proxyUrl(String rawUrl, {bool download = false}) {
-    final realUrl = extractUrl(rawUrl);
-    if (!realUrl.toLowerCase().contains('cloudinary.com')) return realUrl;
-    // Pasar la URL completa (incluye ::name::) para que el proxy sepa el nombre
-    final encoded = Uri.encodeComponent(rawUrl.trim());
-    return '${ApiConfig.baseUrl}${ApiConfig.proxyFile}?url=$encoded'
-        '${download ? '&dl=1' : ''}';
-  }
 
   // ── Abrir archivo ───────────────────────────────────────────────────────────
 

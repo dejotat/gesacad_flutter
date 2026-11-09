@@ -1,7 +1,11 @@
 import 'dart:ui' show ImageFilter;
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../config/api_config.dart';
+import '../config/app_themes.dart';
 import '../config/app_tokens.dart';
+import 'package:flutter/services.dart' show SystemUiOverlayStyle;
+import '../widgets/ui/cinematic_backdrop.dart';
+import '../widgets/screen_reader_widgets.dart';
 import '../widgets/ui/password_strength.dart';
 import '../widgets/dev_server_badge.dart';
 import 'dart:async';
@@ -21,16 +25,32 @@ import 'student/student_home.dart';
 import 'auth/forgot_password_screen.dart';
 import 'guest/guest_home.dart';
 
-class LoginScreen extends StatefulWidget {
+/// Pantalla de inicio de sesión. Tiene identidad PROPIA y siempre oscura (fondo cinematográfico
+/// verde azulado con aurora y partículas, los colores del tema Neón), sea cual sea el tema que el usuario eligió en Ajustes: es la puerta
+/// de la marca y se ve igual para todos. Las pantallas que abre (recuperar contraseña, invitado)
+/// siguen usando el tema de la app.
+class LoginScreen extends StatelessWidget {
   /// Aviso inicial (p. ej. "Tu sesión expiró").
   final String? mensaje;
   const LoginScreen({super.key, this.mensaje});
 
+  /// Tema oscuro del login (se construye una sola vez).
+  static final ThemeData _tema = AppThemes.of(AppThemeType.neon);
+
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  Widget build(BuildContext context) =>
+      Theme(data: _tema, child: _LoginView(mensaje: mensaje));
 }
 
-class _LoginScreenState extends State<LoginScreen>
+class _LoginView extends StatefulWidget {
+  final String? mensaje;
+  const _LoginView({this.mensaje});
+
+  @override
+  State<_LoginView> createState() => _LoginViewState();
+}
+
+class _LoginViewState extends State<_LoginView>
     with TickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _userCtrl = TextEditingController();
@@ -47,9 +67,6 @@ class _LoginScreenState extends State<LoginScreen>
   late Animation<Offset> _slide;
   late AnimationController _loginBtnCtrl;
   late Animation<double> _loginBtnScale;
-
-  // Controlador del gradiente animado del fondo
-  late AnimationController _bgAnim;
 
   // Animación 2: logo cae desde arriba con rebote suave
   late AnimationController _logoCtrl;
@@ -83,11 +100,6 @@ class _LoginScreenState extends State<LoginScreen>
         vsync: this, duration: const Duration(milliseconds: 120));
     _loginBtnScale = Tween<double>(begin: 1.0, end: 0.96)
         .animate(CurvedAnimation(parent: _loginBtnCtrl, curve: Curves.easeOut));
-
-    // Gradiente animado del fondo: ciclo de 6 segundos, va y vuelve suavemente
-    _bgAnim = AnimationController(
-        vsync: this, duration: const Duration(seconds: 6))
-      ..repeat(reverse: true);
   }
 
   @override
@@ -95,7 +107,6 @@ class _LoginScreenState extends State<LoginScreen>
     _anim.dispose();
     _logoCtrl.dispose();
     _loginBtnCtrl.dispose();
-    _bgAnim.dispose();
     _userCtrl.dispose();
     _passCtrl.dispose();
     _userFocus.dispose();
@@ -131,22 +142,22 @@ class _LoginScreenState extends State<LoginScreen>
     if (code == 'UPDATE_REQUIRED') {
       return 'Esta versión de la app ya no es compatible. Actualízala para continuar.';
     }
-    if (code.contains('USER_NOT_FOUND') || code.contains('USERORPASSINVALID') || code.isEmpty)
-      return 'Usuario no encontrado. Verifica tu nombre de usuario.';
-    if (code.contains('WRONG_PASSWORD') || code.contains('INCORRECT'))
-      return 'Contraseña incorrecta. Intenta de nuevo.';
-    if (code.contains('INACTIVE') || code.contains('DISABLED'))
+    // Un servidor antiguo que distingue «no existe» de «contraseña mala».
+    if (code.contains('USER_NOT_FOUND')) return 'No encontramos una cuenta con ese usuario.';
+    if (code.contains('INACTIVE') || code.contains('DISABLED')) {
       return 'Cuenta inactiva. Contacta al administrador del sistema.';
-    return 'Usuario o contraseña incorrectos. Verifica tus datos.';
+    }
+    // El servidor actual responde igual para «usuario inexistente» y «contraseña incorrecta»
+    // (USER_OR_PASS_INVALID) A PROPÓSITO: si dijera cuál de las dos falló, cualquiera podría
+    // averiguar qué usuarios existen. Un solo mensaje claro, sin detalles internos.
+    return 'Usuario o contraseña incorrectos.';
   }
 
-  /// En depuración indica a qué servidor se intentó entrar: la causa más común de
-  /// "no entra" es usar usuarios de producción contra un servidor local (o al revés).
-  String _pistaServidor({bool sinRed = false}) {
-    if (!kDebugMode) return '';
-    return sinRed
-        ? '\n\nServidor: ${ApiConfig.baseUrl}\nSi es local, inicia el backend con "npm start" en la carpeta Backend.'
-        : '\n\nServidor: ${ApiConfig.baseUrl}\nCada servidor tiene sus propios usuarios.';
+  /// Detalle técnico SOLO para la consola de depuración (nunca se muestra al usuario): la causa
+  /// más común de «no entra» es usar usuarios de producción contra un servidor local (o al revés).
+  void _registrarFallo(String motivo) {
+    developer.log('Login fallido ($motivo) · servidor: ${ApiConfig.baseUrl}',
+        name: 'GESACAD.Auth');
   }
 
   // ── Login con usuario/contraseña ──────────────────────────────────────────
@@ -185,16 +196,21 @@ class _LoginScreenState extends State<LoginScreen>
         if (!mounted) return;
         Navigator.pushReplacement(context, slideRoute(home));
       } else {
-        setState(() => _serverError = _mapLoginError(res) + _pistaServidor());
+        _registrarFallo('respuesta ${res['response']}');
+        setState(() => _serverError = _mapLoginError(res));
       }
     } on TimeoutException {
-      if (mounted) setState(() => _serverError =
-          'El servidor tardó demasiado. Verifica tu conexión a internet.${_pistaServidor(sinRed: true)}');
+      _registrarFallo('tiempo agotado');
+      if (mounted) {
+        setState(() => _serverError = 'El servidor tardó demasiado. Verifica tu conexión a internet.');
+      }
     } catch (e) {
-      if (mounted) setState(() => _serverError = isNetworkError(e)
-          ? 'Sin conexión. Para iniciar sesión necesitas internet; '
-            'después podrás consultar tus datos sin conexión.${_pistaServidor(sinRed: true)}'
-          : 'No se pudo conectar al servidor. Verifica tu conexión a internet.${_pistaServidor(sinRed: true)}');
+      _registrarFallo('error de red: ${e.runtimeType}');
+      if (mounted) {
+        setState(() => _serverError = isNetworkError(e)
+            ? 'Sin conexión. Para iniciar sesión necesitas internet.'
+            : 'No se pudo conectar al servidor. Verifica tu conexión a internet.');
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -204,43 +220,16 @@ class _LoginScreenState extends State<LoginScreen>
 
   @override
   Widget build(BuildContext context) {
-    final themeType = AppSettings.currentTheme.value;
-    return Scaffold(
-      body: AnimatedBuilder(
-        animation: _bgAnim,
-        builder: (_, child) {
-          final t = _bgAnim.value; // 0.0 → 1.0 → 0.0 (reverse: true)
-
-          // Paleta del tema activo: interpola suavemente entre sus dos tonos
-          final g  = themeType.gradient;
-          final c1 = Color.lerp(g[0], g[1], t)!;
-          final c2 = Color.lerp(g[1], themeType.secondaryColor, t)!;
-          final c3 = Color.lerp(g[0], g[1], 1 - t)!;
-
-          // La alineación también se desplaza para dar sensación de movimiento
-          final begin = AlignmentTween(
-            begin: Alignment.topLeft,
-            end:   Alignment.bottomLeft,
-          ).lerp(t);
-          final end = AlignmentTween(
-            begin: Alignment.bottomRight,
-            end:   Alignment.topRight,
-          ).lerp(t);
-
-          return Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [c1, c2, c3],
-                begin:  begin,
-                end:    end,
-              ),
-            ),
-            child: child,
-          );
-        },
-        // child se pasa fuera del builder para no reconstruir el árbol interno
-        // en cada frame de la animación (optimización de rendimiento)
-        child: SafeArea(
+    // El login usa SIEMPRE el tema oscuro de marca (ver [LoginScreen]).
+    const themeType = AppThemeType.neon;
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      // Íconos claros en la barra de estado sobre el fondo negro.
+      value: SystemUiOverlayStyle.light,
+      child: Scaffold(
+        backgroundColor: const Color(0xFF05221F),
+        body: CinematicBackdrop(
+        child: Stack(children: [
+         SafeArea(
           // LayoutBuilder detecta el tamaño real de pantalla para ser responsive
           child: LayoutBuilder(
             builder: (ctx, constraints) {
@@ -248,7 +237,12 @@ class _LoginScreenState extends State<LoginScreen>
               final ancho      = constraints.maxWidth;
               final esMobil    = ancho < 420;
               final esTablet   = ancho < 650;
-              final logoTam    = esMobil ? 90.0 : esTablet ? 118.0 : 148.0;
+              // En pantallas bajas (portátil con el navegador) el logo se achica para que el
+              // formulario quede a la vista sin tener que desplazarse.
+              final bajo       = constraints.maxHeight < 760;
+              final logoTam    = bajo
+                  ? (esMobil ? 76.0 : 96.0)
+                  : esMobil ? 90.0 : esTablet ? 118.0 : 148.0;
               final padH       = esMobil ? 16.0 : esTablet ? 22.0 : 28.0;
               final padCard    = esMobil ? 20.0 : 28.0;
 
@@ -279,9 +273,13 @@ class _LoginScreenState extends State<LoginScreen>
                                         letterSpacing: 5,
                                         shadows: [
                                           Shadow(
-                                            color: Colors.black.withOpacity(0.3),
-                                            blurRadius: 12,
-                                            offset: const Offset(0, 4),
+                                            color: const Color(0xFF22D3EE).withValues(alpha: 0.45),
+                                            blurRadius: 28,
+                                          ),
+                                          Shadow(
+                                            color: Colors.black.withValues(alpha: 0.6),
+                                            blurRadius: 10,
+                                            offset: const Offset(0, 3),
                                           ),
                                         ],
                                       ),
@@ -289,16 +287,17 @@ class _LoginScreenState extends State<LoginScreen>
                                     Text(
                                       'Campus Virtual',
                                       style: GoogleFonts.poppins(
-                                          color: Colors.white70,
-                                          fontSize: esMobil ? 11 : 13,
-                                          letterSpacing: 2),
+                                          color: Colors.white.withValues(alpha: 0.88),
+                                          fontSize: esMobil ? 11.5 : 13.5,
+                                          fontWeight: FontWeight.w500,
+                                          letterSpacing: 3),
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
                                       'Unicomfacauca · v 1.1.2',
                                       style: GoogleFonts.poppins(
-                                          color: Colors.white38,
-                                          fontSize: esMobil ? 9 : 11),
+                                          color: Colors.white.withValues(alpha: 0.6),
+                                          fontSize: esMobil ? 10 : 11.5),
                                     ),
                                   ]),
                                 ),
@@ -326,15 +325,15 @@ class _LoginScreenState extends State<LoginScreen>
                                         style: GoogleFonts.poppins(
                                             fontSize: esMobil ? 18 : 22,
                                             fontWeight: FontWeight.w700,
-                                            color: themeType.primaryColor),
+                                            color: Colors.white),
                                         textAlign: TextAlign.center,
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
                                         'Ingresa tus credenciales institucionales',
                                         style: GoogleFonts.poppins(
-                                            color: context.tokens.muted,
-                                            fontSize: 12),
+                                            color: Colors.white.withValues(alpha: 0.7),
+                                            fontSize: 12.5),
                                         textAlign: TextAlign.center,
                                       ),
                                       const SizedBox(height: 24),
@@ -510,16 +509,16 @@ class _LoginScreenState extends State<LoginScreen>
                             Text(
                               'Colegio Santander',
                               style: GoogleFonts.poppins(
-                                  color: Colors.white54,
-                                  fontSize: esMobil ? 9 : 11),
+                                  color: Colors.white.withValues(alpha: 0.62),
+                                  fontSize: esMobil ? 10 : 11.5),
                               textAlign: TextAlign.center,
                             ),
                             const SizedBox(height: 4),
                             Text(
                               '© 2026 GESACAD · Todos los derechos reservados',
                               style: GoogleFonts.poppins(
-                                  color: Colors.white38,
-                                  fontSize: esMobil ? 8 : 10),
+                                  color: Colors.white.withValues(alpha: 0.5),
+                                  fontSize: esMobil ? 9 : 10.5),
                               textAlign: TextAlign.center,
                             ),
                           ],        // cierra children del Column principal
@@ -530,38 +529,77 @@ class _LoginScreenState extends State<LoginScreen>
                 },                  // cierra LayoutBuilder builder
               ),                    // cierra LayoutBuilder
             ),                      // cierra SafeArea
-          ),                        // cierra AnimatedBuilder
-        );                          // cierra Scaffold
+          // Accesibilidad: activar el lector de voz sin iniciar sesión.
+          const Positioned(
+            top: 0, right: 0,
+            child: SafeArea(child: Padding(padding: EdgeInsets.all(8), child: BotonLectorVoz(color: Colors.white))),
+          ),
+          ]),                       // cierra Stack
+          ),                        // cierra CinematicBackdrop
+      ),                            // cierra Scaffold
+    );                              // cierra AnnotatedRegion
   }
 
 
-  /// Panel de vidrio del formulario: translúcido con desenfoque del fondo animado.
+  /// Panel de vidrio oscuro del formulario: translúcido, con desenfoque del fondo animado, borde
+  /// fino luminoso y un resplandor de marca debajo. Mantiene el contraste del texto claro.
   Widget _glassPanel(AppThemeType themeType, {required Widget child}) {
-    final dark = themeType.isDark;
     final r = BorderRadius.circular(28);
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: r,
         boxShadow: [
+          // Resplandor de marca (se funde con la aurora)
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.25),
-            blurRadius: 40,
-            offset: const Offset(0, 14),
+            color: themeType.gradient[1].withValues(alpha: 0.22),
+            blurRadius: 70,
+            spreadRadius: -10,
+            offset: const Offset(0, 24),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.6),
+            blurRadius: 44,
+            offset: const Offset(0, 18),
           ),
         ],
       ),
       child: ClipRRect(
         borderRadius: r,
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
           child: DecoratedBox(
             decoration: BoxDecoration(
-              color: dark ? const Color(0xCC1E293B) : const Color(0xE6FFFFFF),
               borderRadius: r,
-              border: Border.all(
-                  color: Colors.white.withValues(alpha: dark ? 0.12 : 0.8)),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xCC0C2B28), Color(0xB8082421)],
+              ),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.11)),
             ),
-            child: child,
+            child: Stack(
+              children: [
+                child,
+                // Filo de luz en el borde superior
+                Positioned(
+                  top: 0,
+                  left: 36,
+                  right: 36,
+                  height: 1,
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(colors: [
+                          Colors.white.withValues(alpha: 0),
+                          Colors.white.withValues(alpha: 0.55),
+                          Colors.white.withValues(alpha: 0),
+                        ]),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

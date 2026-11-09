@@ -190,10 +190,10 @@ class _MarkPainter extends CustomPainter {
       old.color != color || old.opacity != opacity;
 }
 
-/// Fondo de dashboard: el isotipo de GESACAD grande, translúcido y en
-/// movimiento (órbitas girando, flotación suave) detrás del contenido.
-/// No intercepta toques ni aparece para lectores de pantalla.
-class LogoBackdrop extends StatefulWidget {
+/// Compatibilidad: el logo de fondo ahora lo dibuja `AppBackground` (una sola vez, detrás de
+/// TODAS las pantallas), así que aquí solo se devuelve el contenido. Si se envolviera además cada
+/// pantalla, se verían dos logos superpuestos.
+class LogoBackdrop extends StatelessWidget {
   const LogoBackdrop({
     super.key,
     required this.child,
@@ -206,10 +206,30 @@ class LogoBackdrop extends StatefulWidget {
   final Alignment alignment;
 
   @override
-  State<LogoBackdrop> createState() => _LogoBackdropState();
+  Widget build(BuildContext context) => child;
 }
 
-class _LogoBackdropState extends State<LogoBackdrop>
+/// El isotipo de GESACAD grande, translúcido y en movimiento (órbitas girando, flotación suave)
+/// detrás del contenido. No intercepta toques ni aparece para lectores de pantalla.
+class LogoFlotante extends StatefulWidget {
+  const LogoFlotante({
+    super.key,
+    this.opacity = 0.11,
+    this.color,
+    this.alignment = const Alignment(0.55, -0.15),
+  });
+
+  final double opacity;
+
+  /// Color del trazo (por defecto, el primario del tema).
+  final Color? color;
+  final Alignment alignment;
+
+  @override
+  State<LogoFlotante> createState() => _LogoFlotanteState();
+}
+
+class _LogoFlotanteState extends State<LogoFlotante>
     with SingleTickerProviderStateMixin {
   late final AnimationController _float =
       AnimationController(vsync: this, duration: const Duration(seconds: 9));
@@ -233,10 +253,7 @@ class _LogoBackdropState extends State<LogoBackdrop>
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        Positioned.fill(
+    return Positioned.fill(
           child: IgnorePointer(
             child: LayoutBuilder(builder: (_, c) {
               final side = (math.max(c.maxWidth, c.maxHeight) * 0.78)
@@ -256,13 +273,10 @@ class _LogoBackdropState extends State<LogoBackdrop>
                     ),
                   );
                 },
-                child: GesacadMark(size: side, opacity: widget.opacity),
+                child: GesacadMark(size: side, opacity: widget.opacity, color: widget.color),
               );
             }),
           ),
-        ),
-        widget.child,
-      ],
     );
   }
 }

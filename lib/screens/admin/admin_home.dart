@@ -1,13 +1,13 @@
 ﻿import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import '../../services/screen_reader.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../config/app_tokens.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
-import '../../services/settings_service.dart';
 import '../../widgets/tts_button.dart';
 import '../../widgets/chatbot_widget.dart';
 import '../../widgets/ui/account_menu.dart';
@@ -21,6 +21,7 @@ import '../settings_screen.dart';
 import '../notifications/notifications_panel.dart';
 import '../profile/profile_screen.dart';
 import '../calendar/calendar_screen.dart';
+import '../academic/semaforo_pickers.dart';
 import 'admin_university_info.dart';
 import 'admin_users.dart';
 import 'admin_courses.dart';
@@ -68,6 +69,7 @@ class _AdminHomeState extends State<AdminHome> {
   void initState() {
     super.initState();
     _loadData();
+    ScreenReader.instance.bienvenida('administrador');
   }
 
   /// Recarga la foto de perfil desde SharedPreferences sin recargar todos los datos.
@@ -143,7 +145,8 @@ class _AdminHomeState extends State<AdminHome> {
     if (!await confirmarSalidaConPendientes(context)) return;
     await AuthService().clearSession();
     if (!mounted) return;
-    Navigator.pushReplacement(context, slideRoute(const LoginScreen()));
+    // Quita TODAS las pantallas (el inicio y la sección abierta con el menú lateral).
+    Navigator.pushAndRemoveUntil(context, slideRoute(const LoginScreen()), (_) => false);
   }
 
   String get _ttsText =>
@@ -156,10 +159,11 @@ class _AdminHomeState extends State<AdminHome> {
   @override
   Widget build(BuildContext context) {
     final primary = Theme.of(context).colorScheme.primary;
+    final nav = _nav;
 
-    return Scaffold(
+    return AppShell(nav: nav, activo: 'inicio', child: Scaffold(
       appBar: _buildAppBar(),
-      drawer: _buildDrawer(primary),
+      drawer: nav.cajon(context, 'inicio'),
       body: LogoBackdrop(child: _loading
           ? _buildSkeleton()
           : _error
@@ -192,7 +196,7 @@ class _AdminHomeState extends State<AdminHome> {
                 TtsButton(text: _ttsText),
               ],
             ),
-    );
+    ));
   }
 
   Widget _buildContent() {
@@ -245,13 +249,8 @@ class _AdminHomeState extends State<AdminHome> {
   // ── APP BAR ───────────────────────────────────────────────────────────────
 
   PreferredSizeWidget _buildAppBar() {
+    // En pantallas estrechas el AppBar muestra solo el botón del cajón (Scaffold lo añade).
     return AppBar(
-      leading: Builder(builder: (ctx) => AnimatedIconButton(
-        tooltip: 'Abrir menú de navegación',
-        icon: PhosphorIconsRegular.list,
-        reaction: IconReaction.nudge,
-        onPressed: () => Scaffold.of(ctx).openDrawer(),
-      )),
       title: const Text('Panel Administrador'),
       actions: [
         NotificationBell(userId: _myId, userRol: 'Admin'),
@@ -287,84 +286,31 @@ class _AdminHomeState extends State<AdminHome> {
     );
   }
 
-  // ── DRAWER ────────────────────────────────────────────────────────────────
+  // ── MENÚ LATERAL ──────────────────────────────────────────────────────────
 
-  Widget _buildDrawer(Color primary) {
-    final themeType = AppSettings.currentTheme.value;
-    return Drawer(
-      child: Column(children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(20, 52, 20, 24),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(colors: themeType.gradient,
-                begin: Alignment.topLeft, end: Alignment.bottomRight),
-          ),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Semantics(
-              label: 'Foto de perfil de $_name',
-              child: Container(
-                width: 64, height: 64,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.5), width: 2),
-                  color: Colors.white.withValues(alpha: 0.15),
-                ),
-                child: ClipOval(child: _photoBytes != null
-                    ? ExcludeSemantics(
-                        child: Image.memory(_photoBytes!, fit: BoxFit.cover))
-                    : const Icon(PhosphorIconsRegular.shieldCheck,
-                        color: Colors.white, size: 32)),
-              ),
-            ),
-            const SizedBox(height: 14),
-            Text(_name, style: GoogleFonts.poppins(
-                color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 6),
-            const HeaderChip(PhosphorIconsRegular.shieldCheck,
-                'Administrador del sistema'),
-          ]),
-        ),
-        _drawerItem(PhosphorIconsRegular.squaresFour, 'Panel Principal',
-            () => Navigator.pop(context)),
-        _drawerItem(PhosphorIconsRegular.userGear, 'Gestionar Usuarios', () {
-          Navigator.pop(context);
-          Navigator.push(context, slideRoute(const AdminUsers()))
-              .then((_) { if (mounted) _loadData(); });
-        }),
-        _drawerItem(PhosphorIconsRegular.books, 'Gestionar Materias', () {
-          Navigator.pop(context);
-          Navigator.push(context, slideRoute(const AdminCourses()))
-              .then((_) { if (mounted) _loadData(); });
-        }),
-        _drawerItem(PhosphorIconsRegular.chartPolar, 'Evaluación Docente', () {
-          Navigator.pop(context);
-          Navigator.push(context, slideRoute(AdminEvaluationsScreen(adminId: _myId)));
-        }),
-        _drawerItem(PhosphorIconsRegular.buildings, 'Información para invitados', () {
-          Navigator.pop(context);
-          Navigator.push(context, slideRoute(const AdminUniversityInfo()));
-        }),
-        _drawerItem(PhosphorIconsRegular.gear, 'Ajustes y Acerca de', () {
-          Navigator.pop(context);
-          Navigator.push(context, slideRoute(const SettingsScreen()));
-        }),
-        const Divider(height: 1),
-        _drawerItem(PhosphorIconsRegular.signOut, 'Cerrar Sesión', _logout,
-            color: context.tokens.danger),
-      ]),
-    );
-  }
-
-  Widget _drawerItem(IconData icon, String label, VoidCallback onTap,
-          {Color? color}) =>
-      ListTile(
-        leading: Icon(icon, color: color ?? Theme.of(context).colorScheme.primary),
-        title: Text(label,
-            style: GoogleFonts.poppins(
-                fontWeight: FontWeight.w500, fontSize: 14, color: color)),
-        onTap: onTap,
+  SidebarNav get _nav => SidebarNav(
+        rol: 'Admin',
+        nombre: _name,
+        foto: _photoBytes,
+        onSalir: _logout,
+        alVolver: () { if (mounted) { _reloadPhoto(); _loadData(); } },
+        items: [
+          const NavItem(id: 'inicio', icon: PhosphorIconsRegular.squaresFour, label: 'Panel principal'),
+          NavItem(id: 'usuarios', icon: PhosphorIconsRegular.userGear, label: 'Gestionar usuarios',
+              destination: () => const AdminUsers()),
+          NavItem(id: 'materias', icon: PhosphorIconsRegular.books, label: 'Gestionar materias',
+              destination: () => const AdminCourses()),
+          NavItem(id: 'semaforo', icon: PhosphorIconsRegular.trafficSignal, label: 'Semáforo académico',
+              destination: () => const AdminSemaforoScreen()),
+          NavItem(id: 'evaluacion', icon: PhosphorIconsRegular.chartPolar, label: 'Evaluación docente',
+              destination: () => AdminEvaluationsScreen(adminId: _myId)),
+          NavItem(id: 'invitados', icon: PhosphorIconsRegular.buildings, label: 'Información para invitados',
+              destination: () => const AdminUniversityInfo()),
+          NavItem(id: 'perfil', icon: PhosphorIconsRegular.userCircle, label: 'Mi perfil',
+              destination: () => const ProfileScreen()),
+          NavItem(id: 'ajustes', icon: PhosphorIconsRegular.gear, label: 'Ajustes y Acerca de',
+              destination: () => const SettingsScreen()),
+        ],
       );
 
   // ── ENCABEZADO ────────────────────────────────────────────────────────────
@@ -373,21 +319,7 @@ class _AdminHomeState extends State<AdminHome> {
     return PageHeader(
       title: 'Hola, $_name',
       subtitle: 'Resumen general del sistema académico',
-      leading: ExcludeSemantics(
-        child: Container(
-          width: 56, height: 56,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(
-                color: Colors.white.withValues(alpha: 0.5), width: 2),
-            color: Colors.white.withValues(alpha: 0.15),
-          ),
-          child: ClipOval(child: _photoBytes != null
-              ? Image.memory(_photoBytes!, fit: BoxFit.cover)
-              : const Icon(PhosphorIconsRegular.shieldCheck,
-                  color: Colors.white, size: 28)),
-        ),
-      ),
+      leading: RoleBadge(role: RoleKind.admin, photo: _photoBytes),
       chips: const [
         HeaderChip(PhosphorIconsRegular.shieldCheck, 'Administrador'),
       ],
@@ -404,18 +336,18 @@ class _AdminHomeState extends State<AdminHome> {
 
     final cards = [
       StatCard(icon: PhosphorIconsRegular.graduationCap,
-          value: '$_totalStudents', label: 'Estudiantes', color: t.chart[0],
+          value: '$_totalStudents', label: 'Estudiantes', color: roleStyleOf(RoleKind.student).color,
           hint: avg != null ? '$avg por materia' : null,
-          motion: IconMotion.float),
+          motion: roleStyleOf(RoleKind.student).motion),
       StatCard(icon: PhosphorIconsRegular.chalkboardTeacher,
-          value: '$_totalTeachers', label: 'Profesores', color: t.chart[1],
-          motion: IconMotion.pulse, delay: const Duration(milliseconds: 120)),
+          value: '$_totalTeachers', label: 'Profesores', color: roleStyleOf(RoleKind.teacher).color,
+          motion: roleStyleOf(RoleKind.teacher).motion, delay: const Duration(milliseconds: 120)),
       StatCard(icon: PhosphorIconsRegular.shieldCheck,
-          value: '$_totalAdmins', label: 'Administradores', color: t.chart[2],
-          motion: IconMotion.wiggle, delay: const Duration(milliseconds: 240)),
+          value: '$_totalAdmins', label: 'Administradores', color: roleStyleOf(RoleKind.admin).color,
+          motion: roleStyleOf(RoleKind.admin).motion, delay: const Duration(milliseconds: 240)),
       StatCard(icon: PhosphorIconsRegular.books,
           value: '${_courseRecords.length}', label: 'Materias', color: t.chart[3],
-          motion: IconMotion.bounce, delay: const Duration(milliseconds: 360)),
+          motion: IconMotion.pulse, delay: const Duration(milliseconds: 360)),
     ];
 
     return LayoutBuilder(builder: (ctx, c) {
@@ -433,7 +365,6 @@ class _AdminHomeState extends State<AdminHome> {
   // ── DONA: USUARIOS POR ROL ────────────────────────────────────────────────
 
   Widget _buildDonutCard(int total) {
-    final t = context.tokens;
     return AppCard(
       padding: const EdgeInsets.all(20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -444,9 +375,9 @@ class _AdminHomeState extends State<AdminHome> {
         Center(
           child: DonutChart(
             slices: [
-              DonutSlice('Estudiantes', _totalStudents, t.chart[0]),
-              DonutSlice('Profesores', _totalTeachers, t.chart[1]),
-              DonutSlice('Administradores', _totalAdmins, t.chart[2]),
+              DonutSlice('Estudiantes', _totalStudents, roleStyleOf(RoleKind.student).color),
+              DonutSlice('Profesores', _totalTeachers, roleStyleOf(RoleKind.teacher).color),
+              DonutSlice('Administradores', _totalAdmins, roleStyleOf(RoleKind.admin).color),
             ],
             centerValue: '$total',
             centerLabel: 'usuarios',
@@ -482,7 +413,6 @@ class _AdminHomeState extends State<AdminHome> {
           ExcludeSemantics(
             child: BarList(
               color: t.chart[0],
-              rotateColors: true,
               items: [
                 for (final r in shown)
                   BarItem((r['name'] as String?) ?? 'Sin nombre',

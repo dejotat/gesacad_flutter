@@ -45,11 +45,28 @@ class ConnectivityService with WidgetsBindingObserver {
   /// `true` cuando el backend es alcanzable.
   final ValueNotifier<bool> online = ValueNotifier<bool>(true);
 
+  /// `true` mientras la PRIMERA conexión de la sesión tarda más de 2 s: el servidor de la
+  /// nube puede estar despertando de su reposo (hasta ~1 min). Sirve para decir "Conectando…"
+  /// en vez de un "Sin conexión" engañoso. Tras la primera respuesta ya no vuelve a activarse.
+  final ValueNotifier<bool> conectando = ValueNotifier<bool>(false);
+
+  /// ¿El servidor ha respondido alguna vez desde que se abrió la app?
+  bool _vioServidor = false;
+
+  /// Cuánto esperar una petición normal. Mientras no se haya visto responder al servidor (o si
+  /// está sin conexión) se espera hasta 75 s: un arranque en frío en la nube tarda 30–60 s y con
+  /// 30 s la petición fallaría justo antes de que despierte. Con el servidor ya activo: 30 s.
+  Duration get espera => (_vioServidor && online.value)
+      ? const Duration(seconds: 30)
+      : const Duration(seconds: 75);
+
   static Future<bool> _defaultProbe() async {
     try {
       final r = await http
           .get(Uri.parse('${ApiConfig.baseUrl}/health'))
-          .timeout(const Duration(seconds: 6));
+          // Paciente a propósito: una sola petición larga recibe la respuesta en cuanto el
+          // servidor despierta (varias cortas abandonadas se la perderían hasta el siguiente sondeo).
+          .timeout(const Duration(seconds: 60));
       return r.statusCode < 500;
     } catch (_) {
       return false;
@@ -72,6 +89,8 @@ class ConnectivityService with WidgetsBindingObserver {
 
   /// Una petición al backend funcionó: estamos en línea.
   void reportSuccess() {
+    _vioServidor = true;
+    conectando.value = false;
     if (!online.value) {
       online.value = true;
     }
@@ -91,6 +110,13 @@ class ConnectivityService with WidgetsBindingObserver {
   Future<bool> checkNow() async {
     if (_checking) return online.value;
     _checking = true;
+    // Si la primera conexión tarda, avisarlo (sin parpadeos cuando el servidor responde rápido).
+    Timer? aviso;
+    if (!_vioServidor) {
+      aviso = Timer(const Duration(seconds: 2), () {
+        if (_checking && !_vioServidor) conectando.value = true;
+      });
+    }
     try {
       final ok = await _probe();
       if (ok) {
@@ -101,6 +127,8 @@ class ConnectivityService with WidgetsBindingObserver {
       }
       return ok;
     } finally {
+      aviso?.cancel();
+      conectando.value = false;
       _checking = false;
     }
   }

@@ -383,6 +383,7 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
                 ),
                 items: const [
                   DropdownMenuItem(value: 'midterm', child: Text('Parcial')),
+                  DropdownMenuItem(value: 'quiz', child: Text('Quiz')),
                   DropdownMenuItem(
                       value: 'project', child: Text('Proyecto')),
                   DropdownMenuItem(
