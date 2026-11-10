@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'ui/ui.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../services/gemini_service.dart';
+import '../services/chatbot_service.dart';
 import '../config/app_tokens.dart';
 
 /// Modelo de un mensaje individual en el chat.
@@ -12,10 +12,14 @@ class _Mensaje {
   final bool   esUsuario;
   final bool   esError;
 
+  /// En un error que se puede reintentar: la pregunta que se vuelve a enviar.
+  final String? reintentar;
+
   const _Mensaje({
     required this.texto,
     required this.esUsuario,
     this.esError = false,
+    this.reintentar,
   });
 }
 
@@ -25,81 +29,95 @@ class _Mensaje {
 /// mientras el widget esté vivo (pantalla abierta), el historial persiste
 /// aunque el usuario cierre y vuelva a abrir la ventana de chat.
 class ChatbotWidget extends StatefulWidget {
-  const ChatbotWidget({super.key});
+  const ChatbotWidget({super.key, this.servicio = const ChatbotService()});
+
+  /// Se puede sustituir en las pruebas.
+  final ChatbotService servicio;
 
   @override
   State<ChatbotWidget> createState() => _ChatbotWidgetState();
 }
 
 class _ChatbotWidgetState extends State<ChatbotWidget> {
-  // Historial en formato de la API de Gemini (turnos usuario/modelo)
-  final List<Map<String, dynamic>> _historialGemini = [];
+  // Contexto que se envía al servidor (los últimos turnos de la conversación).
+  final List<TurnoChat> _historial = [];
 
   // Mensajes que se muestran en la UI del chat
   final List<_Mensaje> _mensajes = [];
 
   bool _enviando = false;
+  bool _hojaAbierta = false;
+
+  /// Aplica [cambio] y redibuja la hoja solo si sigue abierta (si se cerró, solo guarda el estado).
+  void _actualizar(StateSetter actualizarSheet, VoidCallback cambio) {
+    if (_hojaAbierta) {
+      actualizarSheet(cambio);
+    } else {
+      cambio();
+    }
+  }
 
   // ── Enviar mensaje al asistente ───────────────────────────────────────────
 
   Future<void> _enviar(String texto, StateSetter actualizarSheet) async {
     final trimmed = texto.trim();
     if (trimmed.isEmpty || _enviando) return;
-
-    // Construir el turno del usuario para la API antes de enviarlo
-    final turnoUsuario = {
-      'role':  'user',
-      'parts': [
-        {'text': trimmed}
-      ],
-    };
-
-    actualizarSheet(() {
+    _actualizar(actualizarSheet, () {
       _mensajes.add(_Mensaje(texto: trimmed, esUsuario: true));
       _enviando = true;
     });
+    await _consultar(trimmed, actualizarSheet);
+  }
 
+  /// Vuelve a enviar la última pregunta (tras un error de conexión, tiempo, etc.).
+  Future<void> _reintentar(String texto, StateSetter actualizarSheet) async {
+    if (_enviando) return;
+    _actualizar(actualizarSheet, () {
+      if (_mensajes.isNotEmpty && _mensajes.last.esError) _mensajes.removeLast();
+      _enviando = true;
+    });
+    await _consultar(texto, actualizarSheet);
+  }
+
+  Future<void> _consultar(String texto, StateSetter actualizarSheet) async {
     try {
-      // Pasar historial previo + nuevo turno del usuario a la API
-      final historialParaApi = [..._historialGemini, turnoUsuario];
-      final respuesta = await GeminiService.generarRespuesta(historialParaApi);
-
-      // Guardar ambos turnos en el historial para mantener contexto
-      _historialGemini.add(turnoUsuario);
-      _historialGemini.add({
-        'role':  'model',
-        'parts': [
-          {'text': respuesta}
-        ],
+      final respuesta = await widget.servicio.preguntar(texto, _historial);
+      // Solo las preguntas contestadas entran al contexto de la conversación.
+      _historial
+        ..add(TurnoChat(esUsuario: true, texto: texto))
+        ..add(TurnoChat(esUsuario: false, texto: respuesta));
+      if (!mounted) return;
+      _actualizar(actualizarSheet, () {
+        _mensajes.add(_Mensaje(texto: respuesta, esUsuario: false));
+        _enviando = false;
       });
-
-      if (mounted) {
-        actualizarSheet(() {
-          _mensajes.add(_Mensaje(texto: respuesta, esUsuario: false));
-          _enviando = false;
-        });
-      }
+    } on ChatbotException catch (e) {
+      developer.log('[Chatbot] ${e.tipo.name}', name: 'GESACAD.Chatbot');
+      if (!mounted) return;
+      // El mensaje ya viene en lenguaje claro: se muestra en el chat (nunca falla en silencio).
+      _actualizar(actualizarSheet, () {
+        _mensajes.add(_Mensaje(
+            texto: e.mensaje, esUsuario: false, esError: true, reintentar: e.reintentable ? texto : null));
+        _enviando = false;
+      });
     } catch (e) {
-      // Registrar el error real para diagnóstico en la consola de desarrollo
-      developer.log('[Chatbot] Error al llamar a Gemini: $e',
-          name: 'GESACAD.Chatbot', error: e);
-      if (mounted) {
-        actualizarSheet(() {
-          // Mostrar el error real en el chat para facilitar el diagnóstico
-          _mensajes.add(_Mensaje(
-            texto:     'Error: $e',
+      developer.log('[Chatbot] error inesperado: ${e.runtimeType}', name: 'GESACAD.Chatbot');
+      if (!mounted) return;
+      _actualizar(actualizarSheet, () {
+        _mensajes.add(_Mensaje(
+            texto: 'No pude responder esta vez. Inténtalo de nuevo.',
             esUsuario: false,
-            esError:   true,
-          ));
-          _enviando = false;
-        });
-      }
+            esError: true,
+            reintentar: texto));
+        _enviando = false;
+      });
     }
   }
 
   // ── Abrir ventana de chat ─────────────────────────────────────────────────
 
   void _abrirChat() {
+    _hojaAbierta = true;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -109,14 +127,15 @@ class _ChatbotWidgetState extends State<ChatbotWidget> {
           mensajes:  _mensajes,
           enviando:  _enviando,
           onEnviar:  (texto) => _enviar(texto, actualizarSheet),
+          onReintentar: (texto) => _reintentar(texto, actualizarSheet),
           onLimpiar: () => actualizarSheet(() {
             _mensajes.clear();
-            _historialGemini.clear();
+            _historial.clear();
             _enviando = false;
           }),
         ),
       ),
-    );
+    ).whenComplete(() => _hojaAbierta = false);
   }
 
   // ── Build ─────────────────────────────────────────────────────────────────
@@ -141,12 +160,14 @@ class _ChatSheet extends StatefulWidget {
   final List<_Mensaje>     mensajes;
   final bool               enviando;
   final void Function(String) onEnviar;
+  final void Function(String) onReintentar;
   final VoidCallback       onLimpiar;
 
   const _ChatSheet({
     required this.mensajes,
     required this.enviando,
     required this.onEnviar,
+    required this.onReintentar,
     required this.onLimpiar,
   });
 
@@ -230,7 +251,7 @@ class _ChatSheetState extends State<_ChatSheet> {
                             color:      Colors.white,
                             fontWeight: FontWeight.w700,
                             fontSize:   15)),
-                    Text('Unicomfacauca · con Gemini AI',
+                    Text('Unicomfacauca · con inteligencia artificial',
                         style: GoogleFonts.poppins(
                             color: Colors.white70, fontSize: 11)),
                   ],
@@ -338,11 +359,13 @@ class _ChatSheetState extends State<_ChatSheet> {
   // ── Pantalla de bienvenida cuando no hay mensajes ─────────────────────────
 
   Widget _buildBienvenida() {
+    // Atajos: envían este texto al asistente (pasa por el modelo, no hay respuestas fijas).
     final sugerencias = [
-      '¿Qué programas académicos ofrece Unicomfacauca?',
       '¿Cómo entrego una tarea en GESACAD?',
-      '¿Cuál es el proceso de matrícula?',
+      '¿Cómo funciona el semáforo académico?',
       '¿Cómo veo mis calificaciones?',
+      'Explícame qué es una derivada con un ejemplo sencillo',
+      '¿Cuál es el proceso de matrícula en Unicomfacauca?',
     ];
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -363,10 +386,15 @@ class _ChatSheetState extends State<_ChatSheet> {
                 fontWeight: FontWeight.w700, fontSize: 16),
             textAlign: TextAlign.center),
         const SizedBox(height: 6),
-        Text('Puedo ayudarte con información sobre Unicomfacauca, '
-            'tus cursos y el uso de la plataforma.',
+        Text('Te ayudo con la plataforma, tus cursos y tus dudas académicas. '
+            'Si algo no lo sé, te lo digo y te indico dónde consultarlo.',
             style: GoogleFonts.poppins(
                 fontSize: 12, color: context.tokens.muted),
+            textAlign: TextAlign.center),
+        const SizedBox(height: 6),
+        Text('Por tu privacidad, no escribas contraseñas ni datos personales.',
+            style: GoogleFonts.poppins(
+                fontSize: 11, color: context.tokens.muted),
             textAlign: TextAlign.center),
         const SizedBox(height: 20),
         Align(
@@ -454,12 +482,21 @@ class _ChatSheetState extends State<_ChatSheet> {
                         height:  1.45,
                       ),
                     )
-                  : _buildTextoConLinks(
-                      msg.texto,
-                      msg.esError
-                          ? context.tokens.danger
-                          : Theme.of(context).colorScheme.onSurface,
-                    ),
+                  : msg.esError
+                      // Un error se anuncia solo a los lectores de pantalla.
+                      ? Semantics(
+                          liveRegion: true,
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            _buildTextoConLinks(msg.texto, context.tokens.danger),
+                            if (msg.reintentar != null)
+                              TextButton.icon(
+                                onPressed: widget.enviando ? null : () => widget.onReintentar(msg.reintentar!),
+                                icon: const Icon(Icons.refresh_rounded, size: 16),
+                                label: const Text('Reintentar'),
+                              ),
+                          ]),
+                        )
+                      : _buildTextoConLinks(msg.texto, Theme.of(context).colorScheme.onSurface),
             ),
           ),
           if (esUsuario) ...[
@@ -549,6 +586,14 @@ class _ChatSheetState extends State<_ChatSheet> {
   // ── Indicador de "escribiendo..." ─────────────────────────────────────────
 
   Widget _buildIndicadorEscribiendo() {
+    return Semantics(
+      liveRegion: true,
+      label: 'El asistente está escribiendo',
+      child: ExcludeSemantics(child: _indicadorVisual()),
+    );
+  }
+
+  Widget _indicadorVisual() {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
