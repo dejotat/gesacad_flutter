@@ -363,7 +363,8 @@ class _ChatSheetState extends State<_ChatSheet> {
     final sugerencias = [
       '¿Cómo entrego una tarea en GESACAD?',
       '¿Cómo funciona el semáforo académico?',
-      '¿Cómo veo mis calificaciones?',
+      '¿Tengo actividades pendientes?',
+      '¿Cómo voy en mis notas?',
       'Explícame qué es una derivada con un ejemplo sencillo',
       '¿Cuál es el proceso de matrícula en Unicomfacauca?',
     ];
@@ -392,7 +393,8 @@ class _ChatSheetState extends State<_ChatSheet> {
                 fontSize: 12, color: context.tokens.muted),
             textAlign: TextAlign.center),
         const SizedBox(height: 6),
-        Text('Por tu privacidad, no escribas contraseñas ni datos personales.',
+        Text('Puedo consultar tus materias, tareas y notas cuando me lo pidas. '
+            'Por tu privacidad, no escribas contraseñas ni datos personales.',
             style: GoogleFonts.poppins(
                 fontSize: 11, color: context.tokens.muted),
             textAlign: TextAlign.center),

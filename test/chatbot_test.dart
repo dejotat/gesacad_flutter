@@ -125,7 +125,7 @@ void main() {
     var intentos = 0;
     await http.runWithClient(() async {
       await _abrir(t);
-      await t.tap(find.text('¿Cómo veo mis calificaciones?'));
+      await t.tap(find.text('¿Cómo voy en mis notas?'));
       await _avanzar(t);
       expect(find.text('El asistente está muy ocupado. Inténtalo de nuevo en un momento.'), findsOneWidget);
       expect(find.textContaining('Error:'), findsNothing, reason: 'nada técnico');
@@ -136,7 +136,7 @@ void main() {
       expect(intentos, 2);
       expect(find.text('Reintentar'), findsNothing);
       expect(find.text('Ve a «Calificaciones» en el menú. ¿Te muestro cómo leerlas?'), findsOneWidget);
-      expect(find.text('¿Cómo veo mis calificaciones?'), findsOneWidget, reason: 'la pregunta no se duplica al reintentar');
+      expect(find.text('¿Cómo voy en mis notas?'), findsOneWidget, reason: 'la pregunta no se duplica al reintentar');
       await t.pumpWidget(const SizedBox());
     }, () => MockClient((r) async {
           intentos++;
