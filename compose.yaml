@@ -68,6 +68,7 @@ services:
       CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
       # Asistente con Gemini (opcional; sin clave el chat responde «aún no está configurado»).
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-}
       GEMINI_FALLBACK_MODEL: ${GEMINI_FALLBACK_MODEL:-gemini-flash-latest}
       # Notificaciones push (opcional)
