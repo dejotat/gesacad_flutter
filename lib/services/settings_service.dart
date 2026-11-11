@@ -8,7 +8,7 @@ class AppSettings {
 
   static final ValueNotifier<bool> talkBackEnabled = ValueNotifier(false);
   static final ValueNotifier<AppThemeType> currentTheme =
-      ValueNotifier(AppThemeType.atardecer);
+      ValueNotifier(AppThemeType.neon);
 
   static const _keyTalkBack = 'gesacad_talkback';
   // v3: el conjunto de temas cambió (paletas nuevas); las claves viejas
@@ -18,13 +18,13 @@ class AppSettings {
   static Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     talkBackEnabled.value = prefs.getBool(_keyTalkBack) ?? false;
-    // Sin tema guardado: «Atardecer» (el principal). Quien ya eligió uno lo conserva.
+    // Sin tema guardado: «Neón» (el principal, el mismo del login). Quien ya eligió uno lo conserva.
     final idx = prefs.getInt(_keyTheme);
     final guardado = (idx != null && idx >= 0 && idx < AppThemeType.values.length)
         ? AppThemeType.values[idx]
         : null;
     currentTheme.value =
-        guardado != null ? guardado : AppThemeType.atardecer;
+        guardado ?? AppThemeType.neon;
   }
 
   static Future<void> setTalkBack(bool enabled) async {
@@ -41,7 +41,7 @@ class AppSettings {
   }
 }
 
-/// Temas: 5 claros (Atardecer es el principal) y 3 oscuros (el login usa Neón). Cada uno
+/// Temas: 5 claros y 3 oscuros. El principal es Neón (oscuro), el mismo del login. Cada uno
 /// define color primario (legible sobre vidrio), secundario, un degradado vivo para encabezados
 /// y, los oscuros, su propia escena de fondo (`config/app_scenes.dart`).
 ///
@@ -57,14 +57,14 @@ extension AppThemeTypeExt on AppThemeType {
 
   /// Los temas que se ofrecen en Ajustes, en orden: el principal primero.
   static List<AppThemeType> get ofrecidos => const [
-        AppThemeType.atardecer,
+        AppThemeType.neon,
         AppThemeType.aurora,
+        AppThemeType.medianoche,
+        AppThemeType.atardecer,
         AppThemeType.lavanda,
         AppThemeType.menta,
         AppThemeType.selva,
         AppThemeType.oceano,
-        AppThemeType.medianoche,
-        AppThemeType.neon,
       ];
 
   String get label {

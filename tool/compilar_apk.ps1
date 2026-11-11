@@ -6,7 +6,7 @@
 #
 # Lee la configuración de Firebase de "firebase.env" (cópialo de firebase.env.example).
 # Si el archivo no existe o está vacío, compila SIN push: la app funciona igual con su bandeja.
-# Usa el acceso directo C:\flutter_sdk porque la ruta del SDK tiene espacios (ver CLAUDE.md).
+# Usa el acceso directo C:\flutter_sdk porque la ruta del SDK tiene espacios (ver «Generar el APK» del README).
 
 param([switch]$Debug)
 
